@@ -18,6 +18,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
+from backend.app.database import check_database_ready, init_database
+from backend.app.routers import exercises, progress, screening, simplify, users
+from backend.app.services.adaptation_service import build_adaptation_payload
+from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
+
 try:
     import cv2
 except Exception as exc:
@@ -158,6 +163,7 @@ class ErrorResponse(BaseModel):
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    app.state.db_ready = init_database()
     app.state.ocr_reader = None
     app.state.ocr_languages = []
     app.state.ocr_lock = asyncio.Lock()
@@ -231,6 +237,12 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+app.include_router(users.router)
+app.include_router(exercises.router)
+app.include_router(screening.router)
+app.include_router(progress.router)
+app.include_router(simplify.router)
+
 
 @app.exception_handler(RequestValidationError)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -254,8 +266,11 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
 
 @app.get("/health")
 async def health(request: Request) -> dict[str, Any]:
+    request.app.state.db_ready = check_database_ready()
     return {
         "status": "ok",
+        "db_ready": request.app.state.db_ready,
+        "training_ready": True,
         "ocr_ready": request.app.state.ocr_reader is not None,
         "ocr_status": request.app.state.ocr_status,
         "ocr_languages": request.app.state.ocr_languages,
@@ -327,7 +342,7 @@ async def adapt_image(
                     timeout=OCR_TIMEOUT_SECONDS,
                 )
 
-        extracted_text = clean_ocr_text(extracted_text)
+        extracted_text = service_clean_ocr_text(extracted_text)
         if not extracted_text:
             return error_response(IMAGE_ERROR_MESSAGE)
 
@@ -896,24 +911,23 @@ def remove_temp_file(path: str) -> None:
 
 
 def build_adapted_response(source: str, text: str, title: str | None = None) -> AdaptedTextResponse:
-    normalized_text = prepare_text_for_adaptation(source=source, text=text)
-    truncated = len(normalized_text) > MAX_TEXT_CHARS
-    if truncated:
-        normalized_text = normalized_text[:MAX_TEXT_CHARS].rstrip()
-
-    words = extract_adapted_words(normalized_text)
-    adapted_text = adapt_text(normalized_text)
+    payload = build_adaptation_payload(
+        source=source,
+        text=text,
+        title=title,
+        max_text_chars=MAX_TEXT_CHARS,
+    )
 
     return AdaptedTextResponse(
-        status="success",
-        source=source,
-        title=title,
-        original_text=normalized_text,
-        adapted_text=adapted_text,
-        word_count=len(words),
-        unique_word_count=len({word.original.lower() for word in words}),
-        truncated=truncated,
-        words=words,
+        status=payload["status"],
+        source=payload["source"],
+        title=payload["title"],
+        original_text=payload["original_text"],
+        adapted_text=payload["adapted_text"],
+        word_count=payload["word_count"],
+        unique_word_count=payload["unique_word_count"],
+        truncated=payload["truncated"],
+        words=[AdaptedWord(**word) for word in payload["words"]],
     )
 
 

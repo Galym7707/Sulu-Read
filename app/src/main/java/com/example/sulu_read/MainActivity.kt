@@ -91,6 +91,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import com.example.sulu_read.data.ApiClient
+import com.example.sulu_read.data.UserPreferences
+import com.example.sulu_read.domain.repository.SuluReadRepository
+import com.example.sulu_read.ui.navigation.SuluReadNavGraph
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -106,12 +110,6 @@ import java.net.URL
 import java.util.UUID
 import kotlin.math.max
 
-private val SULU_READ_API_BASE_URLS = listOf(
-    "https://galym7707-sulu-read-backend.hf.space",
-    "http://10.0.2.2:8000",
-    "http://192.168.0.100:8000",
-    "http://192.168.0.103:8000"
-)
 private const val CONNECT_TIMEOUT_MS = 20_000
 private const val READ_TIMEOUT_MS = 240_000
 private const val MAX_UPLOAD_IMAGE_SIDE = 1800
@@ -220,7 +218,8 @@ private sealed interface AppState {
         val originalText: String,
         val source: String,
         val wordCount: Int,
-        val title: String?
+        val title: String?,
+        val words: List<SyllableWord>
     ) : AppState
 }
 
@@ -235,7 +234,8 @@ private sealed interface ApiResult {
         val originalText: String,
         val source: String,
         val wordCount: Int,
-        val title: String?
+        val title: String?,
+        val words: List<SyllableWord>
     ) : ApiResult
 
     data class Error(val message: String) : ApiResult
@@ -271,25 +271,29 @@ private fun SuluReadTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun SuluReadApp() {
+    val context = LocalContext.current.applicationContext
+    val repository = remember(context) {
+        SuluReadRepository(
+            api = ApiClient,
+            preferences = UserPreferences(context)
+        )
+    }
+
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Scaffold(
-            modifier = Modifier.fillMaxSize(),
-            containerColor = MaterialTheme.colorScheme.background,
-            contentWindowInsets = WindowInsets.safeDrawing
-        ) { innerPadding ->
-            SuluReadRoute(
-                modifier = Modifier.padding(innerPadding)
-            )
-        }
+        SuluReadNavGraph(repository = repository)
     }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-private fun SuluReadRoute(modifier: Modifier = Modifier) {
+fun SuluReadRoute(
+    modifier: Modifier = Modifier,
+    repository: SuluReadRepository,
+    onCreateTrainingFromText: (List<String>) -> Unit
+) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
 
@@ -326,7 +330,8 @@ private fun SuluReadRoute(modifier: Modifier = Modifier) {
                         originalText = result.originalText,
                         source = result.source,
                         wordCount = result.wordCount,
-                        title = result.title
+                        title = result.title,
+                        words = result.words
                     )
                 }
 
@@ -548,6 +553,8 @@ private fun SuluReadRoute(modifier: Modifier = Modifier) {
             ReadingScreen(
                 modifier = modifier,
                 state = currentState,
+                repository = repository,
+                onCreateTrainingFromText = onCreateTrainingFromText,
                 onBackHome = {
                     selectedDocumentUri = null
                     selectedDocumentSource = null
@@ -688,6 +695,8 @@ private fun LoadingScreen(modifier: Modifier = Modifier) {
 private fun ReadingScreen(
     modifier: Modifier = Modifier,
     state: AppState.Reading,
+    repository: SuluReadRepository,
+    onCreateTrainingFromText: (List<String>) -> Unit,
     onBackHome: () -> Unit
 ) {
     val sourceText = when (state.source) {
@@ -731,7 +740,19 @@ private fun ReadingScreen(
             }
         }
 
-        PremiumReadingScreen(text = state.adaptedText)
+        Button(
+            onClick = { onCreateTrainingFromText(extractTrainingWords(state.originalText.ifBlank { state.adaptedText })) },
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Text(text = "Осы мәтінмен жаттығу жасау / Создать тренировку из текста")
+        }
+
+        PremiumReadingScreen(
+            text = state.adaptedText,
+            backendWords = state.words,
+            onSimplifyText = { source -> repository.simplify(source) }
+        )
     }
 }
 
@@ -1150,7 +1171,7 @@ private object SuluReadApiClient {
             .toString()
             .toByteArray(Charsets.UTF_8)
 
-        for (baseUrl in SULU_READ_API_BASE_URLS) {
+        for (baseUrl in ApiClient.backendBaseUrls) {
             val result = runCatching {
                 val connection = openPostConnection("$baseUrl/v1/adapt-url").apply {
                     setRequestProperty("Content-Type", "application/json; charset=utf-8")
@@ -1181,7 +1202,7 @@ private object SuluReadApiClient {
                 return@withContext ApiResult.Error("Не удалось подготовить фото для отправки.")
             }
 
-        for (baseUrl in SULU_READ_API_BASE_URLS) {
+        for (baseUrl in ApiClient.backendBaseUrls) {
             val result = runCatching {
                 val boundary = "SuluReadBoundary-${UUID.randomUUID()}"
                 val connection = openPostConnection("$baseUrl/v1/adapt-image").apply {
@@ -1306,7 +1327,8 @@ private object SuluReadApiClient {
                 originalText = json.optString("original_text"),
                 source = json.optString("source", "material"),
                 wordCount = json.optInt("word_count", 0),
-                title = json.optString("title").ifBlank { null }
+                title = json.optString("title").ifBlank { null },
+                words = parseBackendSyllableWords(json)
             )
         }
 
@@ -1330,6 +1352,29 @@ private object SuluReadApiClient {
 
         return stream.bufferedReader(Charsets.UTF_8).use { reader ->
             reader.readText()
+        }
+    }
+
+    private fun parseBackendSyllableWords(json: JSONObject): List<SyllableWord> {
+        val wordsJson = json.optJSONArray("words") ?: return emptyList()
+        return (0 until wordsJson.length()).mapNotNull { index ->
+            val item = wordsJson.optJSONObject(index) ?: return@mapNotNull null
+            val original = item.optString("original").ifBlank { return@mapNotNull null }
+            val syllablesJson = item.optJSONArray("syllables")
+            val syllables = if (syllablesJson != null) {
+                (0 until syllablesJson.length()).mapNotNull { syllableIndex ->
+                    syllablesJson.optString(syllableIndex).takeIf { it.isNotBlank() }
+                }
+            } else {
+                item.optString("adapted")
+                    .split("-")
+                    .filter { it.isNotBlank() }
+            }
+
+            SyllableWord(
+                original = original,
+                syllables = syllables.ifEmpty { listOf(original) }
+            )
         }
     }
 
@@ -1383,6 +1428,16 @@ private fun hasMediaImageAccess(context: Context): Boolean {
     return mediaImagePermissions().any { permission ->
         hasPermission(context, permission)
     }
+}
+
+private fun extractTrainingWords(text: String): List<String> {
+    return Regex("[A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі]+")
+        .findAll(text)
+        .map { it.value }
+        .filter { it.length >= 4 }
+        .distinctBy { it.lowercase() }
+        .take(40)
+        .toList()
 }
 
 private fun createTextbookPhotoUri(context: Context): Uri {

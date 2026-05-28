@@ -19,6 +19,7 @@ RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/requirements.txt
 
 COPY main.py /app/main.py
+COPY backend /app/backend
 
 RUN python -c "import easyocr; easyocr.Reader(['ru', 'rs_cyrillic', 'mn', 'en'], gpu=False, verbose=False)"
 

@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -53,6 +54,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -81,6 +83,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import java.util.Locale
 import kotlin.math.roundToInt
 
@@ -108,7 +111,12 @@ private class ReadingScreenState(
     isReadingRulerEnabled: Boolean = false,
     rulerYOffset: Float = 0f,
     currentPlayingWordIndex: Int = NO_PLAYING_WORD,
-    simplifiedTextSnippet: String? = null
+    simplifiedTextSnippet: String? = null,
+    isSimplifyingText: Boolean = false,
+    simplificationError: String? = null,
+    showSyllableBreaks: Boolean = true,
+    colorSyllables: Boolean = true,
+    useOriginalWords: Boolean = false
 ) {
     var letterSpacing by mutableFloatStateOf(letterSpacing)
     var lineHeight by mutableFloatStateOf(lineHeight)
@@ -116,6 +124,11 @@ private class ReadingScreenState(
     var rulerYOffset by mutableFloatStateOf(rulerYOffset)
     var currentPlayingWordIndex by mutableIntStateOf(currentPlayingWordIndex)
     var simplifiedTextSnippet by mutableStateOf(simplifiedTextSnippet)
+    var isSimplifyingText by mutableStateOf(isSimplifyingText)
+    var simplificationError by mutableStateOf(simplificationError)
+    var showSyllableBreaks by mutableStateOf(showSyllableBreaks)
+    var colorSyllables by mutableStateOf(colorSyllables)
+    var useOriginalWords by mutableStateOf(useOriginalWords)
 }
 
 private val ReadingScreenStateSaver: Saver<ReadingScreenState, Any> = listSaver(
@@ -126,7 +139,10 @@ private val ReadingScreenStateSaver: Saver<ReadingScreenState, Any> = listSaver(
             state.isReadingRulerEnabled,
             state.rulerYOffset,
             state.currentPlayingWordIndex,
-            state.simplifiedTextSnippet
+            state.simplifiedTextSnippet,
+            state.showSyllableBreaks,
+            state.colorSyllables,
+            state.useOriginalWords
         )
     },
     restore = { restored ->
@@ -136,7 +152,10 @@ private val ReadingScreenStateSaver: Saver<ReadingScreenState, Any> = listSaver(
             isReadingRulerEnabled = restored[2] as Boolean,
             rulerYOffset = restored[3] as Float,
             currentPlayingWordIndex = restored[4] as Int,
-            simplifiedTextSnippet = restored[5] as String?
+            simplifiedTextSnippet = restored[5] as String?,
+            showSyllableBreaks = restored[6] as Boolean,
+            colorSyllables = restored[7] as Boolean,
+            useOriginalWords = restored[8] as Boolean
         )
     }
 )
@@ -154,12 +173,15 @@ private data class IndexedSyllableWord(
 @Composable
 fun PremiumReadingScreen(
     text: String,
+    backendWords: List<SyllableWord> = emptyList(),
+    onSimplifyText: suspend (String) -> String = { simplifyTextSnippet(it) },
     modifier: Modifier = Modifier
 ) {
     val state = rememberSaveable(text, saver = ReadingScreenStateSaver) {
         ReadingScreenState()
     }
-    val paragraphs = remember(text) { buildReadingParagraphs(text) }
+    val coroutineScope = rememberCoroutineScope()
+    val paragraphs = remember(text, backendWords) { buildReadingParagraphs(text, backendWords) }
     val words = remember(paragraphs) { paragraphs.flatMap { paragraph -> paragraph.words } }
     val ttsController = rememberTextToSpeechController(
         words = words,
@@ -194,7 +216,20 @@ fun PremiumReadingScreen(
                 state = state,
                 onWordClick = { index -> ttsController.playFrom(index) },
                 onSimplifyRequest = { source ->
-                    state.simplifiedTextSnippet = simplifyTextSnippet(source)
+                    state.isSimplifyingText = true
+                    state.simplifiedTextSnippet = ""
+                    state.simplificationError = null
+                    coroutineScope.launch {
+                        runCatching { onSimplifyText(source) }
+                            .onSuccess {
+                                state.simplifiedTextSnippet = it
+                                state.simplificationError = null
+                            }
+                            .onFailure {
+                                state.simplificationError = "Не удалось упростить текст. Попробуйте ещё раз."
+                            }
+                        state.isSimplifyingText = false
+                    }
                 }
             )
 
@@ -208,10 +243,16 @@ fun PremiumReadingScreen(
     }
 
     val simplifiedText = state.simplifiedTextSnippet
-    if (simplifiedText != null) {
+    if (simplifiedText != null || state.isSimplifyingText || state.simplificationError != null) {
         SimplifiedTextSheet(
-            text = simplifiedText,
-            onDismissRequest = { state.simplifiedTextSnippet = null }
+            text = simplifiedText.orEmpty(),
+            isLoading = state.isSimplifyingText,
+            errorMessage = state.simplificationError,
+            onDismissRequest = {
+                state.simplifiedTextSnippet = null
+                state.simplificationError = null
+                state.isSimplifyingText = false
+            }
         )
     }
 }
@@ -321,6 +362,45 @@ private fun ReadingControls(
                 }
             )
         }
+
+        ReadingSwitch(
+            label = "Показывать деление на слоги",
+            checked = state.showSyllableBreaks,
+            onCheckedChange = { state.showSyllableBreaks = it }
+        )
+        ReadingSwitch(
+            label = "Выделять слоги цветом",
+            checked = state.colorSyllables,
+            onCheckedChange = { state.colorSyllables = it }
+        )
+        ReadingSwitch(
+            label = "Показывать исходные слова",
+            checked = state.useOriginalWords,
+            onCheckedChange = { state.useOriginalWords = it }
+        )
+    }
+}
+
+@Composable
+private fun ReadingSwitch(
+    label: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.SpaceBetween
+    ) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodyLarge,
+            color = MaterialTheme.colorScheme.onSurface
+        )
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
     }
 }
 
@@ -416,7 +496,18 @@ private fun SyllableWordChip(
     )
 
     Text(
-        text = remember(indexedWord.value) { indexedWord.value.toAnnotatedSyllables() },
+        text = remember(
+            indexedWord.value,
+            state.showSyllableBreaks,
+            state.colorSyllables,
+            state.useOriginalWords
+        ) {
+            indexedWord.value.toAnnotatedSyllables(
+                showSyllableBreaks = state.showSyllableBreaks,
+                colorSyllables = state.colorSyllables,
+                useOriginalWords = state.useOriginalWords
+            )
+        },
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
@@ -439,19 +530,30 @@ private fun SyllableWordChip(
     )
 }
 
-private fun SyllableWord.toAnnotatedSyllables() = buildAnnotatedString {
+private fun SyllableWord.toAnnotatedSyllables(
+    showSyllableBreaks: Boolean,
+    colorSyllables: Boolean,
+    useOriginalWords: Boolean
+) = buildAnnotatedString {
+    if (useOriginalWords || !showSyllableBreaks) {
+        withStyle(SpanStyle(color = DeepBlueBlack)) {
+            append(original)
+        }
+        return@buildAnnotatedString
+    }
+
     val safeSyllables = syllables.ifEmpty { listOf(original) }
     safeSyllables.forEachIndexed { index, syllable ->
         withStyle(
             SpanStyle(
-                color = if (index % 2 == 0) DeepBlueBlack else DarkSlateGray
+                color = if (!colorSyllables || index % 2 == 0) DeepBlueBlack else DarkSlateGray
             )
         ) {
             append(syllable)
         }
         if (index < safeSyllables.lastIndex) {
             withStyle(SpanStyle(color = DarkSlateGray.copy(alpha = 0.58f))) {
-                append("·")
+                append("-")
             }
         }
     }
@@ -558,6 +660,8 @@ private fun resolveRulerCenterY(
 @Composable
 private fun SimplifiedTextSheet(
     text: String,
+    isLoading: Boolean,
+    errorMessage: String?,
     onDismissRequest: () -> Unit
 ) {
     ModalBottomSheet(
@@ -591,14 +695,41 @@ private fun SimplifiedTextSheet(
                 }
             }
 
-            Text(
-                text = text,
-                style = MaterialTheme.typography.bodyLarge.copy(
-                    lineHeight = 32.sp,
-                    letterSpacing = 0.4.sp
-                ),
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            when {
+                isLoading -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            text = "Упрощаем текст...",
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                errorMessage != null -> {
+                    Text(
+                        text = errorMessage,
+                        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 30.sp),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                else -> {
+                    Text(
+                        text = text,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            lineHeight = 32.sp,
+                            letterSpacing = 0.4.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
 
             Button(
                 onClick = onDismissRequest,
@@ -752,7 +883,21 @@ private fun estimateWordDurationMillis(word: String): Long {
     return (280L + readableLength * 42L).coerceIn(460L, 1_350L)
 }
 
-private fun buildReadingParagraphs(text: String): List<ReadingParagraph> {
+private fun buildReadingParagraphs(
+    text: String,
+    backendWords: List<SyllableWord> = emptyList()
+): List<ReadingParagraph> {
+    if (backendWords.isNotEmpty()) {
+        return listOf(
+            ReadingParagraph(
+                original = text,
+                words = backendWords.mapIndexed { index, word ->
+                    IndexedSyllableWord(index = index, value = word)
+                }
+            )
+        )
+    }
+
     var nextIndex = 0
     return text
         .split(Regex("(\\r?\\n){2,}|\\r?\\n"))

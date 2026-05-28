@@ -3,11 +3,13 @@
 .kotlin
 .env
 *.log
+*.db
 __pycache__/
 /local.properties
 /.idea/caches
 /.idea/libraries
 /.idea/modules.xml
+/.idea/vcs.xml
 /.idea/workspace.xml
 /.idea/navEditor.xml
 /.idea/assetWizardSettings.xml
