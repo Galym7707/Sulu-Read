@@ -2,6 +2,7 @@ import logging
 import os
 from dataclasses import dataclass
 from pathlib import Path
+from urllib.parse import quote
 
 from dotenv import load_dotenv
 from sqlalchemy.engine import make_url
@@ -56,13 +57,15 @@ def normalize_database_url(raw_database_url: str) -> str:
     if raw_database_url.startswith("sqlite"):
         return raw_database_url
 
+    database_url = quote_password_for_url_parser(raw_database_url)
     try:
-        parsed_url = make_url(raw_database_url)
+        parsed_url = make_url(database_url)
     except Exception:
+        logger.warning("Could not parse DATABASE_URL; using raw value")
         return raw_database_url
 
     normalized_url = parsed_url
-    if parsed_url.drivername == "postgresql":
+    if parsed_url.drivername in {"postgres", "postgresql"}:
         normalized_url = normalized_url.set(drivername="postgresql+psycopg")
 
     if parsed_url.host and parsed_url.host.startswith("@"):
@@ -75,9 +78,30 @@ def normalize_database_url(raw_database_url: str) -> str:
     if normalized_url.drivername.startswith("postgresql") and "sslmode" not in normalized_url.query:
         normalized_url = normalized_url.set(query={**normalized_url.query, "sslmode": "require"})
 
-    if normalized_url is not parsed_url:
+    if normalized_url is not parsed_url or database_url != raw_database_url:
         return normalized_url.render_as_string(hide_password=False)
     return raw_database_url
+
+
+def quote_password_for_url_parser(raw_database_url: str) -> str:
+    if not raw_database_url.startswith(("postgres://", "postgresql://")):
+        return raw_database_url
+
+    scheme, remainder = raw_database_url.split("://", 1)
+    if "/" not in remainder:
+        return raw_database_url
+
+    authority, path_and_query = remainder.split("/", 1)
+    if "@" not in authority:
+        return raw_database_url
+
+    user_info, host_info = authority.rsplit("@", 1)
+    if ":" not in user_info:
+        return raw_database_url
+
+    username, password = user_info.split(":", 1)
+    encoded_password = quote(password, safe="%")
+    return f"{scheme}://{username}:{encoded_password}@{host_info}/{path_and_query}"
 
 
 def load_settings() -> Settings:

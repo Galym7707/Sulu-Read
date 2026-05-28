@@ -29,7 +29,7 @@ The app does not diagnose dyslexia and does not claim treatment or cure. Screeni
 
 ## Environment
 
-Create `.env` locally. Do not commit it.
+Create `.env` locally. Do not commit it. `.env`, `*.db`, and logs are ignored by Git in this repository.
 
 ```env
 SUPABASE_PROJECT_URL=your_project_url
@@ -39,7 +39,7 @@ SUPABASE_DIRECT_CONNECTION_STRING=your_direct_connection_string
 GROQ_API=your_optional_groq_api_key
 ```
 
-The backend reads `SUPABASE_DIRECT_CONNECTION_STRING` directly with SQLAlchemy. If it is missing, the app logs a warning and falls back to `sqlite:///./sulu_read_local.db` for local development only.
+The backend reads `SUPABASE_DIRECT_CONNECTION_STRING` with SQLAlchemy and uses `postgresql+psycopg`. The URL is normalized for `sslmode=require` and for passwords containing special characters. If `SUPABASE_DIRECT_CONNECTION_STRING` is missing, the app logs a warning and falls back to `sqlite:///./sulu_read_local.db` for local development only. If the Supabase URL is present but unreachable or invalid, the backend logs the connection failure and `/health` returns `db_ready: false`; it does not silently switch production traffic to SQLite.
 
 ## Run Backend
 
@@ -58,6 +58,20 @@ uvicorn main:app --host 0.0.0.0 --port 7860
 
 ```bash
 python -m pytest backend/tests
+```
+
+The live Supabase integration test is skipped unless `SUPABASE_DIRECT_CONNECTION_STRING` is exported in the test process. To verify table creation and connectivity against Supabase:
+
+```bash
+set SUPABASE_DIRECT_CONNECTION_STRING=your_direct_connection_string
+python -m pytest backend/tests/test_supabase_connectivity.py
+```
+
+On PowerShell:
+
+```powershell
+$env:SUPABASE_DIRECT_CONNECTION_STRING="your_direct_connection_string"
+python -m pytest backend/tests/test_supabase_connectivity.py
 ```
 
 ## Android
