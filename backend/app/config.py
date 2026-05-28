@@ -51,6 +51,14 @@ def _read_float(name: str, default: float) -> float:
         return default
 
 
+def read_env(*names: str) -> str:
+    for name in names:
+        value = os.getenv(name)
+        if value is not None and value.strip():
+            return value.strip()
+    return ""
+
+
 def normalize_database_url(raw_database_url: str) -> str:
     if not raw_database_url:
         return ""
@@ -105,7 +113,9 @@ def quote_password_for_url_parser(raw_database_url: str) -> str:
 
 
 def load_settings() -> Settings:
-    database_url = normalize_database_url(os.getenv("SUPABASE_DIRECT_CONNECTION_STRING", "").strip())
+    database_url = normalize_database_url(
+        read_env("SUPABASE_DIRECT_CONNECTION_STRING", "SUPABASE_direct_connection_string")
+    )
     use_sqlite_fallback = False
     if not database_url:
         database_url = "sqlite:///./sulu_read_local.db"
@@ -117,8 +127,8 @@ def load_settings() -> Settings:
 
     return Settings(
         database_url=database_url,
-        supabase_project_url=os.getenv("SUPABASE_PROJECT_URL"),
-        supabase_publishable_key=os.getenv("SUPABASE_PUBLISHABLE_KEY"),
+        supabase_project_url=read_env("SUPABASE_PROJECT_URL", "SUPABASE_project_url") or None,
+        supabase_publishable_key=read_env("SUPABASE_PUBLISHABLE_KEY", "SUPABASE_publishable_key") or None,
         groq_api_key=(os.getenv("GROQ_API") or os.getenv("GROQ_API_KEY") or "").strip() or None,
         groq_vision_model=os.getenv(
             "SULU_READ_GROQ_VISION_MODEL",
