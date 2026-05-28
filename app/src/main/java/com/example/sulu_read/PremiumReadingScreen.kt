@@ -121,6 +121,7 @@ private class ReadingScreenState(
     simplifiedTextSnippet: String? = null,
     isSimplifyingText: Boolean = false,
     simplificationError: String? = null,
+    simplificationSource: String? = null,
     showSyllableBreaks: Boolean = true,
     colorSyllables: Boolean = true,
     useOriginalWords: Boolean = false
@@ -133,6 +134,7 @@ private class ReadingScreenState(
     var simplifiedTextSnippet by mutableStateOf(simplifiedTextSnippet)
     var isSimplifyingText by mutableStateOf(isSimplifyingText)
     var simplificationError by mutableStateOf(simplificationError)
+    var simplificationSource by mutableStateOf(simplificationSource)
     var showSyllableBreaks by mutableStateOf(showSyllableBreaks)
     var colorSyllables by mutableStateOf(colorSyllables)
     var useOriginalWords by mutableStateOf(useOriginalWords)
@@ -202,6 +204,24 @@ fun PremiumReadingScreen(
         state = state
     )
 
+    fun requestSimplification(source: String) {
+        state.simplificationSource = source
+        state.isSimplifyingText = true
+        state.simplifiedTextSnippet = ""
+        state.simplificationError = null
+        coroutineScope.launch {
+            runCatching { onSimplifyText(source) }
+                .onSuccess {
+                    state.simplifiedTextSnippet = it
+                    state.simplificationError = null
+                }
+                .onFailure {
+                    state.simplificationError = simplifyErrorMessage
+                }
+            state.isSimplifyingText = false
+        }
+    }
+
     LaunchedEffect(readerDisplayPreferences) {
         state.showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks
         state.colorSyllables = readerDisplayPreferences.colorSyllables
@@ -247,22 +267,7 @@ fun PremiumReadingScreen(
                 paragraphs = paragraphs,
                 state = state,
                 onWordClick = { index -> ttsController.playFrom(index) },
-                onSimplifyRequest = { source ->
-                    state.isSimplifyingText = true
-                    state.simplifiedTextSnippet = ""
-                    state.simplificationError = null
-                    coroutineScope.launch {
-                        runCatching { onSimplifyText(source) }
-                            .onSuccess {
-                                state.simplifiedTextSnippet = it
-                                state.simplificationError = null
-                            }
-                            .onFailure {
-                                state.simplificationError = simplifyErrorMessage
-                            }
-                        state.isSimplifyingText = false
-                    }
-                }
+                onSimplifyRequest = ::requestSimplification
             )
 
             if (state.isReadingRulerEnabled) {
@@ -280,9 +285,13 @@ fun PremiumReadingScreen(
             text = simplifiedText.orEmpty(),
             isLoading = state.isSimplifyingText,
             errorMessage = state.simplificationError,
+            onRetry = state.simplificationSource?.let { source ->
+                { requestSimplification(source) }
+            },
             onDismissRequest = {
                 state.simplifiedTextSnippet = null
                 state.simplificationError = null
+                state.simplificationSource = null
                 state.isSimplifyingText = false
             }
         )
@@ -706,6 +715,7 @@ private fun SimplifiedTextSheet(
     text: String,
     isLoading: Boolean,
     errorMessage: String?,
+    onRetry: (() -> Unit)?,
     onDismissRequest: () -> Unit
 ) {
     ModalBottomSheet(
@@ -761,6 +771,17 @@ private fun SimplifiedTextSheet(
                         style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 30.sp),
                         color = MaterialTheme.colorScheme.error
                     )
+                    if (onRetry != null) {
+                        Button(
+                            onClick = onRetry,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp),
+                            shape = RoundedCornerShape(14.dp)
+                        ) {
+                            Text(text = stringResource(R.string.try_again))
+                        }
+                    }
                 }
 
                 else -> {

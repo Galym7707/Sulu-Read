@@ -48,6 +48,14 @@ pip install -r requirements.txt
 uvicorn main:app --host 0.0.0.0 --port 7860
 ```
 
+On startup the backend runs `Base.metadata.create_all(bind=engine)` for the MVP tables:
+
+- `user_profiles`
+- `user_skill_profiles`
+- `reading_sessions`
+- `exercise_attempts`
+- `screening_results`
+
 Docker/Hugging Face Spaces still starts with:
 
 ```bash
@@ -77,3 +85,23 @@ python -m pytest backend/tests/test_supabase_connectivity.py
 ## Android
 
 Open the project in Android Studio and run the `app` module. The Android app talks only to the FastAPI backend; it does not contain Supabase database credentials and does not connect directly to PostgreSQL.
+
+Useful local checks:
+
+```powershell
+.\gradlew.bat :app:assembleDebug
+.\gradlew.bat :app:testDebugUnitTest
+```
+
+Backend base URLs are centralized in `app/src/main/java/com/example/sulu_read/data/ApiClient.kt`. For emulator testing, keep the FastAPI backend running locally and use `http://10.0.2.2:8000` or update the configured LAN URL for a physical device.
+
+## Manual End-to-End Check
+
+1. Start the FastAPI backend with a valid Supabase `SUPABASE_DIRECT_CONNECTION_STRING`.
+2. Confirm `GET /health` returns `db_ready: true`.
+3. Launch the Android app and confirm anonymous user creation succeeds.
+4. Scan or choose a textbook image and confirm `/v1/adapt-image` opens the reader.
+5. Toggle reader display settings; restart the app and confirm they persist.
+6. Start training from the reader text, submit attempts, and confirm `/v1/exercises/attempt` returns feedback.
+7. Run the screening flow and confirm the result uses only support-level language.
+8. Open Progress and confirm saved exercise/screening data persists across app restarts.
