@@ -13,18 +13,11 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.sulu_read.R
 import com.example.sulu_read.ui.components.SuluCard
-
-private const val KAZAKH_DISCLAIMER = "Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау."
-private const val RUSSIAN_DISCLAIMER = "Это не медицинский диагноз. Это примерная оценка уровня поддержки чтения."
-
-private val ScreeningSampleText = """
-    Бүгін оқушы кітап оқыды. Ол жаңа сөздерді асықпай қайталады. Мұғалім әр сөзді анық айтуға көмектесті.
-    Балалар мәтінді бірге талқылады. Әр бала өз қарқынымен оқыды. Қате жасау ұят емес, себебі оқу жаттығу арқылы жақсарады.
-    Көзге демалыс беріп, қысқа үзіліс жасау да маңызды. Осы мәтін оқу қолдауын шамамен бағалау үшін ғана қолданылады.
-""".trimIndent()
 
 @Composable
 fun ScreeningScreen(
@@ -33,7 +26,8 @@ fun ScreeningScreen(
     modifier: Modifier = Modifier
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    val wordsTotal = ScreeningSampleText.split(Regex("\\s+")).count { it.isNotBlank() }
+    val screeningSampleText = stringResource(R.string.screening_sample_text)
+    val wordsTotal = screeningSampleText.split(Regex("\\s+")).count { it.isNotBlank() }
 
     Column(
         modifier = modifier
@@ -41,49 +35,49 @@ fun ScreeningScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Text(text = "Оқу бағалауы / Проверка чтения", style = MaterialTheme.typography.headlineSmall)
+        Text(text = stringResource(R.string.screening_title), style = MaterialTheme.typography.headlineSmall)
         SuluCard {
-            Text(text = KAZAKH_DISCLAIMER, style = MaterialTheme.typography.bodyMedium)
-            Text(text = RUSSIAN_DISCLAIMER, style = MaterialTheme.typography.bodyMedium)
+            Text(text = stringResource(R.string.screening_disclaimer_kk), style = MaterialTheme.typography.bodyMedium)
+            Text(text = stringResource(R.string.screening_disclaimer_ru), style = MaterialTheme.typography.bodyMedium)
         }
 
         SuluCard {
-            Text(text = ScreeningSampleText, style = MaterialTheme.typography.bodyLarge)
+            Text(text = screeningSampleText, style = MaterialTheme.typography.bodyLarge)
         }
 
         when {
-            userId == null -> Text(text = "Профиль дайындалып жатыр...")
+            userId == null -> Text(text = stringResource(R.string.training_profile_loading))
             state.result != null -> {
                 val result = state.result ?: return@Column
                 SuluCard {
-                    Text(text = "WPM: ${result.wpm}", style = MaterialTheme.typography.titleMedium)
-                    Text(text = "Accuracy: ${(result.accuracy * 100).toInt()}%", style = MaterialTheme.typography.titleMedium)
-                    Text(text = "Support level: ${result.supportLevel}", style = MaterialTheme.typography.titleMedium)
+                    Text(text = stringResource(R.string.screening_wpm, result.wpm), style = MaterialTheme.typography.titleMedium)
+                    Text(text = stringResource(R.string.screening_accuracy, (result.accuracy * 100).toInt()), style = MaterialTheme.typography.titleMedium)
+                    Text(text = stringResource(R.string.screening_support_level, result.supportLevel), style = MaterialTheme.typography.titleMedium)
                     Text(text = result.disclaimer, style = MaterialTheme.typography.bodyMedium)
                 }
                 Button(onClick = viewModel::start, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = "Қайта бастау / Повторить")
+                    Text(text = stringResource(R.string.screening_restart))
                 }
             }
             state.isRunning -> {
-                Text(text = "Қателер: ${state.errorsCount}", style = MaterialTheme.typography.titleMedium)
+                Text(text = stringResource(R.string.screening_errors, state.errorsCount), style = MaterialTheme.typography.titleMedium)
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                     OutlinedButton(onClick = viewModel::addError, modifier = Modifier.weight(1f)) {
-                        Text(text = "Қате / Ошибка")
+                        Text(text = stringResource(R.string.screening_error_button))
                     }
                     Button(
                         onClick = { viewModel.finish(userId, wordsTotal) },
                         enabled = !state.isSubmitting,
                         modifier = Modifier.weight(1f)
                     ) {
-                        Text(text = "Аяқтау")
+                        Text(text = stringResource(R.string.screening_finish))
                     }
                 }
             }
             else -> {
                 state.errorMessage?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
                 Button(onClick = viewModel::start, modifier = Modifier.fillMaxWidth()) {
-                    Text(text = "Start")
+                    Text(text = stringResource(R.string.screening_start))
                 }
             }
         }

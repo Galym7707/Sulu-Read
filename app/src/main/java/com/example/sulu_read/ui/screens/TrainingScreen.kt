@@ -28,8 +28,10 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.ui.components.ErrorState
 import com.example.sulu_read.ui.components.LoadingState
@@ -54,17 +56,17 @@ fun TrainingScreen(
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(
-            text = "Жаттығу / Тренировка",
+            text = stringResource(R.string.training_title),
             style = MaterialTheme.typography.headlineSmall
         )
 
         if (userId == null) {
-            LoadingState(message = "Профиль дайындалып жатыр...")
+            LoadingState(message = stringResource(R.string.training_profile_loading))
             return@Column
         }
 
         when (val current = state) {
-            UiState.Loading -> LoadingState(message = "Жаттығулар жүктелуде...")
+            UiState.Loading -> LoadingState(message = stringResource(R.string.training_loading))
             is UiState.Error -> ErrorState(
                 message = current.message,
                 onRetry = { viewModel.start(userId, sourceWords) }
@@ -96,12 +98,12 @@ private fun TrainingContent(
     if (state.exercises.isEmpty()) {
         SuluCard {
             Text(
-                text = "Қысқа жаттығу сессиясын бастайық. Бір сессияда 5 тапсырма болады.",
+                text = stringResource(R.string.training_intro),
                 style = MaterialTheme.typography.bodyLarge
             )
             Spacer(modifier = Modifier.height(14.dp))
             Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-                Text(text = "Бастау / Начать")
+                Text(text = stringResource(R.string.training_start))
             }
         }
         return
@@ -110,12 +112,12 @@ private fun TrainingContent(
     if (state.isComplete) {
         SuluCard {
             Text(
-                text = "Жақсы жұмыс! Көзге демалыс берейік / Давай сделаем короткий перерыв.",
+                text = stringResource(R.string.training_complete),
                 style = MaterialTheme.typography.titleMedium
             )
             Spacer(modifier = Modifier.height(14.dp))
             Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) {
-                Text(text = "Тағы 5 тапсырма / Ещё 5")
+                Text(text = stringResource(R.string.training_again))
             }
         }
         return
@@ -147,14 +149,14 @@ private fun TrainingContent(
                 enabled = state.selectedAnswer.isNotBlank() && state.feedback == null && !state.isSubmitting,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(text = "Тексеру")
+                Text(text = stringResource(R.string.training_submit))
             }
             OutlinedButton(
                 onClick = onNext,
                 enabled = state.feedback != null,
                 modifier = Modifier.weight(1f)
             ) {
-                Text(text = "Келесі сөз")
+                Text(text = stringResource(R.string.training_next_word))
             }
         }
     }
@@ -235,6 +237,6 @@ private fun TtsPlayButton(text: String) {
         }
     }) {
         Icon(imageVector = Icons.AutoMirrored.Filled.VolumeUp, contentDescription = null)
-        Text(text = " Тыңдау")
+        Text(text = stringResource(R.string.training_listen))
     }
 }

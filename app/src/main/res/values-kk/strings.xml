@@ -1,52 +1,52 @@
 <resources>
     <string name="app_name">Sulu-Read</string>
-    <string name="nav_reader">Reader</string>
-    <string name="nav_training">Training</string>
-    <string name="nav_screening">Screening</string>
-    <string name="nav_progress">Progress</string>
+    <string name="nav_reader">Оқу</string>
+    <string name="nav_training">Жаттығу</string>
+    <string name="nav_screening">Бағалау</string>
+    <string name="nav_progress">Прогресс</string>
 
-    <string name="reader_letter_spacing">Расстояние между буквами</string>
-    <string name="reader_line_height">Высота строки</string>
-    <string name="reader_read_aloud">Чтение вслух</string>
-    <string name="reader_start_reading">Начать чтение</string>
-    <string name="reader_stop_reading">Остановить чтение</string>
-    <string name="reader_ruler">Линейка чтения</string>
-    <string name="reader_show_syllable_breaks">Показывать деление на слоги</string>
-    <string name="reader_color_syllables">Выделять слоги цветом</string>
-    <string name="reader_use_original_words">Показывать исходные слова</string>
+    <string name="reader_letter_spacing">Әріп аралығы</string>
+    <string name="reader_line_height">Жол биіктігі</string>
+    <string name="reader_read_aloud">Дауыстап оқу</string>
+    <string name="reader_start_reading">Оқуды бастау</string>
+    <string name="reader_stop_reading">Оқуды тоқтату</string>
+    <string name="reader_ruler">Оқу сызғышы</string>
+    <string name="reader_show_syllable_breaks">Буын бөлінісін көрсету</string>
+    <string name="reader_color_syllables">Буындарды түспен бөлу</string>
+    <string name="reader_use_original_words">Бастапқы сөздерді көрсету</string>
     <string name="reader_simplify_title">Простыми словами ✨</string>
-    <string name="reader_simplify_loading">Упрощаем текст...</string>
-    <string name="reader_simplify_error">Не удалось упростить текст. Попробуйте ещё раз.</string>
-    <string name="reader_close">Закрыть</string>
+    <string name="reader_simplify_loading">Мәтін жеңілдетілуде...</string>
+    <string name="reader_simplify_error">Мәтінді жеңілдету мүмкін болмады. Қайта көріңіз.</string>
+    <string name="reader_close">Жабу</string>
 
-    <string name="loading_adaptation">Sulu-Read адаптирует текст учебника, пожалуйста подождите...</string>
-    <string name="processing_error_title">Не удалось обработать материал</string>
-    <string name="try_again">Попробовать снова</string>
-    <string name="ok">Понятно</string>
+    <string name="loading_adaptation">Sulu-Read оқулық мәтінін бейімдеп жатыр, сәл күтіңіз...</string>
+    <string name="processing_error_title">Материалды өңдеу мүмкін болмады</string>
+    <string name="try_again">Қайта көру</string>
+    <string name="ok">Түсінікті</string>
 
-    <string name="training_title">Жаттығу / Тренировка</string>
+    <string name="training_title">Жаттығу</string>
     <string name="training_profile_loading">Профиль дайындалып жатыр...</string>
     <string name="training_loading">Жаттығулар жүктелуде...</string>
     <string name="training_intro">Қысқа жаттығу сессиясын бастайық. Бір сессияда 5 тапсырма болады.</string>
-    <string name="training_start">Бастау / Начать</string>
-    <string name="training_complete">Жақсы жұмыс! Көзге демалыс берейік / Давай сделаем короткий перерыв.</string>
-    <string name="training_again">Тағы 5 тапсырма / Ещё 5</string>
+    <string name="training_start">Бастау</string>
+    <string name="training_complete">Жақсы жұмыс! Көзге демалыс берейік.</string>
+    <string name="training_again">Тағы 5 тапсырма</string>
     <string name="training_submit">Тексеру</string>
     <string name="training_next_word">Келесі сөз</string>
     <string name="training_listen"> Тыңдау</string>
 
-    <string name="screening_title">Оқу бағалауы / Проверка чтения</string>
+    <string name="screening_title">Оқу бағалауы</string>
     <string name="screening_disclaimer_kk">Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау.</string>
     <string name="screening_disclaimer_ru">Это не медицинский диагноз. Это примерная оценка уровня поддержки чтения.</string>
     <string name="screening_sample_text">Бүгін оқушы кітап оқыды. Ол жаңа сөздерді асықпай қайталады. Мұғалім әр сөзді анық айтуға көмектесті.\nБалалар мәтінді бірге талқылады. Әр бала өз қарқынымен оқыды. Қате жасау ұят емес, себебі оқу жаттығу арқылы жақсарады.\nКөзге демалыс беріп, қысқа үзіліс жасау да маңызды. Осы мәтін оқу қолдауын шамамен бағалау үшін ғана қолданылады.</string>
-    <string name="screening_wpm">WPM: %1$.2f</string>
-    <string name="screening_accuracy">Accuracy: %1$d%%</string>
-    <string name="screening_support_level">Support level: %1$s</string>
-    <string name="screening_restart">Қайта бастау / Повторить</string>
+    <string name="screening_wpm">Минутына сөз: %1$.2f</string>
+    <string name="screening_accuracy">Дәлдік: %1$d%%</string>
+    <string name="screening_support_level">Қолдау деңгейі: %1$s</string>
+    <string name="screening_restart">Қайта бастау</string>
     <string name="screening_errors">Қателер: %1$d</string>
-    <string name="screening_error_button">Қате / Ошибка</string>
+    <string name="screening_error_button">Қате</string>
     <string name="screening_finish">Аяқтау</string>
-    <string name="screening_start">Бастау / Начать</string>
+    <string name="screening_start">Бастау</string>
 
     <string name="progress_title">Прогресс</string>
     <string name="progress_profile_loading">Профиль дайындалып жатыр...</string>
@@ -57,6 +57,6 @@
     <string name="progress_average_response">Орташа жауап</string>
     <string name="progress_current_difficulty">Қиындық деңгейі</string>
     <string name="progress_phonological_skill">Фонологиялық дағды</string>
-    <string name="progress_support_level">Support level</string>
+    <string name="progress_support_level">Қолдау деңгейі</string>
     <string name="progress_refresh">Жаңарту</string>
 </resources>

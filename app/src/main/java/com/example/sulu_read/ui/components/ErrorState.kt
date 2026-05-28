@@ -9,8 +9,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import com.example.sulu_read.R
 
 @Composable
 fun ErrorState(
@@ -31,7 +33,7 @@ fun ErrorState(
         )
         if (onRetry != null) {
             Button(onClick = onRetry, modifier = Modifier.fillMaxWidth()) {
-                Text(text = "Попробовать снова")
+                Text(text = stringResource(R.string.try_again))
             }
         }
     }

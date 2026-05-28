@@ -17,6 +17,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -36,12 +37,13 @@ import com.example.sulu_read.ui.screens.TrainingScreen
 import com.example.sulu_read.ui.screens.TrainingViewModel
 import com.example.sulu_read.ui.screens.UiState
 import com.example.sulu_read.ui.screens.MainViewModel
+import com.example.sulu_read.R
 
-private enum class SuluDestination(val route: String, val label: String) {
-    Reader("reader", "Reader"),
-    Training("training", "Training"),
-    Screening("screening", "Screening"),
-    Progress("progress", "Progress")
+private enum class SuluDestination(val route: String, val labelRes: Int) {
+    Reader("reader", R.string.nav_reader),
+    Training("training", R.string.nav_training),
+    Screening("screening", R.string.nav_screening),
+    Progress("progress", R.string.nav_progress)
 }
 
 @Composable
@@ -59,6 +61,7 @@ fun SuluReadNavGraph(repository: SuluReadRepository) {
             val currentRoute = backStackEntry?.destination?.route ?: SuluDestination.Reader.route
             NavigationBar {
                 SuluDestination.entries.forEach { destination ->
+                    val label = stringResource(destination.labelRes)
                     NavigationBarItem(
                         selected = currentRoute == destination.route,
                         onClick = {
@@ -78,10 +81,10 @@ fun SuluReadNavGraph(repository: SuluReadRepository) {
                                     SuluDestination.Screening -> Icons.Default.TrackChanges
                                     SuluDestination.Progress -> Icons.Default.Analytics
                                 },
-                                contentDescription = destination.label
+                                contentDescription = label
                             )
                         },
-                        label = { Text(destination.label) }
+                        label = { Text(label) }
                     )
                 }
             }

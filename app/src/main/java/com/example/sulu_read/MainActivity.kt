@@ -79,6 +79,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
@@ -93,11 +94,13 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.sulu_read.data.ApiClient
 import com.example.sulu_read.data.UserPreferences
+import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -683,7 +686,7 @@ private fun LoadingScreen(modifier: Modifier = Modifier) {
         Spacer(modifier = Modifier.height(24.dp))
 
         Text(
-            text = "Sulu-Read адаптирует текст учебника, пожалуйста подождите...",
+            text = stringResource(R.string.loading_adaptation),
             style = MaterialTheme.typography.titleMedium,
             color = TextPrimary,
             textAlign = TextAlign.Center
@@ -699,6 +702,10 @@ private fun ReadingScreen(
     onCreateTrainingFromText: (List<String>) -> Unit,
     onBackHome: () -> Unit
 ) {
+    val coroutineScope = rememberCoroutineScope()
+    val readerDisplayPreferences by repository.readerDisplayPreferences.collectAsStateWithLifecycle(
+        initialValue = ReaderDisplayPreferences()
+    )
     val sourceText = when (state.source) {
         "image" -> "Источник: фото учебника"
         "url" -> "Источник: ссылка"
@@ -751,7 +758,13 @@ private fun ReadingScreen(
         PremiumReadingScreen(
             text = state.adaptedText,
             backendWords = state.words,
-            onSimplifyText = { source -> repository.simplify(source) }
+            onSimplifyText = { source -> repository.simplify(source) },
+            readerDisplayPreferences = readerDisplayPreferences,
+            onReaderDisplayPreferencesChange = { preferences ->
+                coroutineScope.launch {
+                    repository.saveReaderDisplayPreferences(preferences)
+                }
+            }
         )
     }
 }
@@ -765,7 +778,7 @@ private fun ProcessingErrorDialog(
     AlertDialog(
         onDismissRequest = {},
         title = {
-            Text(text = "Не удалось обработать материал")
+            Text(text = stringResource(R.string.processing_error_title))
         },
         text = {
             Text(
@@ -775,7 +788,7 @@ private fun ProcessingErrorDialog(
         },
         confirmButton = {
             TextButton(onClick = onRetry) {
-                Text(text = if (canRetry) "Попробовать снова" else "Понятно")
+                Text(text = if (canRetry) stringResource(R.string.try_again) else stringResource(R.string.ok))
             }
         },
         containerColor = WarmCream,

@@ -11,8 +11,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.ProgressSummary
 import com.example.sulu_read.ui.components.ErrorState
 import com.example.sulu_read.ui.components.LoadingState
@@ -38,14 +40,14 @@ fun ProgressScreen(
             .padding(18.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        Text(text = "Прогресс", style = MaterialTheme.typography.headlineSmall)
+        Text(text = stringResource(R.string.progress_title), style = MaterialTheme.typography.headlineSmall)
         if (userId == null) {
-            LoadingState(message = "Профиль дайындалып жатыр...")
+            LoadingState(message = stringResource(R.string.progress_profile_loading))
             return@Column
         }
 
         when (val current = state) {
-            UiState.Loading -> LoadingState(message = "Прогресс жүктелуде...")
+            UiState.Loading -> LoadingState(message = stringResource(R.string.progress_loading))
             is UiState.Error -> ErrorState(message = current.message, onRetry = { viewModel.load(userId) })
             is UiState.Success -> ProgressContent(progress = current.data, onRefresh = { viewModel.load(userId) })
         }
@@ -56,18 +58,18 @@ fun ProgressScreen(
 private fun ProgressContent(progress: ProgressSummary, onRefresh: () -> Unit) {
     if (progress.totalExercises == 0 && progress.recentScreenings.isEmpty()) {
         SuluCard {
-            Text(text = "Әзірге дерек жоқ. Жаттығу немесе оқу бағалауын бастаңыз.")
+            Text(text = stringResource(R.string.progress_empty))
         }
     }
-    ProgressMetricCard(label = "Жаттығулар", value = progress.totalExercises.toString())
-    ProgressMetricCard(label = "Дәлдік", value = "${(progress.exerciseAccuracy * 100).toInt()}%")
-    ProgressMetricCard(label = "Орташа жауап", value = "${progress.averageResponseTimeMs} ms")
-    ProgressMetricCard(label = "Қиындық деңгейі", value = progress.skillProfile.currentDifficulty.toString())
-    ProgressMetricCard(label = "Фонологиялық дағды", value = "${(progress.skillProfile.phonologicalSkill * 100).toInt()}%")
+    ProgressMetricCard(label = stringResource(R.string.progress_total_exercises), value = progress.totalExercises.toString())
+    ProgressMetricCard(label = stringResource(R.string.progress_accuracy), value = "${(progress.exerciseAccuracy * 100).toInt()}%")
+    ProgressMetricCard(label = stringResource(R.string.progress_average_response), value = "${progress.averageResponseTimeMs} ms")
+    ProgressMetricCard(label = stringResource(R.string.progress_current_difficulty), value = progress.skillProfile.currentDifficulty.toString())
+    ProgressMetricCard(label = stringResource(R.string.progress_phonological_skill), value = "${(progress.skillProfile.phonologicalSkill * 100).toInt()}%")
     progress.latestSupportLevel?.let {
-        ProgressMetricCard(label = "Support level", value = it)
+        ProgressMetricCard(label = stringResource(R.string.progress_support_level), value = it)
     }
     Button(onClick = onRefresh) {
-        Text(text = "Жаңарту")
+        Text(text = stringResource(R.string.progress_refresh))
     }
 }

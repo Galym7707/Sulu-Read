@@ -1,0 +1,62 @@
+<resources>
+    <string name="app_name">Sulu-Read</string>
+    <string name="nav_reader">Чтение</string>
+    <string name="nav_training">Тренировка</string>
+    <string name="nav_screening">Проверка</string>
+    <string name="nav_progress">Прогресс</string>
+
+    <string name="reader_letter_spacing">Расстояние между буквами</string>
+    <string name="reader_line_height">Высота строки</string>
+    <string name="reader_read_aloud">Чтение вслух</string>
+    <string name="reader_start_reading">Начать чтение</string>
+    <string name="reader_stop_reading">Остановить чтение</string>
+    <string name="reader_ruler">Линейка чтения</string>
+    <string name="reader_show_syllable_breaks">Показывать деление на слоги</string>
+    <string name="reader_color_syllables">Выделять слоги цветом</string>
+    <string name="reader_use_original_words">Показывать исходные слова</string>
+    <string name="reader_simplify_title">Простыми словами ✨</string>
+    <string name="reader_simplify_loading">Упрощаем текст...</string>
+    <string name="reader_simplify_error">Не удалось упростить текст. Попробуйте ещё раз.</string>
+    <string name="reader_close">Закрыть</string>
+
+    <string name="loading_adaptation">Sulu-Read адаптирует текст учебника, пожалуйста подождите...</string>
+    <string name="processing_error_title">Не удалось обработать материал</string>
+    <string name="try_again">Попробовать снова</string>
+    <string name="ok">Понятно</string>
+
+    <string name="training_title">Тренировка</string>
+    <string name="training_profile_loading">Профиль загружается...</string>
+    <string name="training_loading">Загружаем упражнения...</string>
+    <string name="training_intro">Начнём короткую тренировку. В одной сессии 5 заданий.</string>
+    <string name="training_start">Начать</string>
+    <string name="training_complete">Хорошая работа! Давай сделаем короткий перерыв.</string>
+    <string name="training_again">Ещё 5 заданий</string>
+    <string name="training_submit">Проверить</string>
+    <string name="training_next_word">Следующее слово</string>
+    <string name="training_listen"> Слушать</string>
+
+    <string name="screening_title">Проверка чтения</string>
+    <string name="screening_disclaimer_kk">Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау.</string>
+    <string name="screening_disclaimer_ru">Это не медицинский диагноз. Это примерная оценка уровня поддержки чтения.</string>
+    <string name="screening_sample_text">Сегодня ученик читал книгу. Он спокойно повторял новые слова. Учитель помогал произносить каждое слово ясно.\nДети вместе обсуждали текст. Каждый ребёнок читал в своём темпе. Ошибаться не стыдно, потому что чтение улучшается через практику.\nВажно давать глазам отдых и делать короткие перерывы. Этот текст используется только для примерной оценки поддержки чтения.</string>
+    <string name="screening_wpm">Слов в минуту: %1$.2f</string>
+    <string name="screening_accuracy">Точность: %1$d%%</string>
+    <string name="screening_support_level">Уровень поддержки: %1$s</string>
+    <string name="screening_restart">Повторить</string>
+    <string name="screening_errors">Ошибки: %1$d</string>
+    <string name="screening_error_button">Ошибка</string>
+    <string name="screening_finish">Завершить</string>
+    <string name="screening_start">Начать</string>
+
+    <string name="progress_title">Прогресс</string>
+    <string name="progress_profile_loading">Профиль загружается...</string>
+    <string name="progress_loading">Загружаем прогресс...</string>
+    <string name="progress_empty">Пока нет данных. Начните тренировку или проверку чтения.</string>
+    <string name="progress_total_exercises">Упражнения</string>
+    <string name="progress_accuracy">Точность</string>
+    <string name="progress_average_response">Средний ответ</string>
+    <string name="progress_current_difficulty">Уровень сложности</string>
+    <string name="progress_phonological_skill">Фонологический навык</string>
+    <string name="progress_support_level">Уровень поддержки</string>
+    <string name="progress_refresh">Обновить</string>
+</resources>

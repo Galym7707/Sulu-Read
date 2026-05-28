@@ -1,9 +1,11 @@
 package com.example.sulu_read
 
-import android.content.Context
 import android.os.Build
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Canvas
@@ -47,6 +49,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -69,6 +72,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
@@ -81,10 +85,13 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import java.util.Locale
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
 data class SyllableWord(
@@ -175,18 +182,31 @@ fun PremiumReadingScreen(
     text: String,
     backendWords: List<SyllableWord> = emptyList(),
     onSimplifyText: suspend (String) -> String = { simplifyTextSnippet(it) },
+    readerDisplayPreferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
+    onReaderDisplayPreferencesChange: (ReaderDisplayPreferences) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val state = rememberSaveable(text, saver = ReadingScreenStateSaver) {
-        ReadingScreenState()
+        ReadingScreenState(
+            showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks,
+            colorSyllables = readerDisplayPreferences.colorSyllables,
+            useOriginalWords = readerDisplayPreferences.useOriginalWords
+        )
     }
     val coroutineScope = rememberCoroutineScope()
+    val simplifyErrorMessage = stringResource(R.string.reader_simplify_error)
     val paragraphs = remember(text, backendWords) { buildReadingParagraphs(text, backendWords) }
     val words = remember(paragraphs) { paragraphs.flatMap { paragraph -> paragraph.words } }
     val ttsController = rememberTextToSpeechController(
         words = words,
         state = state
     )
+
+    LaunchedEffect(readerDisplayPreferences) {
+        state.showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks
+        state.colorSyllables = readerDisplayPreferences.colorSyllables
+        state.useOriginalWords = readerDisplayPreferences.useOriginalWords
+    }
 
     Column(
         modifier = modifier.fillMaxWidth(),
@@ -201,7 +221,19 @@ fun PremiumReadingScreen(
                     ?: 0
                 ttsController.playFrom(startIndex)
             },
-            onStop = { ttsController.stop() }
+            onStop = { ttsController.stop() },
+            onShowSyllableBreaksChange = { enabled ->
+                state.showSyllableBreaks = enabled
+                onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
+            },
+            onColorSyllablesChange = { enabled ->
+                state.colorSyllables = enabled
+                onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
+            },
+            onUseOriginalWordsChange = { enabled ->
+                state.useOriginalWords = enabled
+                onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
+            }
         )
 
         Box(
@@ -226,7 +258,7 @@ fun PremiumReadingScreen(
                                 state.simplificationError = null
                             }
                             .onFailure {
-                                state.simplificationError = "Не удалось упростить текст. Попробуйте ещё раз."
+                                state.simplificationError = simplifyErrorMessage
                             }
                         state.isSimplifyingText = false
                     }
@@ -262,7 +294,10 @@ private fun ReadingControls(
     state: ReadingScreenState,
     canPlay: Boolean,
     onPlay: () -> Unit,
-    onStop: () -> Unit
+    onStop: () -> Unit,
+    onShowSyllableBreaksChange: (Boolean) -> Unit,
+    onColorSyllablesChange: (Boolean) -> Unit,
+    onUseOriginalWordsChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -273,7 +308,7 @@ private fun ReadingControls(
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         ReadingSlider(
-            label = "Расстояние между буквами",
+            label = stringResource(R.string.reader_letter_spacing),
             value = state.letterSpacing,
             valueRange = 0f..10f,
             valueSuffix = "sp",
@@ -281,7 +316,7 @@ private fun ReadingControls(
         )
 
         ReadingSlider(
-            label = "Высота строки",
+            label = stringResource(R.string.reader_line_height),
             value = state.lineHeight,
             valueRange = 20f..48f,
             valueSuffix = "sp",
@@ -306,7 +341,7 @@ private fun ReadingControls(
                     modifier = Modifier.size(24.dp)
                 )
                 Text(
-                    text = "Чтение вслух",
+                    text = stringResource(R.string.reader_read_aloud),
                     style = MaterialTheme.typography.titleMedium,
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -323,7 +358,7 @@ private fun ReadingControls(
                 ) {
                     Icon(
                         imageVector = Icons.Default.PlayArrow,
-                        contentDescription = "Начать чтение",
+                        contentDescription = stringResource(R.string.reader_start_reading),
                         tint = if (canPlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -334,7 +369,7 @@ private fun ReadingControls(
                 ) {
                     Icon(
                         imageVector = Icons.Default.Stop,
-                        contentDescription = "Остановить чтение",
+                        contentDescription = stringResource(R.string.reader_stop_reading),
                         tint = if (state.currentPlayingWordIndex != NO_PLAYING_WORD) {
                             MaterialTheme.colorScheme.primary
                         } else {
@@ -351,7 +386,7 @@ private fun ReadingControls(
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
             Text(
-                text = "Линейка чтения",
+                text = stringResource(R.string.reader_ruler),
                 style = MaterialTheme.typography.titleMedium,
                 color = MaterialTheme.colorScheme.onSurface
             )
@@ -364,19 +399,19 @@ private fun ReadingControls(
         }
 
         ReadingSwitch(
-            label = "Показывать деление на слоги",
+            label = stringResource(R.string.reader_show_syllable_breaks),
             checked = state.showSyllableBreaks,
-            onCheckedChange = { state.showSyllableBreaks = it }
+            onCheckedChange = onShowSyllableBreaksChange
         )
         ReadingSwitch(
-            label = "Выделять слоги цветом",
+            label = stringResource(R.string.reader_color_syllables),
             checked = state.colorSyllables,
-            onCheckedChange = { state.colorSyllables = it }
+            onCheckedChange = onColorSyllablesChange
         )
         ReadingSwitch(
-            label = "Показывать исходные слова",
+            label = stringResource(R.string.reader_use_original_words),
             checked = state.useOriginalWords,
-            onCheckedChange = { state.useOriginalWords = it }
+            onCheckedChange = onUseOriginalWordsChange
         )
     }
 }
@@ -559,6 +594,14 @@ private fun SyllableWord.toAnnotatedSyllables(
     }
 }
 
+private fun ReadingScreenState.toReaderDisplayPreferences(): ReaderDisplayPreferences {
+    return ReaderDisplayPreferences(
+        showSyllableBreaks = showSyllableBreaks,
+        colorSyllables = colorSyllables,
+        useOriginalWords = useOriginalWords
+    )
+}
+
 @Composable
 private fun ReadingRulerOverlay(
     state: ReadingScreenState,
@@ -567,11 +610,12 @@ private fun ReadingRulerOverlay(
 ) {
     val density = LocalDensity.current
     val clearWindowHeightPx = with(density) { clearWindowHeight.toPx() }
+    val contentDescription = stringResource(R.string.reader_ruler)
 
     Canvas(
         modifier = modifier
             .semantics {
-                contentDescription = "Линейка чтения"
+                this.contentDescription = contentDescription
             }
             .pointerRulerDrag(
                 state = state,
@@ -682,14 +726,14 @@ private fun SimplifiedTextSheet(
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "Простыми словами ✨",
+                    text = stringResource(R.string.reader_simplify_title),
                     style = MaterialTheme.typography.headlineSmall,
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 IconButton(onClick = onDismissRequest) {
                     Icon(
                         imageVector = Icons.Default.Close,
-                        contentDescription = "Закрыть",
+                        contentDescription = stringResource(R.string.reader_close),
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
@@ -704,7 +748,7 @@ private fun SimplifiedTextSheet(
                     ) {
                         CircularProgressIndicator(modifier = Modifier.size(24.dp))
                         Text(
-                            text = "Упрощаем текст...",
+                            text = stringResource(R.string.reader_simplify_loading),
                             style = MaterialTheme.typography.bodyLarge,
                             color = MaterialTheme.colorScheme.onSurface
                         )
@@ -742,7 +786,7 @@ private fun SimplifiedTextSheet(
                     contentColor = MaterialTheme.colorScheme.onPrimary
                 )
             ) {
-                Text(text = "Закрыть")
+                Text(text = stringResource(R.string.reader_close))
             }
         }
     }
@@ -757,6 +801,9 @@ private fun rememberTextToSpeechController(
     var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
     var isReady by remember { mutableStateOf(false) }
     var playbackRequest by remember { mutableIntStateOf(0) }
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
+    val activeUtterance = remember { AtomicReference<UtteranceTracking?>(null) }
+    val rangeCallbackSeen = remember { AtomicBoolean(false) }
 
     DisposableEffect(context) {
         var disposed = false
@@ -772,6 +819,14 @@ private fun rememberTextToSpeechController(
                 engine?.applyPreferredLanguage()
                 engine?.setSpeechRate(0.88f)
                 engine?.setPitch(1.0f)
+                engine?.setOnUtteranceProgressListener(
+                    buildUtteranceProgressListener(
+                        activeUtterance = activeUtterance,
+                        rangeCallbackSeen = rangeCallbackSeen,
+                        mainHandler = mainHandler,
+                        state = state
+                    )
+                )
             }
 
             isReady = initialized
@@ -781,6 +836,8 @@ private fun rememberTextToSpeechController(
         onDispose {
             disposed = true
             isReady = false
+            activeUtterance.set(null)
+            rangeCallbackSeen.set(false)
             textToSpeech?.stop()
             textToSpeech?.shutdown()
             textToSpeech = null
@@ -800,13 +857,15 @@ private fun rememberTextToSpeechController(
             },
             stop = {
                 playbackRequest += 1
+                activeUtterance.set(null)
+                rangeCallbackSeen.set(false)
                 textToSpeech?.stop()
                 state.currentPlayingWordIndex = NO_PLAYING_WORD
             }
         )
     }
 
-    androidx.compose.runtime.LaunchedEffect(playbackRequest, isReady, words) {
+    LaunchedEffect(playbackRequest, isReady, words) {
         if (playbackRequest == 0 || words.isEmpty()) {
             return@LaunchedEffect
         }
@@ -817,33 +876,43 @@ private fun rememberTextToSpeechController(
             return@LaunchedEffect
         }
 
-        val utteranceText = words
-            .drop(startIndex)
-            .joinToString(separator = " ") { item -> item.value.original }
-            .trim()
+        if (!isReady) {
+            return@LaunchedEffect
+        }
 
-        if (utteranceText.isBlank()) {
+        val tracking = buildUtteranceTracking(words, startIndex)
+        if (tracking.text.isBlank()) {
             state.currentPlayingWordIndex = NO_PLAYING_WORD
             return@LaunchedEffect
         }
 
-        if (isReady) {
-            textToSpeech?.stop()
-            textToSpeech?.speakCompat(
-                text = utteranceText,
-                utteranceId = "sulu-read-${System.nanoTime()}"
-            )
-        }
+        activeUtterance.set(tracking)
+        rangeCallbackSeen.set(false)
+        textToSpeech?.stop()
+        textToSpeech?.speakCompat(
+            text = tracking.text,
+            utteranceId = tracking.utteranceId
+        )
 
-        for (index in startIndex..words.lastIndex) {
+        // Not every Android TTS engine emits onRangeStart for every language or voice.
+        // This timed loop keeps highlighting usable when exact per-word callbacks are unavailable.
+        for (range in tracking.ranges) {
             if (!isActive) {
                 return@LaunchedEffect
             }
-            state.currentPlayingWordIndex = index
-            delay(estimateWordDurationMillis(words[index].value.original))
+            if (activeUtterance.get()?.utteranceId != tracking.utteranceId) {
+                return@LaunchedEffect
+            }
+            if (!rangeCallbackSeen.get()) {
+                state.currentPlayingWordIndex = range.wordIndex
+            }
+            val word = words.getOrNull(range.wordIndex)?.value?.original.orEmpty()
+            delay(estimateWordDurationMillis(word))
         }
 
-        state.currentPlayingWordIndex = NO_PLAYING_WORD
+        if (activeUtterance.compareAndSet(tracking, null)) {
+            state.currentPlayingWordIndex = NO_PLAYING_WORD
+        }
     }
 
     return controller
@@ -854,6 +923,105 @@ private data class TextToSpeechController(
     val playFrom: (Int) -> Unit,
     val stop: () -> Unit
 )
+
+private data class UtteranceTracking(
+    val utteranceId: String,
+    val text: String,
+    val ranges: List<WordTextRange>
+)
+
+private data class WordTextRange(
+    val wordIndex: Int,
+    val startInclusive: Int,
+    val endExclusive: Int
+)
+
+private fun buildUtteranceTracking(
+    words: List<IndexedSyllableWord>,
+    startIndex: Int
+): UtteranceTracking {
+    val builder = StringBuilder()
+    val ranges = mutableListOf<WordTextRange>()
+
+    words.drop(startIndex).forEach { word ->
+        if (builder.isNotEmpty()) {
+            builder.append(' ')
+        }
+        val start = builder.length
+        builder.append(word.value.original)
+        ranges += WordTextRange(
+            wordIndex = word.index,
+            startInclusive = start,
+            endExclusive = builder.length
+        )
+    }
+
+    return UtteranceTracking(
+        utteranceId = "sulu-read-${System.nanoTime()}",
+        text = builder.toString(),
+        ranges = ranges
+    )
+}
+
+private fun buildUtteranceProgressListener(
+    activeUtterance: AtomicReference<UtteranceTracking?>,
+    rangeCallbackSeen: AtomicBoolean,
+    mainHandler: Handler,
+    state: ReadingScreenState
+): UtteranceProgressListener {
+    return object : UtteranceProgressListener() {
+        override fun onStart(utteranceId: String?) {
+            val tracking = activeUtterance.getMatching(utteranceId) ?: return
+            val firstWord = tracking.ranges.firstOrNull()?.wordIndex ?: return
+            mainHandler.postPlayingWord(state, firstWord)
+        }
+
+        override fun onDone(utteranceId: String?) {
+            finishUtterance(utteranceId)
+        }
+
+        @Deprecated("Deprecated in Android framework, but still called by older TTS engines.")
+        override fun onError(utteranceId: String?) {
+            finishUtterance(utteranceId)
+        }
+
+        override fun onError(utteranceId: String?, errorCode: Int) {
+            finishUtterance(utteranceId)
+        }
+
+        override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
+            val tracking = activeUtterance.getMatching(utteranceId) ?: return
+            val wordIndex = tracking.findWordIndex(start) ?: return
+            rangeCallbackSeen.set(true)
+            mainHandler.postPlayingWord(state, wordIndex)
+        }
+
+        private fun finishUtterance(utteranceId: String?) {
+            val tracking = activeUtterance.getMatching(utteranceId) ?: return
+            activeUtterance.compareAndSet(tracking, null)
+            rangeCallbackSeen.set(false)
+            mainHandler.postPlayingWord(state, NO_PLAYING_WORD)
+        }
+    }
+}
+
+private fun AtomicReference<UtteranceTracking?>.getMatching(utteranceId: String?): UtteranceTracking? {
+    return get()?.takeIf { it.utteranceId == utteranceId }
+}
+
+private fun UtteranceTracking.findWordIndex(rangeStart: Int): Int? {
+    return ranges.firstOrNull { range ->
+        rangeStart >= range.startInclusive && rangeStart < range.endExclusive
+    }?.wordIndex ?: ranges.lastOrNull { range ->
+        rangeStart >= range.startInclusive
+    }?.wordIndex
+}
+
+private fun Handler.postPlayingWord(state: ReadingScreenState, wordIndex: Int) {
+    post {
+        state.currentPlayingWordIndex = wordIndex
+    }
+}
 
 private fun TextToSpeech.applyPreferredLanguage() {
     val preferredLocales = listOf(

@@ -7,16 +7,20 @@ import com.example.sulu_read.domain.model.DailyActivity
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.domain.model.ExerciseAttemptResult
 import com.example.sulu_read.domain.model.ProgressSummary
+import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.model.ScreeningResult
 import com.example.sulu_read.domain.model.ScreeningSummary
 import com.example.sulu_read.domain.model.SkillProfile
 import com.example.sulu_read.domain.model.UserProfile
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 
 class SuluReadRepository(
     private val api: SuluReadApi,
     private val preferences: UserPreferences
 ) {
+    val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = preferences.readerDisplayPreferences
+
     suspend fun ensureUser(): UserProfile {
         val existingUserId = preferences.userId.first()
         if (!existingUserId.isNullOrBlank()) {
@@ -112,6 +116,10 @@ class SuluReadRepository(
 
     suspend fun simplify(text: String, languageHint: String = "kk"): String {
         return api.simplify(text, languageHint).simplifiedText
+    }
+
+    suspend fun saveReaderDisplayPreferences(readerPreferences: ReaderDisplayPreferences) {
+        preferences.saveReaderDisplayPreferences(readerPreferences)
     }
 
     private suspend fun createAnonymousUser(): UserProfile {
