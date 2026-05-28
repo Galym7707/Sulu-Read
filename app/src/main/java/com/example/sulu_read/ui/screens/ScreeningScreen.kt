@@ -75,7 +75,7 @@ fun ScreeningScreen(
                 }
             }
             else -> {
-                state.errorMessage?.let { Text(text = it, color = MaterialTheme.colorScheme.error) }
+                state.errorMessageResId?.let { Text(text = stringResource(it), color = MaterialTheme.colorScheme.error) }
                 Button(onClick = viewModel::start, modifier = Modifier.fillMaxWidth()) {
                     Text(text = stringResource(R.string.screening_start))
                 }

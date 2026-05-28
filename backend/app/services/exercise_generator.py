@@ -1,4 +1,5 @@
 import random
+import re
 from uuid import uuid4
 
 from .syllabification import (
@@ -29,6 +30,18 @@ PRACTICE_WORD_BANK = [
     "помощь",
     "внимание",
 ]
+ENGLISH_PRACTICE_WORD_BANK = [
+    "reading",
+    "teacher",
+    "pencil",
+    "window",
+    "simple",
+    "garden",
+    "family",
+    "helpful",
+    "student",
+    "library",
+]
 EXERCISE_TYPES = ("syllable_order", "missing_syllable", "word_to_syllables", "auditory_match")
 SYLLABLE_DISTRACTORS = ["ба", "ла", "ма", "ры", "ға", "де", "не", "қа", "тан", "дар", "по", "ра"]
 
@@ -39,14 +52,15 @@ def generate_exercises(
     exercise_type: str,
     count: int,
     difficulty_level: int,
+    language_hint: str = "kk",
 ) -> list[dict]:
     rng = random.SystemRandom()
-    candidates = select_candidate_words(source_words, difficulty_level)
+    candidates = select_candidate_words(source_words, difficulty_level, language_hint)
     if not candidates:
-        candidates = select_candidate_words(PRACTICE_WORD_BANK, difficulty_level)
+        candidates = select_candidate_words(practice_bank_for_language(language_hint), difficulty_level, language_hint)
 
     if not candidates:
-        candidates = PRACTICE_WORD_BANK[:]
+        candidates = practice_bank_for_language(language_hint)[:]
 
     rng.shuffle(candidates)
     selected_words = (candidates * ((count // len(candidates)) + 1))[:count]
@@ -59,14 +73,16 @@ def generate_exercises(
     return exercises
 
 
-def select_candidate_words(source_words: list[str], difficulty_level: int) -> list[str]:
+def select_candidate_words(source_words: list[str], difficulty_level: int, language_hint: str = "kk") -> list[str]:
     seen: set[str] = set()
     candidates: list[str] = []
     for raw_word in source_words:
-        for word in split_text_to_words(raw_word):
+        for word in split_source_words(raw_word):
             normalized = word.strip()
             lowered = normalized.lower()
             if len(lowered) < 4 or lowered in seen:
+                continue
+            if not is_language_match(normalized, language_hint):
                 continue
             features = prepare_word_features(normalized)
             if not is_word_allowed_for_difficulty(features.syllables, difficulty_level):
@@ -74,6 +90,29 @@ def select_candidate_words(source_words: list[str], difficulty_level: int) -> li
             seen.add(lowered)
             candidates.append(normalized)
     return candidates
+
+
+def split_source_words(text: str) -> list[str]:
+    cyrillic_words = split_text_to_words(text)
+    if cyrillic_words:
+        return cyrillic_words
+    return re.findall(r"[A-Za-z]+", text)
+
+
+def practice_bank_for_language(language_hint: str) -> list[str]:
+    if language_hint.startswith("en"):
+        return ENGLISH_PRACTICE_WORD_BANK
+    if language_hint.startswith("ru"):
+        return [word for word in PRACTICE_WORD_BANK if detect_language(word) == "ru"]
+    return [word for word in PRACTICE_WORD_BANK if detect_language(word) in {"kk", "ru"}]
+
+
+def is_language_match(word: str, language_hint: str) -> bool:
+    if language_hint.startswith("en"):
+        return bool(re.fullmatch(r"[A-Za-z]+", word))
+    if language_hint.startswith("ru"):
+        return detect_language(word) == "ru"
+    return detect_language(word) in {"kk", "ru"}
 
 
 def is_word_allowed_for_difficulty(syllables: list[str], difficulty_level: int) -> bool:

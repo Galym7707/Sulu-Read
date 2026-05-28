@@ -3,6 +3,7 @@ package com.example.sulu_read.domain.repository
 import com.example.sulu_read.data.SuluReadApi
 import com.example.sulu_read.data.UserPreferences
 import com.example.sulu_read.data.dto.ExerciseDto
+import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.DailyActivity
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.domain.model.ExerciseAttemptResult
@@ -19,6 +20,7 @@ class SuluReadRepository(
     private val api: SuluReadApi,
     private val preferences: UserPreferences
 ) {
+    val appLanguageCode: Flow<String> = preferences.languageCode
     val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = preferences.readerDisplayPreferences
 
     suspend fun ensureUser(): UserProfile {
@@ -30,12 +32,19 @@ class SuluReadRepository(
         return createAnonymousUser()
     }
 
-    suspend fun generateExercises(userId: String, sourceWords: List<String>, count: Int = 5): List<Exercise> {
+    suspend fun generateExercises(
+        userId: String,
+        sourceWords: List<String>,
+        count: Int = 5,
+        languageCode: String? = null
+    ): List<Exercise> {
+        val resolvedLanguageCode = languageCode ?: preferences.languageCode.first()
         return api.generateExercises(
             userId = userId,
             sourceWords = sourceWords,
             exerciseType = "mixed",
-            count = count.coerceIn(1, 10)
+            count = count.coerceIn(1, 10),
+            languageHint = AppLanguage.backendHintFor(resolvedLanguageCode)
         ).map { it.toDomain() }
     }
 
@@ -114,8 +123,19 @@ class SuluReadRepository(
         )
     }
 
-    suspend fun simplify(text: String, languageHint: String = "kk"): String {
-        return api.simplify(text, languageHint).simplifiedText
+    suspend fun simplify(text: String, languageCode: String? = null): String {
+        val resolvedLanguageCode = languageCode ?: preferences.languageCode.first()
+        return api.simplify(text, AppLanguage.backendHintFor(resolvedLanguageCode)).simplifiedText
+    }
+
+    suspend fun saveLanguageCode(languageCode: String, userId: String? = null) {
+        val normalizedCode = AppLanguage.normalizeCode(languageCode)
+        preferences.saveLanguageCode(normalizedCode)
+        if (!userId.isNullOrBlank()) {
+            runCatching {
+                api.updateUserLanguage(userId, normalizedCode)
+            }
+        }
     }
 
     suspend fun saveReaderDisplayPreferences(readerPreferences: ReaderDisplayPreferences) {
@@ -123,7 +143,7 @@ class SuluReadRepository(
     }
 
     private suspend fun createAnonymousUser(): UserProfile {
-        val user = api.createUser().toDomain()
+        val user = api.createUser(languagePreference = preferences.languageCode.first()).toDomain()
         preferences.saveUserId(user.userId)
         return user
     }

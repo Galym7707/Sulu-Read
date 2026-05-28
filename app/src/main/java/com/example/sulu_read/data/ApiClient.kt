@@ -40,17 +40,25 @@ object ApiClient : SuluReadApi {
         return parseUser(getJson("/v1/users/$userId"))
     }
 
+    override suspend fun updateUserLanguage(userId: String, languagePreference: String): UserDto {
+        val payload = JSONObject()
+            .put("language_preference", languagePreference)
+        return parseUser(patchJson("/v1/users/$userId/language", payload))
+    }
+
     override suspend fun generateExercises(
         userId: String,
         sourceWords: List<String>,
         exerciseType: String,
-        count: Int
+        count: Int,
+        languageHint: String
     ): List<ExerciseDto> {
         val payload = JSONObject()
             .put("user_id", userId)
             .put("source_words", JSONArray(sourceWords))
             .put("exercise_type", exerciseType)
             .put("count", count)
+            .put("language_hint", languageHint)
         val response = postJsonArray("/v1/exercises/generate", payload)
         return (0 until response.length()).map { index -> parseExercise(response.getJSONObject(index)) }
     }
@@ -153,6 +161,10 @@ object ApiClient : SuluReadApi {
 
     suspend fun postJson(path: String, payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         request(path = path, method = "POST", payload = payload).let(::JSONObject)
+    }
+
+    private suspend fun patchJson(path: String, payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
+        request(path = path, method = "PATCH", payload = payload).let(::JSONObject)
     }
 
     private suspend fun postJsonArray(path: String, payload: JSONObject): JSONArray = withContext(Dispatchers.IO) {

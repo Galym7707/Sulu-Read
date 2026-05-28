@@ -32,18 +32,19 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.example.sulu_read.R
+import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.ui.components.ErrorState
 import com.example.sulu_read.ui.components.LoadingState
 import com.example.sulu_read.ui.components.SuluCard
 import com.example.sulu_read.ui.components.SyllableChip
-import java.util.Locale
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun TrainingScreen(
     userId: String?,
     sourceWords: List<String>,
+    languageCode: String,
     viewModel: TrainingViewModel,
     modifier: Modifier = Modifier
 ) {
@@ -68,14 +69,15 @@ fun TrainingScreen(
         when (val current = state) {
             UiState.Loading -> LoadingState(message = stringResource(R.string.training_loading))
             is UiState.Error -> ErrorState(
-                message = current.message,
-                onRetry = { viewModel.start(userId, sourceWords) }
+                message = stringResource(current.messageResId),
+                onRetry = { viewModel.start(userId, sourceWords, languageCode) }
             )
             is UiState.Success -> TrainingContent(
                 userId = userId,
                 state = current.data,
                 sourceWords = sourceWords,
-                onStart = { viewModel.start(userId, sourceWords) },
+                languageCode = languageCode,
+                onStart = { viewModel.start(userId, sourceWords, languageCode) },
                 onSelect = viewModel::selectAnswer,
                 onSubmit = { viewModel.submit(userId) },
                 onNext = viewModel::next
@@ -90,6 +92,7 @@ private fun TrainingContent(
     userId: String,
     state: TrainingSessionState,
     sourceWords: List<String>,
+    languageCode: String,
     onStart: () -> Unit,
     onSelect: (String) -> Unit,
     onSubmit: () -> Unit,
@@ -136,24 +139,26 @@ private fun TrainingContent(
         ExerciseBody(
             exercise = exercise,
             selectedAnswer = state.selectedAnswer,
+            languageCode = languageCode,
             onSelect = onSelect
         )
         Spacer(modifier = Modifier.height(16.dp))
-        state.feedback?.let {
+        val feedbackText = state.feedbackResId?.let { stringResource(it) } ?: state.feedback
+        feedbackText?.let {
             Text(text = it, style = MaterialTheme.typography.titleMedium)
             Spacer(modifier = Modifier.height(12.dp))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 onClick = onSubmit,
-                enabled = state.selectedAnswer.isNotBlank() && state.feedback == null && !state.isSubmitting,
+                enabled = state.selectedAnswer.isNotBlank() && feedbackText == null && !state.isSubmitting,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(text = stringResource(R.string.training_submit))
             }
             OutlinedButton(
                 onClick = onNext,
-                enabled = state.feedback != null,
+                enabled = feedbackText != null,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(text = stringResource(R.string.training_next_word))
@@ -167,6 +172,7 @@ private fun TrainingContent(
 private fun ExerciseBody(
     exercise: Exercise,
     selectedAnswer: String,
+    languageCode: String,
     onSelect: (String) -> Unit
 ) {
     when (exercise.type) {
@@ -183,7 +189,7 @@ private fun ExerciseBody(
             }
         }
         "auditory_match" -> {
-            TtsPlayButton(text = exercise.targetWord)
+            TtsPlayButton(text = exercise.targetWord, languageCode = languageCode)
             Spacer(modifier = Modifier.height(12.dp))
             AnswerOptions(exercise.options, selectedAnswer, onSelect)
         }
@@ -212,13 +218,13 @@ private fun AnswerOptions(options: List<String>, selectedAnswer: String, onSelec
 }
 
 @Composable
-private fun TtsPlayButton(text: String) {
+private fun TtsPlayButton(text: String, languageCode: String) {
     val context = LocalContext.current.applicationContext
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(context) {
         val engine = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = Locale("kk", "KZ")
+                tts?.language = AppLanguage.localeFor(languageCode)
             }
         }
         tts = engine

@@ -21,6 +21,7 @@ The app does not diagnose dyslexia and does not claim treatment or cure. Screeni
 - `POST /v1/adapt-image`
 - `POST /v1/users`
 - `GET /v1/users/{user_id}`
+- `PATCH /v1/users/{user_id}/language`
 - `POST /v1/exercises/generate`
 - `POST /v1/exercises/attempt`
 - `POST /v1/screening/reading-test`
@@ -86,6 +87,8 @@ python -m pytest backend/tests/test_supabase_connectivity.py
 
 Open the project in Android Studio and run the `app` module. The Android app talks only to the FastAPI backend; it does not contain Supabase database credentials and does not connect directly to PostgreSQL.
 
+The app supports runtime language switching for English, Russian, and Kazakh. Open the `Settings` tab, choose `English`, `Русский`, or `Қазақша`, and the Compose UI will recompose immediately. The selected language is saved in DataStore and is used as the backend `language_hint` for simplification, exercises, and future adaptation requests.
+
 Useful local checks:
 
 ```powershell
@@ -94,6 +97,16 @@ Useful local checks:
 ```
 
 Backend base URLs are centralized in `app/src/main/java/com/example/sulu_read/data/ApiClient.kt`. For emulator testing, keep the FastAPI backend running locally and use `http://10.0.2.2:8000` or update the configured LAN URL for a physical device.
+
+## Adding Translations
+
+String resources live in:
+
+- `app/src/main/res/values/strings.xml` for English defaults
+- `app/src/main/res/values-ru/strings.xml` for Russian
+- `app/src/main/res/values-kk/strings.xml` for Kazakh
+
+When adding a visible UI label, add the same key to all three files and read it with `stringResource(...)`. Keep backend language hints aligned with `en`, `ru`, and `kk`.
 
 ## Manual End-to-End Check
 

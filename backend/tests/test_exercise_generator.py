@@ -45,3 +45,16 @@ def test_generate_mixed_level_one_includes_word_to_syllables_without_hanging():
     assert word_to_syllables["type"] == "word_to_syllables"
     assert len(word_to_syllables["options"]) == 4
     assert word_to_syllables["correct_answer"] in word_to_syllables["options"]
+
+
+def test_generate_english_exercises_when_language_hint_is_english():
+    exercises = generate_exercises(
+        source_words=["reading", "teacher", "window"],
+        exercise_type="mixed",
+        count=3,
+        difficulty_level=2,
+        language_hint="en",
+    )
+
+    assert len(exercises) == 3
+    assert all(exercise["target_word"].isascii() for exercise in exercises)

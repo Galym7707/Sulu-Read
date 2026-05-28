@@ -2,6 +2,7 @@ package com.example.sulu_read.ui.screens
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.ProgressSummary
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -19,7 +20,7 @@ class ProgressViewModel(private val repository: SuluReadRepository) : ViewModel(
             _state.value = runCatching { repository.getProgress(userId) }
                 .fold(
                     onSuccess = { UiState.Success(it) },
-                    onFailure = { UiState.Error("Прогресті жүктеу мүмкін болмады.") }
+                    onFailure = { UiState.Error(R.string.error_progress_load) }
                 )
         }
     }

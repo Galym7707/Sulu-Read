@@ -26,11 +26,16 @@ class UserResponse(BaseModel):
     skill_profile: SkillProfileResponse
 
 
+class UpdateUserLanguageRequest(BaseModel):
+    language_preference: str = Field(default="kk", max_length=20)
+
+
 class GenerateExerciseRequest(BaseModel):
     user_id: str
     source_words: list[str] = Field(default_factory=list)
     exercise_type: str = Field(default="mixed")
     count: int = Field(default=5, ge=1, le=10)
+    language_hint: str = Field(default="kk", max_length=20)
 
 
 class ExerciseResponse(BaseModel):

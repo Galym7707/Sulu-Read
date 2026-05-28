@@ -48,7 +48,7 @@ fun ProgressScreen(
 
         when (val current = state) {
             UiState.Loading -> LoadingState(message = stringResource(R.string.progress_loading))
-            is UiState.Error -> ErrorState(message = current.message, onRetry = { viewModel.load(userId) })
+            is UiState.Error -> ErrorState(message = stringResource(current.messageResId), onRetry = { viewModel.load(userId) })
             is UiState.Success -> ProgressContent(progress = current.data, onRefresh = { viewModel.load(userId) })
         }
     }

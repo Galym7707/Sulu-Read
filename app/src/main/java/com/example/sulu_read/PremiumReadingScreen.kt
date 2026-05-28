@@ -183,7 +183,7 @@ private data class IndexedSyllableWord(
 fun PremiumReadingScreen(
     text: String,
     backendWords: List<SyllableWord> = emptyList(),
-    onSimplifyText: suspend (String) -> String = { simplifyTextSnippet(it) },
+    onSimplifyText: suspend (String) -> String,
     readerDisplayPreferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
     onReaderDisplayPreferencesChange: (ReaderDisplayPreferences) -> Unit = {},
     modifier: Modifier = Modifier
@@ -1206,35 +1206,4 @@ private fun Char.isKazakhRussianVowel(): Boolean {
         'ю',
         'я'
     )
-}
-
-private fun simplifyTextSnippet(source: String): String {
-    val normalized = source
-        .replace(Regex("\\([^)]*\\)"), "")
-        .replace(Regex("\\s+"), " ")
-        .trim()
-
-    if (normalized.isBlank()) {
-        return "Текст пустой."
-    }
-
-    val sentences = Regex("[^.!?]+[.!?]?")
-        .findAll(normalized)
-        .map { it.value.trim() }
-        .filter { it.isNotBlank() }
-        .toList()
-
-    val selectedText = sentences
-        .take(2)
-        .joinToString(separator = " ")
-        .ifBlank { normalized }
-
-    val words = selectedText.split(Regex("\\s+")).filter { it.isNotBlank() }
-    val shortened = if (words.size > 42) {
-        words.take(42).joinToString(separator = " ") + "..."
-    } else {
-        selectedText
-    }
-
-    return "Коротко: $shortened"
 }

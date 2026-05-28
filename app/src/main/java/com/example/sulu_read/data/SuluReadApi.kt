@@ -8,9 +8,16 @@ import com.example.sulu_read.data.dto.SimplifyDto
 import com.example.sulu_read.data.dto.UserDto
 
 interface SuluReadApi {
-    suspend fun createUser(displayName: String = "Оқушы", age: Int? = null, languagePreference: String = "kk-ru"): UserDto
+    suspend fun createUser(displayName: String = "Оқушы", age: Int? = null, languagePreference: String = "kk"): UserDto
     suspend fun getUser(userId: String): UserDto
-    suspend fun generateExercises(userId: String, sourceWords: List<String>, exerciseType: String, count: Int): List<ExerciseDto>
+    suspend fun updateUserLanguage(userId: String, languagePreference: String): UserDto
+    suspend fun generateExercises(
+        userId: String,
+        sourceWords: List<String>,
+        exerciseType: String,
+        count: Int,
+        languageHint: String
+    ): List<ExerciseDto>
     suspend fun submitExerciseAttempt(
         userId: String,
         exerciseType: String,

@@ -5,6 +5,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.FitnessCenter
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
@@ -29,6 +30,7 @@ import com.example.sulu_read.domain.model.UserProfile
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.ui.screens.ProgressScreen
 import com.example.sulu_read.ui.screens.ProgressViewModel
+import com.example.sulu_read.ui.screens.ProfileScreen
 import com.example.sulu_read.ui.screens.ReaderScreen
 import com.example.sulu_read.ui.screens.ScreeningScreen
 import com.example.sulu_read.ui.screens.ScreeningViewModel
@@ -43,11 +45,12 @@ private enum class SuluDestination(val route: String, val labelRes: Int) {
     Reader("reader", R.string.nav_reader),
     Training("training", R.string.nav_training),
     Screening("screening", R.string.nav_screening),
-    Progress("progress", R.string.nav_progress)
+    Progress("progress", R.string.nav_progress),
+    Settings("settings", R.string.nav_settings)
 }
 
 @Composable
-fun SuluReadNavGraph(repository: SuluReadRepository) {
+fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
     val navController = rememberNavController()
     val factory = remember(repository) { SuluReadViewModelFactory(repository) }
     val mainViewModel: MainViewModel = viewModel(factory = factory)
@@ -80,6 +83,7 @@ fun SuluReadNavGraph(repository: SuluReadRepository) {
                                     SuluDestination.Training -> Icons.Default.FitnessCenter
                                     SuluDestination.Screening -> Icons.Default.TrackChanges
                                     SuluDestination.Progress -> Icons.Default.Analytics
+                                    SuluDestination.Settings -> Icons.Default.Settings
                                 },
                                 contentDescription = label
                             )
@@ -98,6 +102,7 @@ fun SuluReadNavGraph(repository: SuluReadRepository) {
             composable(SuluDestination.Reader.route) {
                 ReaderScreen(
                     repository = repository,
+                    languageCode = languageCode,
                     onCreateTraining = { words ->
                         trainingSourceWords = words
                         navController.navigate(SuluDestination.Training.route) {
@@ -111,6 +116,7 @@ fun SuluReadNavGraph(repository: SuluReadRepository) {
                 TrainingScreen(
                     userId = user?.userId,
                     sourceWords = trainingSourceWords,
+                    languageCode = languageCode,
                     viewModel = viewModel
                 )
             }
@@ -126,6 +132,15 @@ fun SuluReadNavGraph(repository: SuluReadRepository) {
                 ProgressScreen(
                     userId = user?.userId,
                     viewModel = viewModel
+                )
+            }
+            composable(SuluDestination.Settings.route) {
+                ProfileScreen(
+                    user = user,
+                    selectedLanguageCode = languageCode,
+                    onLanguageSelected = { selectedCode ->
+                        mainViewModel.changeLanguage(selectedCode)
+                    }
                 )
             }
         }

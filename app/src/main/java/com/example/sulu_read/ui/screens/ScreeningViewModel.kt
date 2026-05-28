@@ -3,6 +3,7 @@ package com.example.sulu_read.ui.screens
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.ScreeningResult
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -16,7 +17,7 @@ data class ScreeningUiState(
     val isRunning: Boolean = false,
     val result: ScreeningResult? = null,
     val isSubmitting: Boolean = false,
-    val errorMessage: String? = null
+    val errorMessageResId: Int? = null
 )
 
 class ScreeningViewModel(private val repository: SuluReadRepository) : ViewModel() {
@@ -58,7 +59,7 @@ class ScreeningViewModel(private val repository: SuluReadRepository) : ViewModel
                 onFailure = {
                     current.copy(
                         isSubmitting = false,
-                        errorMessage = "Нәтижені сақтау мүмкін болмады. Попробуйте снова."
+                        errorMessageResId = R.string.screening_save_error
                     )
                 }
             )

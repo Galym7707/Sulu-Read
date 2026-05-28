@@ -12,7 +12,7 @@ from urllib.parse import urlparse
 
 import numpy as np
 import requests
-from fastapi import FastAPI, File, Request, UploadFile
+from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -134,6 +134,7 @@ SUPPORTED_IMAGE_EXTENSIONS = {
 
 class UrlRequest(BaseModel):
     url: str = Field(min_length=1, max_length=4096)
+    language_hint: str = Field(default="kk", max_length=20)
 
 
 class AdaptedWord(BaseModel):
@@ -307,6 +308,7 @@ async def adapt_url(payload: UrlRequest) -> JSONResponse | AdaptedTextResponse:
 async def adapt_image(
     request: Request,
     file: Annotated[UploadFile, File(description="Textbook page image")],
+    language_hint: Annotated[str, Form()] = "kk",
 ) -> JSONResponse | AdaptedTextResponse:
     temp_path: str | None = None
     try:

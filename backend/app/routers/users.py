@@ -36,6 +36,24 @@ def get_user(user_id: str, db: Session = Depends(get_db)) -> schemas.UserRespons
     return to_user_response(user, skill_profile)
 
 
+@router.patch("/{user_id}/language", response_model=schemas.UserResponse)
+def update_user_language(
+    user_id: str,
+    payload: schemas.UpdateUserLanguageRequest,
+    db: Session = Depends(get_db),
+) -> schemas.UserResponse:
+    user = db.get(models.UserProfile, user_id)
+    if user is None:
+        raise HTTPException(status_code=404, detail="User not found")
+
+    user.language_preference = payload.language_preference
+    skill_profile = get_or_create_skill_profile(db, user_id)
+    db.commit()
+    db.refresh(user)
+    db.refresh(skill_profile)
+    return to_user_response(user, skill_profile)
+
+
 def to_user_response(user: models.UserProfile, skill_profile: models.UserSkillProfile) -> schemas.UserResponse:
     return schemas.UserResponse(
         user_id=user.id,

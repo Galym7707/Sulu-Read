@@ -3,6 +3,7 @@ package com.example.sulu_read.ui.screens
 import android.os.SystemClock
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,6 +16,7 @@ data class TrainingSessionState(
     val currentIndex: Int = 0,
     val selectedAnswer: String = "",
     val feedback: String? = null,
+    val feedbackResId: Int? = null,
     val isSubmitting: Boolean = false,
     val startedAtMs: Long = 0L
 ) {
@@ -26,17 +28,17 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
     private val _state = MutableStateFlow<UiState<TrainingSessionState>>(UiState.Success(TrainingSessionState()))
     val state: StateFlow<UiState<TrainingSessionState>> = _state.asStateFlow()
 
-    fun start(userId: String, sourceWords: List<String>, count: Int = 5) {
+    fun start(userId: String, sourceWords: List<String>, languageCode: String, count: Int = 5) {
         viewModelScope.launch {
             _state.value = UiState.Loading
             _state.value = runCatching {
                 TrainingSessionState(
-                    exercises = repository.generateExercises(userId, sourceWords, count),
+                    exercises = repository.generateExercises(userId, sourceWords, count, languageCode),
                     startedAtMs = SystemClock.elapsedRealtime()
                 )
             }.fold(
                 onSuccess = { UiState.Success(it) },
-                onFailure = { UiState.Error("Жаттығуды жүктеу мүмкін болмады. Попробуйте ещё раз.") }
+                onFailure = { UiState.Error(R.string.error_training_load) }
             )
         }
     }
@@ -61,6 +63,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                     UiState.Success(
                         current.copy(
                             feedback = it.feedback,
+                            feedbackResId = null,
                             isSubmitting = false
                         )
                     )
@@ -68,7 +71,8 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                 onFailure = {
                     UiState.Success(
                         current.copy(
-                            feedback = "Жауап сақталмады. Попробуй ещё раз.",
+                            feedback = null,
+                            feedbackResId = R.string.training_attempt_save_error,
                             isSubmitting = false
                         )
                     )
@@ -84,6 +88,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                 currentIndex = current.currentIndex + 1,
                 selectedAnswer = "",
                 feedback = null,
+                feedbackResId = null,
                 startedAtMs = SystemClock.elapsedRealtime()
             )
         )

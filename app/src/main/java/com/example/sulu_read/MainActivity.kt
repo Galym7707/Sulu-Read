@@ -5,6 +5,7 @@ import android.app.Activity
 import android.content.Context
 import android.content.ContextWrapper
 import android.content.pm.PackageManager
+import android.content.res.Configuration
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.net.Uri
@@ -68,6 +69,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.Typography
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -94,6 +96,7 @@ import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.sulu_read.data.ApiClient
 import com.example.sulu_read.data.UserPreferences
+import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
@@ -110,6 +113,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.Locale
 import java.util.UUID
 import kotlin.math.max
 
@@ -274,20 +278,52 @@ private fun SuluReadTheme(content: @Composable () -> Unit) {
 
 @Composable
 private fun SuluReadApp() {
-    val context = LocalContext.current.applicationContext
-    val repository = remember(context) {
+    val baseContext = LocalContext.current
+    val appContext = baseContext.applicationContext
+    val repository = remember(appContext) {
         SuluReadRepository(
             api = ApiClient,
-            preferences = UserPreferences(context)
+            preferences = UserPreferences(appContext)
         )
     }
-
-    Surface(
-        modifier = Modifier.fillMaxSize(),
-        color = MaterialTheme.colorScheme.background
-    ) {
-        SuluReadNavGraph(repository = repository)
+    val languageCode by repository.appLanguageCode.collectAsStateWithLifecycle(
+        initialValue = AppLanguage.defaultCode()
+    )
+    val localizedConfiguration = remember(languageCode) {
+        Configuration(baseContext.resources.configuration).apply {
+            setLocale(AppLanguage.localeFor(languageCode))
+        }
     }
+    val localizedContext = remember(baseContext, languageCode) {
+        LocaleAwareContextWrapper(baseContext, AppLanguage.localeFor(languageCode))
+    }
+
+    CompositionLocalProvider(
+        LocalContext provides localizedContext,
+        androidx.compose.ui.platform.LocalConfiguration provides localizedConfiguration
+    ) {
+        Surface(
+            modifier = Modifier.fillMaxSize(),
+            color = MaterialTheme.colorScheme.background
+        ) {
+            SuluReadNavGraph(
+                repository = repository,
+                languageCode = languageCode
+            )
+        }
+    }
+}
+
+private class LocaleAwareContextWrapper(
+    base: Context,
+    locale: Locale
+) : ContextWrapper(base) {
+    private val localizedContext: Context = base.createConfigurationContext(
+        Configuration(base.resources.configuration).apply { setLocale(locale) }
+    )
+
+    override fun getResources() = localizedContext.resources
+    override fun getAssets() = localizedContext.assets
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -295,6 +331,7 @@ private fun SuluReadApp() {
 fun SuluReadRoute(
     modifier: Modifier = Modifier,
     repository: SuluReadRepository,
+    languageCode: String,
     onCreateTrainingFromText: (List<String>) -> Unit
 ) {
     val context = LocalContext.current
@@ -318,11 +355,16 @@ fun SuluReadRoute(
         coroutineScope.launch {
             val result = when (request) {
                 is PendingAdaptationRequest.Image -> SuluReadApiClient.adaptImage(
-                    context = context.applicationContext,
-                    uri = request.uri
+                    context = context,
+                    uri = request.uri,
+                    languageHint = AppLanguage.backendHintFor(languageCode)
                 )
 
-                is PendingAdaptationRequest.Url -> SuluReadApiClient.adaptUrl(request.url)
+                is PendingAdaptationRequest.Url -> SuluReadApiClient.adaptUrl(
+                    context = context,
+                    url = request.url,
+                    languageHint = AppLanguage.backendHintFor(languageCode)
+                )
             }
 
             when (result) {
@@ -350,8 +392,8 @@ fun SuluReadRoute(
         selectedDocumentUri = uri
         selectedDocumentSource = source
         documentStatus = when (source) {
-            DocumentSource.Camera -> "Страница учебника готова. Sulu-Read отправляет ее на обработку."
-            DocumentSource.Gallery -> "Фото учебника загружено. Sulu-Read отправляет его на обработку."
+            DocumentSource.Camera -> context.getString(R.string.document_status_camera_ready)
+            DocumentSource.Gallery -> context.getString(R.string.document_status_gallery_ready)
         }
         runAdaptation(PendingAdaptationRequest.Image(uri))
     }
@@ -374,11 +416,11 @@ fun SuluReadRoute(
             if (scannedUri != null) {
                 processImage(scannedUri, DocumentSource.Camera)
             } else {
-                showHomeMessage("Сканер не вернул фото страницы.")
-                errorMessage = "Сканер не вернул фото страницы. Попробуйте сделать снимок еще раз."
+                showHomeMessage(context.getString(R.string.scanner_no_photo_short))
+                errorMessage = context.getString(R.string.scanner_no_photo_error)
             }
         } else {
-            showHomeMessage("Сканирование отменено.")
+            showHomeMessage(context.getString(R.string.scanning_cancelled))
         }
     }
 
@@ -388,7 +430,7 @@ fun SuluReadRoute(
         if (uri != null) {
             processImage(uri, DocumentSource.Gallery)
         } else {
-            showHomeMessage("Фото не выбрано.")
+            showHomeMessage(context.getString(R.string.photo_not_selected))
         }
     }
 
@@ -399,7 +441,7 @@ fun SuluReadRoute(
         if (saved && uri != null) {
             processImage(uri, DocumentSource.Camera)
         } else {
-            showHomeMessage("Снимок не был сделан.")
+            showHomeMessage(context.getString(R.string.picture_not_taken))
         }
         pendingCameraUri = null
     }
@@ -407,8 +449,8 @@ fun SuluReadRoute(
     fun launchCameraCapture() {
         val uri = runCatching { createTextbookPhotoUri(context) }
             .getOrElse {
-                showHomeMessage("Не удалось подготовить файл для снимка.")
-                errorMessage = "Не удалось подготовить файл для снимка."
+                showHomeMessage(context.getString(R.string.camera_file_error))
+                errorMessage = context.getString(R.string.camera_file_error)
                 return
             }
 
@@ -423,8 +465,8 @@ fun SuluReadRoute(
         if (granted) {
             launchCameraCapture()
         } else {
-            showHomeMessage("Доступ к камере не предоставлен.")
-            errorMessage = "Разрешите доступ к камере, чтобы сфотографировать страницу учебника."
+            showHomeMessage(context.getString(R.string.camera_denied_short))
+            errorMessage = context.getString(R.string.camera_denied_error)
         }
     }
 
@@ -441,8 +483,8 @@ fun SuluReadRoute(
         errorMessage = null
         val activity = context.findActivity()
         if (activity == null) {
-            showHomeMessage("Не удалось открыть сканер документа.")
-            errorMessage = "Не удалось открыть сканер документа."
+            showHomeMessage(context.getString(R.string.document_scanner_open_error))
+            errorMessage = context.getString(R.string.document_scanner_open_error)
             return
         }
 
@@ -476,8 +518,8 @@ fun SuluReadRoute(
         if (hasMediaImageAccess(context)) {
             launchMediaPicker()
         } else {
-            showHomeMessage("Доступ к медиа не предоставлен.")
-            errorMessage = "Разрешите доступ к фото, чтобы загрузить страницу учебника."
+            showHomeMessage(context.getString(R.string.media_denied_short))
+            errorMessage = context.getString(R.string.media_denied_error)
         }
     }
 
@@ -500,7 +542,7 @@ fun SuluReadRoute(
     fun adaptCurrentInput() {
         val link = webLink.trim()
         if (link.isBlank()) {
-            errorMessage = "Вставьте ссылку или отсканируйте страницу учебника."
+            errorMessage = context.getString(R.string.input_missing_link_or_scan)
             return
         }
 
@@ -557,6 +599,7 @@ fun SuluReadRoute(
                 modifier = modifier,
                 state = currentState,
                 repository = repository,
+                languageCode = languageCode,
                 onCreateTrainingFromText = onCreateTrainingFromText,
                 onBackHome = {
                     selectedDocumentUri = null
@@ -654,7 +697,7 @@ private fun CameraScanScreen(
         Spacer(modifier = Modifier.height(22.dp))
 
         Text(
-            text = "Откройте сканер, обрежьте страницу и нажмите Next.",
+            text = stringResource(R.string.camera_scan_instruction),
             style = MaterialTheme.typography.titleMedium,
             color = TextPrimary,
             textAlign = TextAlign.Center
@@ -663,7 +706,7 @@ private fun CameraScanScreen(
         Spacer(modifier = Modifier.height(18.dp))
 
         TextButton(onClick = onCancel) {
-            Text(text = "Вернуться")
+            Text(text = stringResource(R.string.common_back))
         }
     }
 }
@@ -699,6 +742,7 @@ private fun ReadingScreen(
     modifier: Modifier = Modifier,
     state: AppState.Reading,
     repository: SuluReadRepository,
+    languageCode: String,
     onCreateTrainingFromText: (List<String>) -> Unit,
     onBackHome: () -> Unit
 ) {
@@ -707,9 +751,9 @@ private fun ReadingScreen(
         initialValue = ReaderDisplayPreferences()
     )
     val sourceText = when (state.source) {
-        "image" -> "Источник: фото учебника"
-        "url" -> "Источник: ссылка"
-        else -> "Источник: материал"
+        "image" -> stringResource(R.string.reading_source_image)
+        "url" -> stringResource(R.string.reading_source_url)
+        else -> stringResource(R.string.reading_source_material)
     }
 
     Column(
@@ -729,12 +773,12 @@ private fun ReadingScreen(
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
                 Text(
-                    text = state.title ?: "Текст адаптирован",
+                    text = state.title ?: stringResource(R.string.reader_adapted_text_title),
                     style = MaterialTheme.typography.titleLarge,
                     color = TextPrimary
                 )
                 Text(
-                    text = "$sourceText · слов: ${state.wordCount}",
+                    text = stringResource(R.string.reader_source_summary, sourceText, state.wordCount),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextMuted
                 )
@@ -743,7 +787,7 @@ private fun ReadingScreen(
             Spacer(modifier = Modifier.width(12.dp))
 
             TextButton(onClick = onBackHome) {
-                Text(text = "На главный")
+                Text(text = stringResource(R.string.reader_back_home))
             }
         }
 
@@ -752,13 +796,13 @@ private fun ReadingScreen(
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(14.dp)
         ) {
-            Text(text = "Осы мәтінмен жаттығу жасау / Создать тренировку из текста")
+            Text(text = stringResource(R.string.reader_create_training_from_text))
         }
 
         PremiumReadingScreen(
             text = state.adaptedText,
             backendWords = state.words,
-            onSimplifyText = { source -> repository.simplify(source) },
+            onSimplifyText = { source -> repository.simplify(source, languageCode) },
             readerDisplayPreferences = readerDisplayPreferences,
             onReaderDisplayPreferencesChange = { preferences ->
                 coroutineScope.launch {
@@ -804,7 +848,7 @@ private fun HeaderSection() {
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Text(
-            text = "Sulu-Read",
+            text = stringResource(R.string.app_name),
             style = MaterialTheme.typography.displayMedium,
             color = TextPrimary,
             textAlign = TextAlign.Center
@@ -813,7 +857,7 @@ private fun HeaderSection() {
         Spacer(modifier = Modifier.height(8.dp))
 
         Text(
-            text = "Видеть смысл, а не просто буквы",
+            text = stringResource(R.string.home_tagline),
             style = MaterialTheme.typography.bodyLarge,
             color = TextMuted,
             textAlign = TextAlign.Center
@@ -852,7 +896,7 @@ private fun HeaderSection() {
                 Spacer(modifier = Modifier.width(14.dp))
 
                 Text(
-                    text = "Ты можешь читать спокойно, в своем темпе. Sulu-Read поможет сделать текст мягче для глаз.",
+                    text = stringResource(R.string.home_support_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextPrimary
                 )
@@ -892,7 +936,7 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
             ) {
                 Icon(
                     imageVector = Icons.Default.CameraAlt,
-                    contentDescription = "Сканировать учебник",
+                    contentDescription = stringResource(R.string.home_scan_textbook),
                     tint = Color.White,
                     modifier = Modifier.size(38.dp)
                 )
@@ -901,7 +945,7 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
             Spacer(modifier = Modifier.height(16.dp))
 
             Text(
-                text = "Сканировать учебник",
+                text = stringResource(R.string.home_scan_textbook),
                 style = MaterialTheme.typography.titleLarge,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
@@ -910,7 +954,7 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "Сделать фото или выбрать готовый снимок",
+                text = stringResource(R.string.home_scan_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted,
                 textAlign = TextAlign.Center
@@ -934,9 +978,9 @@ private fun DocumentStatusCard(
     val borderColor = if (isReady) SoftSageBorder else Color(0xFFE9C98D)
     val iconColor = if (isReady) DeepSageGreen else Color(0xFF946B2D)
     val sourceText = when (selectedDocumentSource) {
-        DocumentSource.Camera -> "Источник: камера"
-        DocumentSource.Gallery -> "Источник: медиа"
-        null -> "Фото пока не выбрано"
+        DocumentSource.Camera -> stringResource(R.string.document_status_source_camera)
+        DocumentSource.Gallery -> stringResource(R.string.document_status_source_gallery)
+        null -> stringResource(R.string.document_status_no_photo)
     }
 
     Card(
@@ -1004,25 +1048,25 @@ private fun DocumentSourceSheet(
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "Добавить фото учебника",
+                text = stringResource(R.string.document_sheet_title),
                 style = MaterialTheme.typography.headlineSmall,
                 color = TextPrimary
             )
             Text(
-                text = "Сфотографируйте страницу или загрузите готовый снимок документа.",
+                text = stringResource(R.string.document_sheet_subtitle),
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextMuted
             )
             DocumentSourceAction(
                 icon = Icons.Default.CameraAlt,
-                title = "Сфотографировать документ",
-                subtitle = "Приложение запросит доступ к камере",
+                title = stringResource(R.string.document_sheet_camera_title),
+                subtitle = stringResource(R.string.document_sheet_camera_subtitle),
                 onClick = onCameraClick
             )
             DocumentSourceAction(
                 icon = Icons.Default.PhotoLibrary,
-                title = "Загрузить из медиа",
-                subtitle = "Приложение запросит доступ к фото",
+                title = stringResource(R.string.document_sheet_gallery_title),
+                subtitle = stringResource(R.string.document_sheet_gallery_subtitle),
                 onClick = onGalleryClick
             )
         }
@@ -1103,7 +1147,7 @@ private fun WebLinkAccessibilitySection(
             onValueChange = onWebLinkChange,
             modifier = Modifier.fillMaxWidth(),
             label = {
-                Text(text = "Вставьте ссылку на статью или учебник")
+                Text(text = stringResource(R.string.web_link_label))
             },
             placeholder = {
                 Text(text = "https://")
@@ -1113,7 +1157,7 @@ private fun WebLinkAccessibilitySection(
                     IconButton(onClick = onClearWebLink) {
                         Icon(
                             imageVector = Icons.Default.Close,
-                            contentDescription = "Очистить ссылку",
+                            contentDescription = stringResource(R.string.web_link_clear),
                             tint = TextMuted
                         )
                     }
@@ -1170,7 +1214,7 @@ private fun WebLinkAccessibilitySection(
             }
             Spacer(modifier = Modifier.width(12.dp))
             Text(
-                text = if (isLoading) "Адаптируем..." else "Адаптировать текст",
+                text = if (isLoading) stringResource(R.string.adapt_loading_short) else stringResource(R.string.adapt_text_button),
                 style = MaterialTheme.typography.labelLarge
             )
         }
@@ -1178,9 +1222,10 @@ private fun WebLinkAccessibilitySection(
 }
 
 private object SuluReadApiClient {
-    suspend fun adaptUrl(url: String): ApiResult = withContext(Dispatchers.IO) {
+    suspend fun adaptUrl(context: Context, url: String, languageHint: String): ApiResult = withContext(Dispatchers.IO) {
         val payload = JSONObject()
             .put("url", url)
+            .put("language_hint", languageHint)
             .toString()
             .toByteArray(Charsets.UTF_8)
 
@@ -1195,7 +1240,7 @@ private object SuluReadApiClient {
                     connection.outputStream.use { output ->
                         output.write(payload)
                     }
-                    parseApiResponse(connection.responseCode, readResponseBody(connection))
+                    parseApiResponse(context, connection.responseCode, readResponseBody(connection))
                 } finally {
                     connection.disconnect()
                 }
@@ -1206,13 +1251,13 @@ private object SuluReadApiClient {
             }
         }
 
-        ApiResult.Error(connectionErrorMessage())
+        ApiResult.Error(connectionErrorMessage(context))
     }
 
-    suspend fun adaptImage(context: Context, uri: Uri): ApiResult = withContext(Dispatchers.IO) {
+    suspend fun adaptImage(context: Context, uri: Uri, languageHint: String): ApiResult = withContext(Dispatchers.IO) {
         val upload = runCatching { prepareImageUpload(context, uri) }
             .getOrElse {
-                return@withContext ApiResult.Error("Не удалось подготовить фото для отправки.")
+                return@withContext ApiResult.Error(context.getString(R.string.image_prepare_error))
             }
 
         for (baseUrl in ApiClient.backendBaseUrls) {
@@ -1231,11 +1276,15 @@ private object SuluReadApiClient {
                         )
                         output.writeUtf8("Content-Type: ${upload.mimeType}\r\n\r\n")
                         output.write(upload.bytes)
+                        output.writeUtf8("\r\n")
+                        output.writeUtf8("--$boundary\r\n")
+                        output.writeUtf8("Content-Disposition: form-data; name=\"language_hint\"\r\n\r\n")
+                        output.writeUtf8(languageHint)
                         output.writeUtf8("\r\n--$boundary--\r\n")
                         output.flush()
                     }
 
-                    parseApiResponse(connection.responseCode, readResponseBody(connection))
+                    parseApiResponse(context, connection.responseCode, readResponseBody(connection))
                 } finally {
                     connection.disconnect()
                 }
@@ -1246,7 +1295,7 @@ private object SuluReadApiClient {
             }
         }
 
-        ApiResult.Error(connectionErrorMessage())
+        ApiResult.Error(connectionErrorMessage(context))
     }
 
     private fun prepareImageUpload(context: Context, uri: Uri): PreparedImageUpload {
@@ -1320,19 +1369,19 @@ private object SuluReadApiClient {
         }
     }
 
-    private fun parseApiResponse(httpCode: Int, body: String): ApiResult {
+    private fun parseApiResponse(context: Context, httpCode: Int, body: String): ApiResult {
         if (body.isBlank()) {
-            return ApiResult.Error(connectionErrorMessage())
+            return ApiResult.Error(connectionErrorMessage(context))
         }
 
         val json = runCatching { JSONObject(body) }
-            .getOrElse { return ApiResult.Error(connectionErrorMessage()) }
+            .getOrElse { return ApiResult.Error(connectionErrorMessage(context)) }
 
         val status = json.optString("status")
         if (status == "success") {
             val adaptedText = json.optString("adapted_text")
             if (adaptedText.isBlank()) {
-                return ApiResult.Error("Сервер вернул пустой адаптированный текст.")
+                return ApiResult.Error(context.getString(R.string.api_empty_adapted_text))
             }
 
             return ApiResult.Success(
@@ -1347,9 +1396,9 @@ private object SuluReadApiClient {
 
         val serverMessage = json.optString("message").ifBlank {
             if (httpCode in 200..299) {
-                "Сервер не смог адаптировать текст."
+                context.getString(R.string.api_adaptation_failed)
             } else {
-                connectionErrorMessage()
+                connectionErrorMessage(context)
             }
         }
         return ApiResult.Error(serverMessage)
@@ -1413,8 +1462,8 @@ private object SuluReadApiClient {
         write(value.toByteArray(Charsets.UTF_8))
     }
 
-    private fun connectionErrorMessage(): String {
-        return "Не удалось получить ответ от сервера Sulu-Read. Проверьте интернет и попробуйте еще раз. Первое распознавание на Hugging Face может занять несколько минут."
+    private fun connectionErrorMessage(context: Context): String {
+        return context.getString(R.string.api_connection_error)
     }
 }
 

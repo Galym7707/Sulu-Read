@@ -24,7 +24,12 @@ def simplify_text(text: str, language_hint: str = "kk") -> str:
 
 
 def simplify_with_groq(text: str, language_hint: str) -> str:
-    language_instruction = "Kazakh" if language_hint.startswith("kk") else "Russian"
+    if language_hint.startswith("en"):
+        language_instruction = "English"
+    elif language_hint.startswith("ru"):
+        language_instruction = "Russian"
+    else:
+        language_instruction = "Kazakh"
     try:
         response = requests.post(
             "https://api.groq.com/openai/v1/chat/completions",

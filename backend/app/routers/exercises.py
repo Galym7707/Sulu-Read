@@ -25,6 +25,7 @@ def generate_training_exercises(
         exercise_type=payload.exercise_type,
         count=payload.count,
         difficulty_level=skill_profile.current_difficulty,
+        language_hint=payload.language_hint,
     )
 
 

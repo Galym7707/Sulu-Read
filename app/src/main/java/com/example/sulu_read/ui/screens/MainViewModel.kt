@@ -3,6 +3,7 @@ package com.example.sulu_read.ui.screens
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.UserProfile
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -24,8 +25,22 @@ class MainViewModel(private val repository: SuluReadRepository) : ViewModel() {
             _userState.value = runCatching { repository.ensureUser() }
                 .fold(
                     onSuccess = { UiState.Success(it) },
-                    onFailure = { UiState.Error("Не удалось создать профиль. Проверьте подключение.") }
+                    onFailure = { UiState.Error(R.string.error_profile_create) }
                 )
+        }
+    }
+
+    fun changeLanguage(languageCode: String) {
+        viewModelScope.launch {
+            val currentUserId = (_userState.value as? UiState.Success<UserProfile>)?.data?.userId
+            repository.saveLanguageCode(languageCode, currentUserId)
+            if (currentUserId != null) {
+                _userState.value = runCatching { repository.ensureUser() }
+                    .fold(
+                        onSuccess = { UiState.Success(it) },
+                        onFailure = { _userState.value }
+                    )
+            }
         }
     }
 }
