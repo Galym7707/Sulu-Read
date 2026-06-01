@@ -21,6 +21,7 @@ interface SuluReadApi {
     suspend fun submitExerciseAttempt(
         userId: String,
         exerciseType: String,
+        subExercise: String?,
         targetWord: String,
         correctAnswer: String,
         userAnswer: String,

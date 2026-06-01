@@ -67,6 +67,7 @@ object ApiClient : SuluReadApi {
     override suspend fun submitExerciseAttempt(
         userId: String,
         exerciseType: String,
+        subExercise: String?,
         targetWord: String,
         correctAnswer: String,
         userAnswer: String,
@@ -77,6 +78,7 @@ object ApiClient : SuluReadApi {
         val payload = JSONObject()
             .put("user_id", userId)
             .put("exercise_type", exerciseType)
+            .put("sub_exercise", subExercise)
             .put("target_word", targetWord)
             .put("correct_answer", correctAnswer)
             .put("user_answer", userAnswer)
@@ -254,6 +256,7 @@ object ApiClient : SuluReadApi {
         return ExerciseDto(
             exerciseId = json.optString("exercise_id"),
             type = json.optString("type"),
+            subExercise = json.optString("sub_exercise").ifBlank { null },
             prompt = json.optString("prompt"),
             targetWord = json.optString("target_word"),
             syllables = json.optJSONArray("syllables").toStringList(),

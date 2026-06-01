@@ -95,6 +95,8 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
 import com.example.sulu_read.data.ApiClient
+import com.example.sulu_read.data.PendingAttemptStore
+import com.example.sulu_read.data.PendingAttemptSyncScheduler
 import com.example.sulu_read.data.UserPreferences
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
@@ -281,9 +283,14 @@ private fun SuluReadApp() {
     val baseContext = LocalContext.current
     val appContext = baseContext.applicationContext
     val repository = remember(appContext) {
+        PendingAttemptSyncScheduler.schedulePeriodic(appContext)
         SuluReadRepository(
             api = ApiClient,
-            preferences = UserPreferences(appContext)
+            preferences = UserPreferences(appContext),
+            pendingAttemptQueue = PendingAttemptStore(appContext),
+            schedulePendingAttemptSync = {
+                PendingAttemptSyncScheduler.enqueueImmediate(appContext)
+            }
         )
     }
     val languageCode by repository.appLanguageCode.collectAsStateWithLifecycle(

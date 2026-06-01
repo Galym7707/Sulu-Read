@@ -35,6 +35,9 @@
     <string name="training_submit">Check</string>
     <string name="training_next_word">Next word</string>
     <string name="training_listen"> Listen</string>
+    <string name="training_sync_synced">All answers synced</string>
+    <string name="training_sync_pending">Pending sync: %1$d</string>
+    <string name="training_attempt_saved_pending">Saved offline. It will sync when the connection returns.</string>
 
     <string name="screening_title">Reading check</string>
     <string name="screening_disclaimer_kk">Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау.</string>

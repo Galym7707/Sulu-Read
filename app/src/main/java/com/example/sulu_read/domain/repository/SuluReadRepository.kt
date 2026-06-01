@@ -1,7 +1,9 @@
 package com.example.sulu_read.domain.repository
 
+import com.example.sulu_read.data.PendingAttempt
+import com.example.sulu_read.data.PendingAttemptQueue
 import com.example.sulu_read.data.SuluReadApi
-import com.example.sulu_read.data.UserPreferences
+import com.example.sulu_read.data.UserPreferenceStore
 import com.example.sulu_read.data.dto.ExerciseDto
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.DailyActivity
@@ -16,13 +18,17 @@ import com.example.sulu_read.domain.model.SkillProfile
 import com.example.sulu_read.domain.model.UserProfile
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import java.util.UUID
 
 class SuluReadRepository(
     private val api: SuluReadApi,
-    private val preferences: UserPreferences
+    private val preferences: UserPreferenceStore,
+    private val pendingAttemptQueue: PendingAttemptQueue,
+    private val schedulePendingAttemptSync: () -> Unit = {}
 ) {
     val appLanguageCode: Flow<String> = preferences.languageCode
     val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = preferences.readerDisplayPreferences
+    val pendingAttemptCount: Flow<Int> = pendingAttemptQueue.pendingCount
 
     suspend fun ensureUser(): UserProfile {
         val existingUserId = preferences.userId.first()
@@ -55,22 +61,54 @@ class SuluReadRepository(
         userAnswer: String,
         responseTimeMs: Long
     ): ExerciseAttemptResult {
-        val result = api.submitExerciseAttempt(
-            userId = userId,
-            exerciseType = exercise.type,
-            targetWord = exercise.targetWord,
-            correctAnswer = exercise.correctAnswer,
-            userAnswer = userAnswer,
-            responseTimeMs = responseTimeMs,
-            difficultyLevel = exercise.difficultyLevel,
-            languageHint = exercise.languageHint
-        )
-        return ExerciseAttemptResult(
-            isCorrect = result.isCorrect,
-            updatedDifficulty = result.updatedDifficulty,
-            skillProfile = result.skillProfile.toDomain(),
-            feedback = result.feedback
-        )
+        return runCatching {
+            val result = api.submitExerciseAttempt(
+                userId = userId,
+                exerciseType = exercise.type,
+                subExercise = exercise.subExercise,
+                targetWord = exercise.targetWord,
+                correctAnswer = exercise.correctAnswer,
+                userAnswer = userAnswer,
+                responseTimeMs = responseTimeMs,
+                difficultyLevel = exercise.difficultyLevel,
+                languageHint = exercise.languageHint
+            )
+            ExerciseAttemptResult(
+                isCorrect = result.isCorrect,
+                updatedDifficulty = result.updatedDifficulty,
+                skillProfile = result.skillProfile.toDomain(),
+                feedback = result.feedback
+            )
+        }.getOrElse {
+            pendingAttemptQueue.enqueue(
+                PendingAttempt(
+                    id = UUID.randomUUID().toString(),
+                    userId = userId,
+                    exerciseType = exercise.type,
+                    subExercise = exercise.subExercise,
+                    targetWord = exercise.targetWord,
+                    correctAnswer = exercise.correctAnswer,
+                    userAnswer = userAnswer,
+                    responseTimeMs = responseTimeMs,
+                    difficultyLevel = exercise.difficultyLevel,
+                    languageHint = exercise.languageHint,
+                    createdAtMs = System.currentTimeMillis()
+                )
+            )
+            schedulePendingAttemptSync()
+            ExerciseAttemptResult(
+                isCorrect = normalizeAnswer(exercise.correctAnswer) == normalizeAnswer(userAnswer),
+                updatedDifficulty = exercise.difficultyLevel,
+                skillProfile = SkillProfile(
+                    phonologicalSkill = 0.50,
+                    decodingFluency = 0.50,
+                    visualTracking = 0.50,
+                    currentDifficulty = exercise.difficultyLevel
+                ),
+                feedback = "",
+                isPendingSync = true
+            )
+        }
     }
 
     suspend fun submitReadingTest(
@@ -180,6 +218,7 @@ private fun ExerciseDto.toDomain(): Exercise {
     return Exercise(
         exerciseId = exerciseId,
         type = type,
+        subExercise = subExercise,
         prompt = prompt,
         targetWord = targetWord,
         syllables = syllables,
@@ -188,4 +227,8 @@ private fun ExerciseDto.toDomain(): Exercise {
         difficultyLevel = difficultyLevel,
         languageHint = languageHint
     )
+}
+
+private fun normalizeAnswer(answer: String): String {
+    return answer.trim().lowercase().replace(" ", "")
 }

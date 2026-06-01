@@ -18,6 +18,7 @@ data class TrainingSessionState(
     val feedback: String? = null,
     val feedbackResId: Int? = null,
     val isSubmitting: Boolean = false,
+    val pendingSyncCount: Int = 0,
     val startedAtMs: Long = 0L
 ) {
     val currentExercise: Exercise? get() = exercises.getOrNull(currentIndex)
@@ -27,6 +28,15 @@ data class TrainingSessionState(
 class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel() {
     private val _state = MutableStateFlow<UiState<TrainingSessionState>>(UiState.Success(TrainingSessionState()))
     val state: StateFlow<UiState<TrainingSessionState>> = _state.asStateFlow()
+
+    init {
+        viewModelScope.launch {
+            repository.pendingAttemptCount.collect { count ->
+                val current = (_state.value as? UiState.Success)?.data ?: return@collect
+                _state.value = UiState.Success(current.copy(pendingSyncCount = count))
+            }
+        }
+    }
 
     fun start(userId: String, sourceWords: List<String>, languageCode: String, count: Int = 5) {
         viewModelScope.launch {
@@ -62,8 +72,12 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                 onSuccess = {
                     UiState.Success(
                         current.copy(
-                            feedback = it.feedback,
-                            feedbackResId = null,
+                            feedback = it.feedback.takeIf { feedback -> feedback.isNotBlank() },
+                            feedbackResId = if (it.isPendingSync) {
+                                R.string.training_attempt_saved_pending
+                            } else {
+                                null
+                            },
                             isSubmitting = false
                         )
                     )

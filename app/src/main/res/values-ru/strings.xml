@@ -35,6 +35,9 @@
     <string name="training_submit">Проверить</string>
     <string name="training_next_word">Следующее слово</string>
     <string name="training_listen"> Слушать</string>
+    <string name="training_sync_synced">Все ответы синхронизированы</string>
+    <string name="training_sync_pending">Ожидают синхронизации: %1$d</string>
+    <string name="training_attempt_saved_pending">Сохранено офлайн. Ответ отправится при восстановлении соединения.</string>
 
     <string name="screening_title">Проверка чтения</string>
     <string name="screening_disclaimer_kk">Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау.</string>

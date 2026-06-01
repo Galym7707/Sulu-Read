@@ -3,6 +3,7 @@ package com.example.sulu_read.domain.model
 data class Exercise(
     val exerciseId: String,
     val type: String,
+    val subExercise: String?,
     val prompt: String,
     val targetWord: String,
     val syllables: List<String>,
@@ -16,5 +17,6 @@ data class ExerciseAttemptResult(
     val isCorrect: Boolean,
     val updatedDifficulty: Int,
     val skillProfile: SkillProfile,
-    val feedback: String
+    val feedback: String,
+    val isPendingSync: Boolean = false
 )

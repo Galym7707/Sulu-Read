@@ -3,6 +3,7 @@ package com.example.sulu_read.data.dto
 data class ExerciseDto(
     val exerciseId: String,
     val type: String,
+    val subExercise: String?,
     val prompt: String,
     val targetWord: String,
     val syllables: List<String>,
