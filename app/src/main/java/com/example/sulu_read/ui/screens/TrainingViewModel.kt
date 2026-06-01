@@ -17,6 +17,7 @@ data class TrainingSessionState(
     val selectedAnswer: String = "",
     val feedback: String? = null,
     val feedbackResId: Int? = null,
+    val lastAnswerCorrect: Boolean? = null,
     val isSubmitting: Boolean = false,
     val pendingSyncCount: Int = 0,
     val startedAtMs: Long = 0L
@@ -78,6 +79,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                             } else {
                                 null
                             },
+                            lastAnswerCorrect = it.isCorrect,
                             isSubmitting = false
                         )
                     )
@@ -87,6 +89,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                         current.copy(
                             feedback = null,
                             feedbackResId = R.string.training_attempt_save_error,
+                            lastAnswerCorrect = null,
                             isSubmitting = false
                         )
                     )
@@ -103,6 +106,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                 selectedAnswer = "",
                 feedback = null,
                 feedbackResId = null,
+                lastAnswerCorrect = null,
                 startedAtMs = SystemClock.elapsedRealtime()
             )
         )

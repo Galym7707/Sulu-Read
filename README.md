@@ -28,6 +28,22 @@ The app does not diagnose dyslexia and does not claim treatment or cure. Screeni
 - `GET /v1/progress/{user_id}`
 - `POST /v1/simplify`
 
+`/v1/progress/{user_id}` includes `daily_wpm`, an array of `{date, wpm, accuracy}` objects built from saved reading checks for the progress chart.
+
+## Exercise Types
+
+`POST /v1/exercises/generate` supports:
+
+- `syllable_order`
+- `missing_syllable`
+- `word_to_syllables`
+- `auditory_match`
+- `root_suffix_identification`: choose the correct root and suffix chain, for example `балаларымызға` -> `бала + лар + ымыз + ға`.
+- `word_segmentation`: choose the base word for a joined suffix chain, for example `ларымызға` -> `бала`.
+- `mixed`: cycles through the available task types and skips morphology tasks when no suffix split is available.
+
+Morphology tasks use lightweight Kazakh suffix heuristics only. They are practice aids, not linguistic analysis guarantees.
+
 ## Environment
 
 Create `.env` locally. Do not commit it. `.env`, `*.db`, and logs are ignored by Git in this repository.
@@ -96,6 +112,10 @@ The script loads `.env`, reads `SUPABASE_DIRECT_CONNECTION_STRING`, connects thr
 Open the project in Android Studio and run the `app` module. The Android app talks only to the FastAPI backend; it does not contain Supabase database credentials and does not connect directly to PostgreSQL.
 
 The app supports runtime language switching for English, Russian, and Kazakh. Open the `Settings` tab, choose `English`, `Русский`, or `Қазақша`, and the Compose UI will recompose immediately. The selected language is saved in DataStore and is used as the backend `language_hint` for simplification, exercises, and future adaptation requests.
+
+Exercise attempts are protected against transient network loss. If submission fails, the Android app stores a local `PendingAttempt` in DataStore with `status=pending`, shows the sync status on the training screen, and uses WorkManager with a connected-network constraint to retry pending attempts in the background.
+
+The Progress tab shows summary cards plus a Canvas-based chart for reading speed (WPM) and accuracy by date. If no reading-check data exists, the chart area shows `No data`.
 
 Useful local checks:
 

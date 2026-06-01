@@ -810,6 +810,7 @@ private fun ReadingScreen(
             text = state.adaptedText,
             backendWords = state.words,
             onSimplifyText = { source -> repository.simplify(source, languageCode) },
+            languageCode = languageCode,
             readerDisplayPreferences = readerDisplayPreferences,
             onReaderDisplayPreferencesChange = { preferences ->
                 coroutineScope.launch {

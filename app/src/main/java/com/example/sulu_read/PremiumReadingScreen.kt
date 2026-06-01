@@ -85,6 +85,7 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -184,6 +185,7 @@ fun PremiumReadingScreen(
     text: String,
     backendWords: List<SyllableWord> = emptyList(),
     onSimplifyText: suspend (String) -> String,
+    languageCode: String,
     readerDisplayPreferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
     onReaderDisplayPreferencesChange: (ReaderDisplayPreferences) -> Unit = {},
     modifier: Modifier = Modifier
@@ -201,7 +203,8 @@ fun PremiumReadingScreen(
     val words = remember(paragraphs) { paragraphs.flatMap { paragraph -> paragraph.words } }
     val ttsController = rememberTextToSpeechController(
         words = words,
-        state = state
+        state = state,
+        languageCode = languageCode
     )
 
     fun requestSimplification(source: String) {
@@ -816,7 +819,8 @@ private fun SimplifiedTextSheet(
 @Composable
 private fun rememberTextToSpeechController(
     words: List<IndexedSyllableWord>,
-    state: ReadingScreenState
+    state: ReadingScreenState,
+    languageCode: String
 ): TextToSpeechController {
     val context = LocalContext.current.applicationContext
     var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
@@ -826,7 +830,7 @@ private fun rememberTextToSpeechController(
     val activeUtterance = remember { AtomicReference<UtteranceTracking?>(null) }
     val rangeCallbackSeen = remember { AtomicBoolean(false) }
 
-    DisposableEffect(context) {
+    DisposableEffect(context, languageCode) {
         var disposed = false
         var engine: TextToSpeech? = null
 
@@ -837,7 +841,7 @@ private fun rememberTextToSpeechController(
 
             val initialized = status == TextToSpeech.SUCCESS
             if (initialized) {
-                engine?.applyPreferredLanguage()
+                engine?.applyPreferredLanguage(AppLanguage.localeFor(languageCode))
                 engine?.setSpeechRate(0.88f)
                 engine?.setPitch(1.0f)
                 engine?.setOnUtteranceProgressListener(
@@ -1044,12 +1048,11 @@ private fun Handler.postPlayingWord(state: ReadingScreenState, wordIndex: Int) {
     }
 }
 
-private fun TextToSpeech.applyPreferredLanguage() {
+private fun TextToSpeech.applyPreferredLanguage(selectedLocale: Locale) {
     val preferredLocales = listOf(
-        Locale("kk", "KZ"),
-        Locale("ru", "RU"),
+        selectedLocale,
         Locale.getDefault()
-    )
+    ).distinctBy { it.toLanguageTag() }
     val supportedLocale = preferredLocales.firstOrNull { locale ->
         isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE
     }
