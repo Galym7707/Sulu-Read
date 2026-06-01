@@ -59,6 +59,10 @@
     <string name="progress_current_difficulty">Қиындық деңгейі</string>
     <string name="progress_phonological_skill">Фонологиялық дағды</string>
     <string name="progress_support_level">Қолдау деңгейі</string>
+    <string name="progress_chart_title">Оқу жылдамдығы мен дәлдігі</string>
+    <string name="progress_chart_empty">Дерек жоқ</string>
+    <string name="progress_wpm_label">Сөз/мин</string>
+    <string name="progress_accuracy_label">Дәлдік</string>
     <string name="progress_refresh">Жаңарту</string>
 
     <string name="settings_title">Баптаулар</string>

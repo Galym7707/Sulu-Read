@@ -46,4 +46,5 @@ def get_progress(user_id: str, db: Session = Depends(get_db)) -> dict:
             for screening in summary["recent_screenings"]
         ],
         "daily_activity": summary["daily_activity"],
+        "daily_wpm": summary["daily_wpm"],
     }

@@ -59,6 +59,10 @@
     <string name="progress_current_difficulty">Current difficulty</string>
     <string name="progress_phonological_skill">Phonological skill</string>
     <string name="progress_support_level">Support level</string>
+    <string name="progress_chart_title">Reading speed and accuracy</string>
+    <string name="progress_chart_empty">No data</string>
+    <string name="progress_wpm_label">WPM</string>
+    <string name="progress_accuracy_label">Accuracy</string>
     <string name="progress_refresh">Refresh</string>
 
     <string name="settings_title">Settings</string>

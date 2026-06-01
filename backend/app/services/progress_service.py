@@ -127,6 +127,12 @@ def build_progress_summary(db: Session, user_id: str) -> dict:
         .limit(5)
         .all()
     )
+    screenings_for_graph = (
+        db.query(models.ScreeningResult)
+        .filter(models.ScreeningResult.user_id == user_id)
+        .order_by(models.ScreeningResult.created_at)
+        .all()
+    )
 
     total_exercises = len(attempts)
     exercise_accuracy = (
@@ -147,6 +153,13 @@ def build_progress_summary(db: Session, user_id: str) -> dict:
     for screening in screenings:
         daily_counts[date_key(screening.created_at)]["screenings"] += 1
 
+    daily_graph: dict[str, dict[str, float]] = defaultdict(lambda: {"wpm": 0.0, "accuracy": 0.0, "count": 0.0})
+    for screening in screenings_for_graph[-30:]:
+        key = date_key(screening.created_at)
+        daily_graph[key]["wpm"] += screening.wpm
+        daily_graph[key]["accuracy"] += screening.accuracy
+        daily_graph[key]["count"] += 1
+
     return {
         "user_id": user_id,
         "total_exercises": total_exercises,
@@ -158,6 +171,15 @@ def build_progress_summary(db: Session, user_id: str) -> dict:
         "daily_activity": [
             {"date": key, **value}
             for key, value in sorted(daily_counts.items(), reverse=True)[:14]
+        ],
+        "daily_wpm": [
+            {
+                "date": key,
+                "wpm": round(value["wpm"] / value["count"], 2),
+                "accuracy": round(value["accuracy"] / value["count"], 3),
+            }
+            for key, value in sorted(daily_graph.items())
+            if value["count"] > 0
         ],
     }
 

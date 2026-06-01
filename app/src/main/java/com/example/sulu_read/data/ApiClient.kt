@@ -1,6 +1,7 @@
 package com.example.sulu_read.data
 
 import com.example.sulu_read.data.dto.DailyActivityDto
+import com.example.sulu_read.data.dto.DailyWpmDto
 import com.example.sulu_read.data.dto.ExerciseAttemptResultDto
 import com.example.sulu_read.data.dto.ExerciseDto
 import com.example.sulu_read.data.dto.ProgressDto
@@ -119,6 +120,7 @@ object ApiClient : SuluReadApi {
         val json = getJson("/v1/progress/$userId")
         val screenings = json.optJSONArray("recent_screenings") ?: JSONArray()
         val daily = json.optJSONArray("daily_activity") ?: JSONArray()
+        val dailyWpm = json.optJSONArray("daily_wpm") ?: JSONArray()
         return ProgressDto(
             userId = json.optString("user_id"),
             totalExercises = json.optInt("total_exercises"),
@@ -143,6 +145,14 @@ object ApiClient : SuluReadApi {
                     date = item.optString("date"),
                     exercises = item.optInt("exercises"),
                     screenings = item.optInt("screenings")
+                )
+            },
+            dailyWpm = (0 until dailyWpm.length()).map { index ->
+                val item = dailyWpm.getJSONObject(index)
+                DailyWpmDto(
+                    date = item.optString("date"),
+                    wpm = item.optDouble("wpm"),
+                    accuracy = item.optDouble("accuracy")
                 )
             }
         )

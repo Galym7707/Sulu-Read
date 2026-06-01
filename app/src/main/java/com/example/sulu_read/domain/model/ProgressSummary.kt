@@ -15,6 +15,12 @@ data class DailyActivity(
     val screenings: Int
 )
 
+data class DailyWpm(
+    val date: String,
+    val wpm: Double,
+    val accuracy: Double
+)
+
 data class ProgressSummary(
     val userId: String,
     val totalExercises: Int,
@@ -23,5 +29,6 @@ data class ProgressSummary(
     val latestSupportLevel: String?,
     val skillProfile: SkillProfile,
     val recentScreenings: List<ScreeningSummary>,
-    val dailyActivity: List<DailyActivity>
+    val dailyActivity: List<DailyActivity>,
+    val dailyWpm: List<DailyWpm>
 )

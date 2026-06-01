@@ -118,6 +118,12 @@ class DailyActivityResponse(BaseModel):
     screenings: int
 
 
+class DailyWpmResponse(BaseModel):
+    date: str
+    wpm: float
+    accuracy: float
+
+
 class ProgressResponse(BaseModel):
     user_id: str
     total_exercises: int
@@ -127,6 +133,7 @@ class ProgressResponse(BaseModel):
     skill_profile: SkillProfileResponse
     recent_screenings: list[ScreeningResultResponse]
     daily_activity: list[DailyActivityResponse]
+    daily_wpm: list[DailyWpmResponse]
 
 
 class SimplifyRequest(BaseModel):

@@ -59,6 +59,10 @@
     <string name="progress_current_difficulty">Уровень сложности</string>
     <string name="progress_phonological_skill">Фонологический навык</string>
     <string name="progress_support_level">Уровень поддержки</string>
+    <string name="progress_chart_title">Скорость и точность чтения</string>
+    <string name="progress_chart_empty">Нет данных</string>
+    <string name="progress_wpm_label">Слов/мин</string>
+    <string name="progress_accuracy_label">Точность</string>
     <string name="progress_refresh">Обновить</string>
 
     <string name="settings_title">Настройки</string>

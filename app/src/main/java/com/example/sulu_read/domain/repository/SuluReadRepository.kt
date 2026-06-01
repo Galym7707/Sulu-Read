@@ -5,6 +5,7 @@ import com.example.sulu_read.data.UserPreferences
 import com.example.sulu_read.data.dto.ExerciseDto
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.DailyActivity
+import com.example.sulu_read.domain.model.DailyWpm
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.domain.model.ExerciseAttemptResult
 import com.example.sulu_read.domain.model.ProgressSummary
@@ -118,6 +119,13 @@ class SuluReadRepository(
                     date = it.date,
                     exercises = it.exercises,
                     screenings = it.screenings
+                )
+            },
+            dailyWpm = progress.dailyWpm.map {
+                DailyWpm(
+                    date = it.date,
+                    wpm = it.wpm,
+                    accuracy = it.accuracy
                 )
             }
         )
