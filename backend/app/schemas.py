@@ -32,7 +32,7 @@ class CreateUserRequest(BaseModel):
 
 class RegisterUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
     display_name: str = Field(default="Оқушы", min_length=1, max_length=120)
     age: int | None = Field(default=None, ge=3, le=18)
     language_preference: str = Field(default="kk", max_length=20)
@@ -40,7 +40,7 @@ class RegisterUserRequest(BaseModel):
 
 class LoginUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
-    password: str = Field(min_length=6, max_length=128)
+    password: str = Field(min_length=4, max_length=128)
 
 
 class UserResponse(BaseModel):

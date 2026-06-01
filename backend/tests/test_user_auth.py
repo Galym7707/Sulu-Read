@@ -17,7 +17,7 @@ def test_register_and_login_user():
         registered = register_user(
             schemas.RegisterUserRequest(
                 username="ReaderOne",
-                password="secret123",
+                password="2001",
                 display_name="Reader One",
                 language_preference="en",
             ),
@@ -28,7 +28,7 @@ def test_register_and_login_user():
         assert registered.language_preference == "en"
 
         logged_in = login_user(
-            schemas.LoginUserRequest(username="readerone", password="secret123"),
+            schemas.LoginUserRequest(username="readerone", password="2001"),
             db,
         )
 

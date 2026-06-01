@@ -44,6 +44,7 @@ fun ProfileScreen(
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var displayName by rememberSaveable { mutableStateOf("") }
+    val canSubmitAccount = canSubmitAccountForm(username, password)
 
     Column(
         modifier = modifier
@@ -98,14 +99,14 @@ fun ProfileScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { onLogin(username.trim(), password) },
-                    enabled = !isBusy && username.length >= 3 && password.length >= 6,
+                    enabled = !isBusy && canSubmitAccount,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(text = stringResource(R.string.account_login))
                 }
                 Button(
                     onClick = { onRegister(username.trim(), password, displayName.trim()) },
-                    enabled = !isBusy && username.length >= 3 && password.length >= 6,
+                    enabled = !isBusy && canSubmitAccount,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(text = stringResource(R.string.account_register))
@@ -153,4 +154,8 @@ private fun LanguageRadioRow(
         )
         Text(text = label, style = MaterialTheme.typography.bodyLarge)
     }
+}
+
+private fun canSubmitAccountForm(username: String, password: String): Boolean {
+    return username.trim().length >= 3 && password.length >= 4
 }
