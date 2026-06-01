@@ -10,6 +10,14 @@ from ..services.progress_service import get_or_create_skill_profile, record_exer
 router = APIRouter(prefix="/v1/exercises", tags=["exercises"])
 
 
+def exercise_feedback(is_correct: bool, correct_answer: str, language_hint: str) -> str:
+    if language_hint.startswith("ru"):
+        return "Правильно!" if is_correct else f"Не совсем. Правильный ответ: {correct_answer}"
+    if language_hint.startswith("kk"):
+        return "Дұрыс!" if is_correct else f"Әлі дұрыс емес. Дұрыс жауап: {correct_answer}"
+    return "Correct!" if is_correct else f"Not quite. Correct answer: {correct_answer}"
+
+
 @router.post("/generate", response_model=list[schemas.ExerciseResponse])
 def generate_training_exercises(
     payload: schemas.GenerateExerciseRequest,
@@ -38,7 +46,7 @@ def submit_exercise_attempt(
         raise HTTPException(status_code=404, detail="User not found")
 
     attempt, skill_profile = record_exercise_attempt(db, payload)
-    feedback = "Дұрыс! Жақсы жұмыс." if attempt.is_correct else "Попробуй ещё раз. Келесі сөзге өтейік."
+    feedback = exercise_feedback(attempt.is_correct, payload.correct_answer, payload.language_hint)
     return schemas.ExerciseAttemptResponse(
         is_correct=attempt.is_correct,
         updated_difficulty=skill_profile.current_difficulty,
