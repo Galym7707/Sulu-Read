@@ -83,6 +83,14 @@ $env:SUPABASE_DIRECT_CONNECTION_STRING="your_direct_connection_string"
 python -m pytest backend/tests/test_supabase_connectivity.py
 ```
 
+For a direct operational check outside pytest, run:
+
+```bash
+python scripts/supabase_check.py
+```
+
+The script loads `.env`, reads `SUPABASE_DIRECT_CONNECTION_STRING`, connects through SQLAlchemy, runs `Base.metadata.create_all(bind=engine)`, and executes `SELECT 1`. Run it only from a machine or deployment environment that can reach the Supabase PostgreSQL host; firewalls, paused projects, or DNS restrictions should produce a readable failure message. `/health` also performs a live database check and returns `db_ready: false` when the configured Supabase connection is unavailable.
+
 ## Android
 
 Open the project in Android Studio and run the `app` module. The Android app talks only to the FastAPI backend; it does not contain Supabase database credentials and does not connect directly to PostgreSQL.
