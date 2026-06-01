@@ -99,14 +99,14 @@ fun ProfileScreen(
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                 Button(
                     onClick = { onLogin(username.trim(), password) },
-                    enabled = !isBusy && canSubmitAccount,
+                    enabled = canSubmitAccount,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(text = stringResource(R.string.account_login))
                 }
                 Button(
                     onClick = { onRegister(username.trim(), password, displayName.trim()) },
-                    enabled = !isBusy && canSubmitAccount,
+                    enabled = canSubmitAccount,
                     modifier = Modifier.weight(1f)
                 ) {
                     Text(text = stringResource(R.string.account_register))
