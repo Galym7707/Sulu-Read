@@ -8,6 +8,10 @@ fun HomeScreen() {
     ProfileScreen(
         user = null,
         selectedLanguageCode = AppLanguage.defaultCode(),
-        onLanguageSelected = {}
+        isBusy = false,
+        authErrorResId = null,
+        onLanguageSelected = {},
+        onRegister = { _, _, _ -> },
+        onLogin = { _, _ -> }
     )
 }

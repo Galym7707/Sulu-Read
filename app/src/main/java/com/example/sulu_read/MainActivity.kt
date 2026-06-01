@@ -283,10 +283,11 @@ private fun SuluReadApp() {
     val baseContext = LocalContext.current
     val appContext = baseContext.applicationContext
     val repository = remember(appContext) {
+        val preferences = UserPreferences(appContext)
         PendingAttemptSyncScheduler.schedulePeriodic(appContext)
         SuluReadRepository(
             api = ApiClient,
-            preferences = UserPreferences(appContext),
+            preferences = preferences,
             pendingAttemptQueue = PendingAttemptStore(appContext),
             schedulePendingAttemptSync = {
                 PendingAttemptSyncScheduler.enqueueImmediate(appContext)
@@ -294,7 +295,7 @@ private fun SuluReadApp() {
         )
     }
     val languageCode by repository.appLanguageCode.collectAsStateWithLifecycle(
-        initialValue = AppLanguage.defaultCode()
+        initialValue = UserPreferences.initialLanguageCode(appContext)
     )
     val localizedConfiguration = remember(languageCode) {
         Configuration(baseContext.resources.configuration).apply {

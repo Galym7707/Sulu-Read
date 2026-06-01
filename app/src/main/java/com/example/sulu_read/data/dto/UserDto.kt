@@ -10,6 +10,7 @@ data class SkillProfileDto(
 data class UserDto(
     val userId: String,
     val displayName: String,
+    val username: String?,
     val age: Int?,
     val languagePreference: String,
     val skillProfile: SkillProfileDto

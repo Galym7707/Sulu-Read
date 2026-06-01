@@ -37,6 +37,29 @@ object ApiClient : SuluReadApi {
         return parseUser(postJson("/v1/users", payload))
     }
 
+    override suspend fun registerUser(
+        username: String,
+        password: String,
+        displayName: String,
+        age: Int?,
+        languagePreference: String
+    ): UserDto {
+        val payload = JSONObject()
+            .put("username", username)
+            .put("password", password)
+            .put("display_name", displayName)
+            .put("age", age)
+            .put("language_preference", languagePreference)
+        return parseUser(postJson("/v1/users/register", payload))
+    }
+
+    override suspend fun loginUser(username: String, password: String): UserDto {
+        val payload = JSONObject()
+            .put("username", username)
+            .put("password", password)
+        return parseUser(postJson("/v1/users/login", payload))
+    }
+
     override suspend fun getUser(userId: String): UserDto {
         return parseUser(getJson("/v1/users/$userId"))
     }
@@ -237,6 +260,7 @@ object ApiClient : SuluReadApi {
         return UserDto(
             userId = json.optString("user_id"),
             displayName = json.optString("display_name"),
+            username = json.optString("username").ifBlank { null },
             age = json.opt("age")?.takeIf { it != JSONObject.NULL } as? Int,
             languagePreference = json.optString("language_preference"),
             skillProfile = parseSkillProfile(json.getJSONObject("skill_profile"))

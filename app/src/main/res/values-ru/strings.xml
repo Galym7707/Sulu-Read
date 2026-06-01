@@ -14,7 +14,6 @@
     <string name="reader_ruler">Линейка чтения</string>
     <string name="reader_show_syllable_breaks">Показывать деление на слоги</string>
     <string name="reader_color_syllables">Выделять слоги цветом</string>
-    <string name="reader_use_original_words">Показывать исходные слова</string>
     <string name="reader_simplify_title">Простыми словами ✨</string>
     <string name="reader_simplify_loading">Упрощаем текст...</string>
     <string name="reader_simplify_error">Не удалось упростить текст. Попробуйте ещё раз.</string>
@@ -73,7 +72,14 @@
     <string name="language_english">English</string>
     <string name="language_russian">Русский</string>
     <string name="language_kazakh">Қазақша</string>
+    <string name="account_title">Аккаунт</string>
+    <string name="account_username">Имя пользователя</string>
+    <string name="account_password">Пароль</string>
+    <string name="account_display_name">Имя на экране</string>
+    <string name="account_login">Войти</string>
+    <string name="account_register">Регистрация</string>
     <string name="profile_student">Ученик: %1$s</string>
+    <string name="profile_username">Логин: %1$s</string>
     <string name="profile_user_id">ID пользователя: %1$s</string>
     <string name="profile_backend_language">Язык профиля: %1$s</string>
     <string name="document_status_camera_ready">Страница учебника готова. Sulu-Read отправляет ее на обработку.</string>
@@ -121,6 +127,7 @@
     <string name="api_adaptation_failed">Сервер не смог адаптировать текст.</string>
     <string name="api_connection_error">Не удалось получить ответ от сервера Sulu-Read. Проверьте интернет и попробуйте еще раз. Первое распознавание на Hugging Face может занять несколько минут.</string>
     <string name="error_profile_create">Не удалось создать профиль. Проверьте подключение.</string>
+    <string name="error_account_auth">Не удалось войти или зарегистрироваться. Проверьте логин, пароль и подключение.</string>
     <string name="error_progress_load">Не удалось загрузить прогресс.</string>
     <string name="error_training_load">Не удалось загрузить упражнения. Попробуйте еще раз.</string>
     <string name="training_attempt_save_error">Ответ не был сохранен. Попробуйте еще раз.</string>

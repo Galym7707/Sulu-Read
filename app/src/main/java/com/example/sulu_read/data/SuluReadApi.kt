@@ -9,6 +9,8 @@ import com.example.sulu_read.data.dto.UserDto
 
 interface SuluReadApi {
     suspend fun createUser(displayName: String = "Оқушы", age: Int? = null, languagePreference: String = "kk"): UserDto
+    suspend fun registerUser(username: String, password: String, displayName: String, age: Int? = null, languagePreference: String = "kk"): UserDto
+    suspend fun loginUser(username: String, password: String): UserDto
     suspend fun getUser(userId: String): UserDto
     suspend fun updateUserLanguage(userId: String, languagePreference: String): UserDto
     suspend fun generateExercises(

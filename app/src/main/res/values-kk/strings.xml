@@ -14,7 +14,6 @@
     <string name="reader_ruler">Оқу сызғышы</string>
     <string name="reader_show_syllable_breaks">Буын бөлінісін көрсету</string>
     <string name="reader_color_syllables">Буындарды түспен бөлу</string>
-    <string name="reader_use_original_words">Бастапқы сөздерді көрсету</string>
     <string name="reader_simplify_title">Қарапайым сөзбен ✨</string>
     <string name="reader_simplify_loading">Мәтін жеңілдетілуде...</string>
     <string name="reader_simplify_error">Мәтінді жеңілдету мүмкін болмады. Қайта көріңіз.</string>
@@ -73,7 +72,14 @@
     <string name="language_english">English</string>
     <string name="language_russian">Русский</string>
     <string name="language_kazakh">Қазақша</string>
+    <string name="account_title">Аккаунт</string>
+    <string name="account_username">Пайдаланушы аты</string>
+    <string name="account_password">Құпия сөз</string>
+    <string name="account_display_name">Көрсетілетін ат</string>
+    <string name="account_login">Кіру</string>
+    <string name="account_register">Тіркелу</string>
     <string name="profile_student">Оқушы: %1$s</string>
+    <string name="profile_username">Логин: %1$s</string>
     <string name="profile_user_id">Пайдаланушы ID: %1$s</string>
     <string name="profile_backend_language">Профиль тілі: %1$s</string>
     <string name="document_status_camera_ready">Оқулық беті дайын. Sulu-Read оны бейімдеуге жіберіп жатыр.</string>
@@ -121,6 +127,7 @@
     <string name="api_adaptation_failed">Сервер мәтінді бейімдей алмады.</string>
     <string name="api_connection_error">Sulu-Read серверінен жауап алу мүмкін болмады. Интернетті тексеріп, қайта көріңіз. Hugging Face-та алғашқы тану бірнеше минутқа созылуы мүмкін.</string>
     <string name="error_profile_create">Профиль жасау мүмкін болмады. Қосылымды тексеріңіз.</string>
+    <string name="error_account_auth">Кіру немесе тіркелу мүмкін болмады. Логинді, құпия сөзді және қосылымды тексеріңіз.</string>
     <string name="error_progress_load">Прогресті жүктеу мүмкін болмады.</string>
     <string name="error_training_load">Жаттығуларды жүктеу мүмкін болмады. Қайта көріңіз.</string>
     <string name="training_attempt_save_error">Жауап сақталмады. Қайта көріңіз.</string>

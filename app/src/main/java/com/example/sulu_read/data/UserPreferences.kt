@@ -29,7 +29,7 @@ class UserPreferences(private val context: Context) : UserPreferenceStore {
     override val languageCode: Flow<String> = context.suluReadDataStore.data.map { preferences ->
         AppLanguage.normalizeCode(
             preferences[LANGUAGE_CODE_KEY] ?: AppLanguage.defaultCode()
-        )
+        ).also(::cacheLanguageCode)
     }
 
     override val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = context.suluReadDataStore.data.map { preferences ->
@@ -47,6 +47,7 @@ class UserPreferences(private val context: Context) : UserPreferenceStore {
     }
 
     override suspend fun saveLanguageCode(languageCode: String) {
+        cacheLanguageCode(languageCode)
         context.suluReadDataStore.edit { preferences ->
             preferences[LANGUAGE_CODE_KEY] = AppLanguage.normalizeCode(languageCode)
         }
@@ -60,11 +61,26 @@ class UserPreferences(private val context: Context) : UserPreferenceStore {
         }
     }
 
-    private companion object {
-        val USER_ID_KEY = stringPreferencesKey("user_id")
-        val LANGUAGE_CODE_KEY = stringPreferencesKey("language_code")
-        val SHOW_SYLLABLE_BREAKS_KEY = booleanPreferencesKey("reader_show_syllable_breaks")
-        val COLOR_SYLLABLES_KEY = booleanPreferencesKey("reader_color_syllables")
-        val USE_ORIGINAL_WORDS_KEY = booleanPreferencesKey("reader_use_original_words")
+    private fun cacheLanguageCode(languageCode: String) {
+        context.getSharedPreferences(LANGUAGE_CACHE_NAME, Context.MODE_PRIVATE)
+            .edit()
+            .putString(LANGUAGE_CACHE_KEY, AppLanguage.normalizeCode(languageCode))
+            .apply()
+    }
+
+    companion object {
+        private const val LANGUAGE_CACHE_NAME = "sulu_read_language_cache"
+        private const val LANGUAGE_CACHE_KEY = "language_code"
+        private val USER_ID_KEY = stringPreferencesKey("user_id")
+        private val LANGUAGE_CODE_KEY = stringPreferencesKey("language_code")
+        private val SHOW_SYLLABLE_BREAKS_KEY = booleanPreferencesKey("reader_show_syllable_breaks")
+        private val COLOR_SYLLABLES_KEY = booleanPreferencesKey("reader_color_syllables")
+        private val USE_ORIGINAL_WORDS_KEY = booleanPreferencesKey("reader_use_original_words")
+
+        fun initialLanguageCode(context: Context): String {
+            val cached = context.getSharedPreferences(LANGUAGE_CACHE_NAME, Context.MODE_PRIVATE)
+                .getString(LANGUAGE_CACHE_KEY, null)
+            return AppLanguage.normalizeCode(cached ?: AppLanguage.defaultCode())
+        }
     }
 }

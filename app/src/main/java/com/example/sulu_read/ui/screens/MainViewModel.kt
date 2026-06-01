@@ -43,6 +43,30 @@ class MainViewModel(private val repository: SuluReadRepository) : ViewModel() {
             }
         }
     }
+
+    fun register(username: String, password: String, displayName: String) {
+        viewModelScope.launch {
+            _userState.value = UiState.Loading
+            _userState.value = runCatching {
+                repository.registerUser(username, password, displayName)
+            }.fold(
+                onSuccess = { UiState.Success(it) },
+                onFailure = { UiState.Error(R.string.error_account_auth) }
+            )
+        }
+    }
+
+    fun login(username: String, password: String) {
+        viewModelScope.launch {
+            _userState.value = UiState.Loading
+            _userState.value = runCatching {
+                repository.loginUser(username, password)
+            }.fold(
+                onSuccess = { UiState.Success(it) },
+                onFailure = { UiState.Error(R.string.error_account_auth) }
+            )
+        }
+    }
 }
 
 class SuluReadViewModelFactory(

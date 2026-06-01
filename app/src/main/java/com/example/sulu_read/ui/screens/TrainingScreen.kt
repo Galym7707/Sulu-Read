@@ -49,6 +49,9 @@ import com.example.sulu_read.ui.components.SyllableChip
 @Composable
 fun TrainingScreen(
     userId: String?,
+    isProfileLoading: Boolean,
+    profileErrorResId: Int?,
+    onRetryProfile: () -> Unit,
     sourceWords: List<String>,
     languageCode: String,
     viewModel: TrainingViewModel,
@@ -67,8 +70,15 @@ fun TrainingScreen(
             style = MaterialTheme.typography.headlineSmall
         )
 
-        if (userId == null) {
+        if (isProfileLoading) {
             LoadingState(message = stringResource(R.string.training_profile_loading))
+            return@Column
+        }
+        if (profileErrorResId != null || userId == null) {
+            ErrorState(
+                message = stringResource(profileErrorResId ?: R.string.error_profile_create),
+                onRetry = onRetryProfile
+            )
             return@Column
         }
 

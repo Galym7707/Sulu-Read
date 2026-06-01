@@ -39,6 +39,24 @@ class SuluReadRepository(
         return createAnonymousUser()
     }
 
+    suspend fun registerUser(username: String, password: String, displayName: String): UserProfile {
+        val user = api.registerUser(
+            username = username,
+            password = password,
+            displayName = displayName.ifBlank { username },
+            languagePreference = preferences.languageCode.first()
+        ).toDomain()
+        preferences.saveUserId(user.userId)
+        return user
+    }
+
+    suspend fun loginUser(username: String, password: String): UserProfile {
+        val user = api.loginUser(username, password).toDomain()
+        preferences.saveUserId(user.userId)
+        preferences.saveLanguageCode(user.languagePreference)
+        return user
+    }
+
     suspend fun generateExercises(
         userId: String,
         sourceWords: List<String>,
@@ -199,6 +217,7 @@ private fun com.example.sulu_read.data.dto.UserDto.toDomain(): UserProfile {
     return UserProfile(
         userId = userId,
         displayName = displayName,
+        username = username,
         age = age,
         languagePreference = languagePreference,
         skillProfile = skillProfile.toDomain()

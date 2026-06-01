@@ -20,6 +20,9 @@ class UserProfile(Base):
 
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     display_name: Mapped[str] = mapped_column(String(120), nullable=False)
+    username: Mapped[str | None] = mapped_column(String(80), nullable=True, index=True)
+    password_hash: Mapped[str | None] = mapped_column(String(160), nullable=True)
+    password_salt: Mapped[str | None] = mapped_column(String(64), nullable=True)
     age: Mapped[int | None] = mapped_column(Integer, nullable=True)
     language_preference: Mapped[str] = mapped_column(String(20), nullable=False, default="kk-ru")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utc_now, nullable=False)

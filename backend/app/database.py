@@ -42,15 +42,29 @@ def init_database() -> bool:
 def ensure_schema_compatibility() -> None:
     inspector = inspect(engine)
     table_names = set(inspector.get_table_names())
-    if "exercise_attempts" not in table_names:
+    if "exercise_attempts" in table_names:
+        exercise_attempt_columns = {
+            column["name"] for column in inspector.get_columns("exercise_attempts")
+        }
+        if "sub_exercise" not in exercise_attempt_columns:
+            with engine.begin() as connection:
+                connection.execute(text("ALTER TABLE exercise_attempts ADD COLUMN sub_exercise VARCHAR(80)"))
+
+    if "user_profiles" not in table_names:
         return
 
-    exercise_attempt_columns = {
-        column["name"] for column in inspector.get_columns("exercise_attempts")
+    user_profile_columns = {
+        column["name"] for column in inspector.get_columns("user_profiles")
     }
-    if "sub_exercise" not in exercise_attempt_columns:
-        with engine.begin() as connection:
-            connection.execute(text("ALTER TABLE exercise_attempts ADD COLUMN sub_exercise VARCHAR(80)"))
+    missing_user_columns = {
+        "username": "ALTER TABLE user_profiles ADD COLUMN username VARCHAR(80)",
+        "password_hash": "ALTER TABLE user_profiles ADD COLUMN password_hash VARCHAR(160)",
+        "password_salt": "ALTER TABLE user_profiles ADD COLUMN password_salt VARCHAR(64)",
+    }
+    with engine.begin() as connection:
+        for column_name, statement in missing_user_columns.items():
+            if column_name not in user_profile_columns:
+                connection.execute(text(statement))
 
 
 def check_database_ready() -> bool:

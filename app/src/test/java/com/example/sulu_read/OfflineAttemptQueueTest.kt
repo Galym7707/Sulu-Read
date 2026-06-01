@@ -63,6 +63,14 @@ class OfflineAttemptQueueTest {
 
 private object FailingAttemptApi : SuluReadApi {
     override suspend fun createUser(displayName: String, age: Int?, languagePreference: String): UserDto = error("unused")
+    override suspend fun registerUser(
+        username: String,
+        password: String,
+        displayName: String,
+        age: Int?,
+        languagePreference: String
+    ): UserDto = error("unused")
+    override suspend fun loginUser(username: String, password: String): UserDto = error("unused")
     override suspend fun getUser(userId: String): UserDto = error("unused")
     override suspend fun updateUserLanguage(userId: String, languagePreference: String): UserDto = error("unused")
     override suspend fun generateExercises(

@@ -14,7 +14,6 @@
     <string name="reader_ruler">Reading ruler</string>
     <string name="reader_show_syllable_breaks">Show syllable breaks</string>
     <string name="reader_color_syllables">Color syllables</string>
-    <string name="reader_use_original_words">Use original words</string>
     <string name="reader_simplify_title">In simple words ✨</string>
     <string name="reader_simplify_loading">Simplifying text...</string>
     <string name="reader_simplify_error">Could not simplify the text. Try again.</string>
@@ -73,7 +72,14 @@
     <string name="language_english">English</string>
     <string name="language_russian">Русский</string>
     <string name="language_kazakh">Қазақша</string>
+    <string name="account_title">Account</string>
+    <string name="account_username">Username</string>
+    <string name="account_password">Password</string>
+    <string name="account_display_name">Display name</string>
+    <string name="account_login">Log in</string>
+    <string name="account_register">Register</string>
     <string name="profile_student">Student: %1$s</string>
+    <string name="profile_username">Username: %1$s</string>
     <string name="profile_user_id">User ID: %1$s</string>
     <string name="profile_backend_language">Backend language: %1$s</string>
 
@@ -122,6 +128,7 @@
     <string name="api_adaptation_failed">The server could not adapt the text.</string>
     <string name="api_connection_error">Could not get a response from the Sulu-Read server. Check the internet and try again. First recognition on Hugging Face may take a few minutes.</string>
     <string name="error_profile_create">Could not create the profile. Check the connection.</string>
+    <string name="error_account_auth">Could not sign in or register. Check the username, password, and connection.</string>
     <string name="error_progress_load">Could not load progress.</string>
     <string name="error_training_load">Could not load exercises. Try again.</string>
     <string name="training_attempt_save_error">The answer was not saved. Try again.</string>

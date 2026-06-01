@@ -10,6 +10,7 @@ data class SkillProfile(
 data class UserProfile(
     val userId: String,
     val displayName: String,
+    val username: String?,
     val age: Int?,
     val languagePreference: String,
     val skillProfile: SkillProfile

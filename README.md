@@ -20,6 +20,8 @@ The app does not diagnose dyslexia and does not claim treatment or cure. Screeni
 - `POST /v1/adapt-url`
 - `POST /v1/adapt-image`
 - `POST /v1/users`
+- `POST /v1/users/register`
+- `POST /v1/users/login`
 - `GET /v1/users/{user_id}`
 - `PATCH /v1/users/{user_id}/language`
 - `POST /v1/exercises/generate`
@@ -112,6 +114,8 @@ The script loads `.env`, reads `SUPABASE_DIRECT_CONNECTION_STRING`, connects thr
 Open the project in Android Studio and run the `app` module. The Android app talks only to the FastAPI backend; it does not contain Supabase database credentials and does not connect directly to PostgreSQL.
 
 The app supports runtime language switching for English, Russian, and Kazakh. Open the `Settings` tab, choose `English`, `Русский`, or `Қазақша`, and the Compose UI will recompose immediately. The selected language is saved in DataStore and is used as the backend `language_hint` for simplification, exercises, and future adaptation requests.
+
+The Settings tab also supports registration and login with a username and password. Passwords are stored on the backend as salted PBKDF2 hashes; the MVP still uses the returned `user_id` as the client session identifier.
 
 Exercise attempts are protected against transient network loss. If submission fails, the Android app stores a local `PendingAttempt` in DataStore with `status=pending`, shows the sync status on the training screen, and uses WorkManager with a connected-network constraint to retry pending attempts in the background.
 

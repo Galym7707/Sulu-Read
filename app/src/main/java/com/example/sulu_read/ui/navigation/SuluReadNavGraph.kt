@@ -115,6 +115,9 @@ fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
                 val viewModel: TrainingViewModel = viewModel(factory = factory)
                 TrainingScreen(
                     userId = user?.userId,
+                    isProfileLoading = userState is UiState.Loading,
+                    profileErrorResId = (userState as? UiState.Error)?.messageResId,
+                    onRetryProfile = mainViewModel::ensureUser,
                     sourceWords = trainingSourceWords,
                     languageCode = languageCode,
                     viewModel = viewModel
@@ -138,9 +141,13 @@ fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
                 ProfileScreen(
                     user = user,
                     selectedLanguageCode = languageCode,
+                    isBusy = userState is UiState.Loading,
+                    authErrorResId = (userState as? UiState.Error)?.messageResId,
                     onLanguageSelected = { selectedCode ->
                         mainViewModel.changeLanguage(selectedCode)
-                    }
+                    },
+                    onRegister = mainViewModel::register,
+                    onLogin = mainViewModel::login
                 )
             }
         }

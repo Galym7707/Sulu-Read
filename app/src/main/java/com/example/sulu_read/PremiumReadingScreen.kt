@@ -194,7 +194,7 @@ fun PremiumReadingScreen(
         ReadingScreenState(
             showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks,
             colorSyllables = readerDisplayPreferences.colorSyllables,
-            useOriginalWords = readerDisplayPreferences.useOriginalWords
+            useOriginalWords = false
         )
     }
     val coroutineScope = rememberCoroutineScope()
@@ -228,7 +228,7 @@ fun PremiumReadingScreen(
     LaunchedEffect(readerDisplayPreferences) {
         state.showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks
         state.colorSyllables = readerDisplayPreferences.colorSyllables
-        state.useOriginalWords = readerDisplayPreferences.useOriginalWords
+        state.useOriginalWords = false
     }
 
     Column(
@@ -251,10 +251,6 @@ fun PremiumReadingScreen(
             },
             onColorSyllablesChange = { enabled ->
                 state.colorSyllables = enabled
-                onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
-            },
-            onUseOriginalWordsChange = { enabled ->
-                state.useOriginalWords = enabled
                 onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
             }
         )
@@ -308,8 +304,7 @@ private fun ReadingControls(
     onPlay: () -> Unit,
     onStop: () -> Unit,
     onShowSyllableBreaksChange: (Boolean) -> Unit,
-    onColorSyllablesChange: (Boolean) -> Unit,
-    onUseOriginalWordsChange: (Boolean) -> Unit
+    onColorSyllablesChange: (Boolean) -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -419,11 +414,6 @@ private fun ReadingControls(
             label = stringResource(R.string.reader_color_syllables),
             checked = state.colorSyllables,
             onCheckedChange = onColorSyllablesChange
-        )
-        ReadingSwitch(
-            label = stringResource(R.string.reader_use_original_words),
-            checked = state.useOriginalWords,
-            onCheckedChange = onUseOriginalWordsChange
         )
     }
 }
@@ -610,7 +600,7 @@ private fun ReadingScreenState.toReaderDisplayPreferences(): ReaderDisplayPrefer
     return ReaderDisplayPreferences(
         showSyllableBreaks = showSyllableBreaks,
         colorSyllables = colorSyllables,
-        useOriginalWords = useOriginalWords
+        useOriginalWords = false
     )
 }
 
