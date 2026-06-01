@@ -1,4 +1,4 @@
-from backend.app.services.exercise_generator import generate_exercises, split_root_suffixes
+from backend.app.services.exercise_generator import generate_exercises, is_roman_numeral, split_root_suffixes
 
 
 def test_generate_mixed_exercises_from_source_words():
@@ -96,3 +96,36 @@ def test_generate_word_segmentation_exercise():
     assert exercise["target_word"] == "ларымызға"
     assert exercise["correct_answer"] == "бала"
     assert "бала" in exercise["options"]
+
+
+def test_roman_numerals_are_filtered_from_source_words():
+    assert is_roman_numeral("xviii")
+    exercises = generate_exercises(
+        source_words=["xviii XVIII 123 ! i iv"],
+        exercise_type="syllable_order",
+        count=3,
+        difficulty_level=1,
+        language_hint="en",
+    )
+
+    assert len(exercises) == 3
+    assert all(exercise["target_word"].lower() not in {"xviii", "i", "iv"} for exercise in exercises)
+    assert all(not exercise["target_word"].isdigit() for exercise in exercises)
+
+
+def test_syllable_order_falls_back_to_curated_words_when_source_has_no_valid_words():
+    exercises = generate_exercises(
+        source_words=["xviii 123 !"],
+        exercise_type="syllable_order",
+        count=2,
+        difficulty_level=1,
+        language_hint="kk",
+    )
+
+    assert len(exercises) == 2
+    assert all(exercise["type"] == "syllable_order" for exercise in exercises)
+    assert all(exercise["target_word"].lower() != "xviii" for exercise in exercises)
+    for exercise in exercises:
+        syllables = exercise["syllables"]
+        assert len(syllables) >= 2
+        assert len({syllable.lower() for syllable in syllables}) > 1

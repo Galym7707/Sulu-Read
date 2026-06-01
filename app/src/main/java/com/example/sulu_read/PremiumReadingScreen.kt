@@ -106,9 +106,10 @@ private const val NO_PLAYING_WORD = -1
 
 private val DeepBlueBlack = Color(0xFF1A237E)
 private val DarkSlateGray = Color(0xFF37474F)
+private val SyllableAlternateColor = Color(0xFF8A5A00)
 private val PlaybackHighlight = Color(0xFFFFF9C4)
-private val RulerOverlay = Color.Black.copy(alpha = 0.58f)
-private val RulerEdge = Color.White.copy(alpha = 0.38f)
+private val RulerHighlight = Color(0xFFFFD166).copy(alpha = 0.26f)
+private val RulerEdge = Color(0xFF8A6D1D).copy(alpha = 0.42f)
 private val ControlPanelBackground = Color(0xFFFFFCF4)
 private val ControlPanelBorder = Color(0xFFCFE3D4)
 
@@ -572,7 +573,7 @@ private fun SyllableWord.toAnnotatedSyllables(
     colorSyllables: Boolean,
     useOriginalWords: Boolean
 ) = buildAnnotatedString {
-    if (useOriginalWords || !showSyllableBreaks) {
+    if (useOriginalWords || (!showSyllableBreaks && !colorSyllables)) {
         withStyle(SpanStyle(color = DeepBlueBlack)) {
             append(original)
         }
@@ -583,12 +584,12 @@ private fun SyllableWord.toAnnotatedSyllables(
     safeSyllables.forEachIndexed { index, syllable ->
         withStyle(
             SpanStyle(
-                color = if (!colorSyllables || index % 2 == 0) DeepBlueBlack else DarkSlateGray
+                color = if (!colorSyllables || index % 2 == 0) DeepBlueBlack else SyllableAlternateColor
             )
         ) {
             append(syllable)
         }
-        if (index < safeSyllables.lastIndex) {
+        if (showSyllableBreaks && index < safeSyllables.lastIndex) {
             withStyle(SpanStyle(color = DarkSlateGray.copy(alpha = 0.58f))) {
                 append("-")
             }
@@ -608,7 +609,7 @@ private fun ReadingScreenState.toReaderDisplayPreferences(): ReaderDisplayPrefer
 private fun ReadingRulerOverlay(
     state: ReadingScreenState,
     modifier: Modifier = Modifier,
-    clearWindowHeight: Dp = 60.dp
+    clearWindowHeight: Dp = 44.dp
 ) {
     val density = LocalDensity.current
     val clearWindowHeightPx = with(density) { clearWindowHeight.toPx() }
@@ -629,29 +630,24 @@ private fun ReadingRulerOverlay(
             height = size.height,
             clearWindowHeightPx = clearWindowHeightPx
         )
-        val windowTop = (centerY - clearWindowHeightPx / 2f).coerceAtLeast(0f)
-        val windowBottom = (centerY + clearWindowHeightPx / 2f).coerceAtMost(size.height)
+        val bandTop = (centerY - clearWindowHeightPx / 2f).coerceAtLeast(0f)
+        val bandBottom = (centerY + clearWindowHeightPx / 2f).coerceAtMost(size.height)
 
         drawRect(
-            color = RulerOverlay,
-            topLeft = Offset.Zero,
-            size = Size(width = size.width, height = windowTop)
-        )
-        drawRect(
-            color = RulerOverlay,
-            topLeft = Offset(x = 0f, y = windowBottom),
-            size = Size(width = size.width, height = size.height - windowBottom)
+            color = RulerHighlight,
+            topLeft = Offset(x = 0f, y = bandTop),
+            size = Size(width = size.width, height = bandBottom - bandTop)
         )
         drawLine(
             color = RulerEdge,
-            start = Offset(x = 0f, y = windowTop),
-            end = Offset(x = size.width, y = windowTop),
+            start = Offset(x = 0f, y = bandTop),
+            end = Offset(x = size.width, y = bandTop),
             strokeWidth = 2f
         )
         drawLine(
             color = RulerEdge,
-            start = Offset(x = 0f, y = windowBottom),
-            end = Offset(x = size.width, y = windowBottom),
+            start = Offset(x = 0f, y = bandBottom),
+            end = Offset(x = size.width, y = bandBottom),
             strokeWidth = 2f
         )
     }

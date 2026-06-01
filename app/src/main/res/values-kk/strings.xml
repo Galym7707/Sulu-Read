@@ -34,6 +34,9 @@
     <string name="training_submit">Тексеру</string>
     <string name="training_next_word">Келесі сөз</string>
     <string name="training_listen"> Тыңдау</string>
+    <string name="training_reset_answer">Тазалау</string>
+    <string name="training_feedback_correct">Дұрыс!</string>
+    <string name="training_feedback_incorrect">Әлі дұрыс емес. Дұрыс жауап: %1$s</string>
     <string name="training_sync_synced">Барлық жауап синхрондалды</string>
     <string name="training_sync_pending">Синхрондау күтіп тұр: %1$d</string>
     <string name="training_attempt_saved_pending">Офлайн сақталды. Қосылым қалпына келгенде жіберіледі.</string>
@@ -41,6 +44,8 @@
     <string name="screening_title">Оқу бағалауы</string>
     <string name="screening_disclaimer_kk">Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау.</string>
     <string name="screening_disclaimer_ru">Это не медицинский диагноз. Это примерная оценка уровня поддержки чтения.</string>
+    <string name="screening_disclaimer">Бұл диагноз емес. Тек оқуға қолдау көрсетуге арналған бағдар.</string>
+    <string name="screening_result_disclaimer">Бұл нәтиже оқуға қолдау деңгейін шамамен бағалау ғана.</string>
     <string name="screening_sample_text">Бүгін оқушы кітап оқыды. Ол жаңа сөздерді асықпай қайталады. Мұғалім әр сөзді анық айтуға көмектесті.\nБалалар мәтінді бірге талқылады. Әр бала өз қарқынымен оқыды. Қате жасау ұят емес, себебі оқу жаттығу арқылы жақсарады.\nКөзге демалыс беріп, қысқа үзіліс жасау да маңызды. Осы мәтін оқу қолдауын шамамен бағалау үшін ғана қолданылады.</string>
     <string name="screening_wpm">Минутына сөз: %1$.2f</string>
     <string name="screening_accuracy">Дәлдік: %1$d%%</string>
@@ -50,6 +55,9 @@
     <string name="screening_error_button">Қате</string>
     <string name="screening_finish">Аяқтау</string>
     <string name="screening_start">Бастау</string>
+    <string name="support_level_low">Төмен</string>
+    <string name="support_level_moderate">Орташа</string>
+    <string name="support_level_high">Жоғары</string>
 
     <string name="progress_title">Прогресс</string>
     <string name="progress_profile_loading">Профиль дайындалып жатыр...</string>
@@ -61,6 +69,7 @@
     <string name="progress_current_difficulty">Қиындық деңгейі</string>
     <string name="progress_phonological_skill">Фонологиялық дағды</string>
     <string name="progress_support_level">Қолдау деңгейі</string>
+    <string name="progress_no_screening_yet">Әлі бағалау жоқ</string>
     <string name="progress_chart_title">Оқу жылдамдығы мен дәлдігі</string>
     <string name="progress_chart_empty">Дерек жоқ</string>
     <string name="progress_wpm_label">Сөз/мин</string>
@@ -68,7 +77,9 @@
     <string name="progress_refresh">Жаңарту</string>
 
     <string name="settings_title">Баптаулар</string>
-    <string name="settings_language_title">Language / Тіл / Язык</string>
+    <string name="settings_language_title">Қолданба тілі</string>
+    <string name="settings_advanced">Қосымша</string>
+    <string name="settings_hide_advanced">Қосымшаны жасыру</string>
     <string name="language_english">English</string>
     <string name="language_russian">Русский</string>
     <string name="language_kazakh">Қазақша</string>
@@ -82,6 +93,7 @@
     <string name="profile_username">Логин: %1$s</string>
     <string name="profile_user_id">Пайдаланушы ID: %1$s</string>
     <string name="profile_backend_language">Профиль тілі: %1$s</string>
+    <string name="profile_selected_language">Таңдалған тіл: %1$s</string>
     <string name="document_status_camera_ready">Оқулық беті дайын. Sulu-Read оны бейімдеуге жіберіп жатыр.</string>
     <string name="document_status_gallery_ready">Оқулық фотосы жүктелді. Sulu-Read оны бейімдеуге жіберіп жатыр.</string>
     <string name="scanner_no_photo_short">Сканер бет фотосын қайтармады.</string>

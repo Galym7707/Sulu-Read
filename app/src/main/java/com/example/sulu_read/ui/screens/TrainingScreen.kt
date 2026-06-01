@@ -95,6 +95,7 @@ fun TrainingScreen(
                 languageCode = languageCode,
                 onStart = { viewModel.start(userId, sourceWords, languageCode) },
                 onSelect = viewModel::selectAnswer,
+                onResetAnswer = viewModel::resetAnswer,
                 onSubmit = { viewModel.submit(userId) },
                 onNext = viewModel::next
             )
@@ -111,6 +112,7 @@ private fun TrainingContent(
     languageCode: String,
     onStart: () -> Unit,
     onSelect: (String) -> Unit,
+    onResetAnswer: () -> Unit,
     onSubmit: () -> Unit,
     onNext: () -> Unit
 ) {
@@ -158,10 +160,21 @@ private fun TrainingContent(
             exercise = exercise,
             selectedAnswer = state.selectedAnswer,
             languageCode = languageCode,
-            onSelect = onSelect
+            onSelect = onSelect,
+            onResetAnswer = onResetAnswer
         )
         Spacer(modifier = Modifier.height(16.dp))
-        val feedbackText = state.feedbackResId?.let { stringResource(it) } ?: state.feedback
+        val feedbackText = when (state.feedbackResId) {
+            R.string.training_feedback_incorrect -> stringResource(
+                R.string.training_feedback_incorrect,
+                state.feedbackAnswer ?: exercise.correctAnswer
+            )
+            null -> state.feedback
+            else -> stringResource(state.feedbackResId)
+        }
+        val canSubmit = canSubmitExerciseAnswer(exercise, state.selectedAnswer) &&
+            feedbackText == null &&
+            !state.isSubmitting
         feedbackText?.let {
             val feedbackColor by animateColorAsState(
                 targetValue = when (state.lastAnswerCorrect) {
@@ -178,7 +191,7 @@ private fun TrainingContent(
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             Button(
                 onClick = onSubmit,
-                enabled = state.selectedAnswer.isNotBlank() && feedbackText == null && !state.isSubmitting,
+                enabled = canSubmit,
                 modifier = Modifier.weight(1f)
             ) {
                 Text(text = stringResource(R.string.training_submit))
@@ -224,18 +237,49 @@ private fun ExerciseBody(
     exercise: Exercise,
     selectedAnswer: String,
     languageCode: String,
-    onSelect: (String) -> Unit
+    onSelect: (String) -> Unit,
+    onResetAnswer: () -> Unit
 ) {
     when (exercise.type) {
         "syllable_order" -> {
-            val selected = selectedAnswer.split("-").filter { it.isNotBlank() }
-            Text(text = selected.joinToString("-").ifBlank { "..." }, style = MaterialTheme.typography.headlineSmall)
+            val selected = selectedSyllables(selectedAnswer)
+            Text(
+                text = selected.joinToString("-").ifBlank { "..." },
+                style = MaterialTheme.typography.headlineSmall
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            if (selected.isNotEmpty()) {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    selected.forEachIndexed { index, syllable ->
+                        SyllableChip(
+                            text = syllable,
+                            selected = true,
+                            onClick = {
+                                onSelect(selected.filterIndexed { selectedIndex, _ -> selectedIndex != index }.joinToString("-"))
+                            }
+                        )
+                    }
+                    OutlinedButton(onClick = onResetAnswer) {
+                        Text(text = stringResource(R.string.training_reset_answer))
+                    }
+                }
+            }
             Spacer(modifier = Modifier.height(12.dp))
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 exercise.options.forEach { option ->
-                    SyllableChip(text = option, onClick = {
-                        onSelect((selected + option).joinToString("-"))
-                    })
+                    val availableCount = exercise.options.count { it == option }
+                    val selectedCount = selected.count { it == option }
+                    val canSelect = selectedCount < availableCount && selected.size < exercise.syllables.size
+                    SyllableChip(
+                        text = option,
+                        enabled = canSelect,
+                        onClick = {
+                            onSelect((selected + option).joinToString("-"))
+                        }
+                    )
                 }
             }
         }
@@ -251,6 +295,19 @@ private fun ExerciseBody(
             }
             AnswerOptions(exercise.options, selectedAnswer, onSelect)
         }
+    }
+}
+
+private fun selectedSyllables(answer: String): List<String> {
+    return answer.split("-").filter { it.isNotBlank() }
+}
+
+private fun canSubmitExerciseAnswer(exercise: Exercise, selectedAnswer: String): Boolean {
+    return if (exercise.type == "syllable_order") {
+        val selected = selectedSyllables(selectedAnswer)
+        selected.size == exercise.syllables.size && exercise.syllables.isNotEmpty()
+    } else {
+        selectedAnswer.isNotBlank()
     }
 }
 
@@ -273,15 +330,16 @@ private fun TtsPlayButton(text: String, languageCode: String) {
     val context = LocalContext.current.applicationContext
     var tts by remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(context, languageCode) {
-        val engine = TextToSpeech(context) { status ->
+        var engine: TextToSpeech? = null
+        engine = TextToSpeech(context) { status ->
             if (status == TextToSpeech.SUCCESS) {
-                tts?.language = AppLanguage.localeFor(languageCode)
+                engine?.language = AppLanguage.localeFor(languageCode)
             }
         }
         tts = engine
         onDispose {
-            engine.stop()
-            engine.shutdown()
+            engine?.stop()
+            engine?.shutdown()
             tts = null
         }
     }

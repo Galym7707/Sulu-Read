@@ -10,7 +10,7 @@ from .syllabification import (
 )
 
 
-PRACTICE_WORD_BANK = [
+KAZAKH_PRACTICE_WORD_BANK = [
     "балаларымызға",
     "Қазақстанның",
     "сұлтандарға",
@@ -21,6 +21,8 @@ PRACTICE_WORD_BANK = [
     "оқушы",
     "дәптер",
     "достар",
+]
+RUSSIAN_PRACTICE_WORD_BANK = [
     "учитель",
     "тетрадь",
     "ребята",
@@ -29,6 +31,10 @@ PRACTICE_WORD_BANK = [
     "страница",
     "помощь",
     "внимание",
+]
+PRACTICE_WORD_BANK = [
+    *KAZAKH_PRACTICE_WORD_BANK,
+    *RUSSIAN_PRACTICE_WORD_BANK,
 ]
 ENGLISH_PRACTICE_WORD_BANK = [
     "reading",
@@ -51,6 +57,13 @@ EXERCISE_TYPES = (
     *MORPHOLOGY_EXERCISE_TYPES,
 )
 SYLLABLE_DISTRACTORS = ["ба", "ла", "ма", "ры", "ға", "де", "не", "қа", "тан", "дар", "по", "ра"]
+LATIN_WORD_PATTERN = re.compile(r"[A-Za-z]+")
+NUMERIC_TOKEN_PATTERN = re.compile(r"\d+(?:[.,]\d+)?")
+WORD_TOKEN_PATTERN = re.compile(r"[\w'-]+", re.UNICODE)
+ROMAN_NUMERAL_PATTERN = re.compile(
+    r"^(?=[mdclxvi]+$)m{0,4}(cm|cd|d?c{0,3})(xc|xl|l?x{0,3})(ix|iv|v?i{0,3})$",
+    re.IGNORECASE,
+)
 KAZAKH_SUFFIXES = sorted(
     {
         "ларыңыз",
@@ -115,33 +128,57 @@ def generate_exercises(
     language_hint: str = "kk",
 ) -> list[dict]:
     rng = random.SystemRandom()
+    requested_language = normalize_language_hint(language_hint)
     candidates = select_candidate_words(source_words, difficulty_level, language_hint)
     if not candidates:
         candidates = select_candidate_words(practice_bank_for_language(language_hint), difficulty_level, language_hint)
 
     if not candidates:
-        candidates = practice_bank_for_language(language_hint)[:]
-
-    if exercise_type in MORPHOLOGY_EXERCISE_TYPES:
-        morphology_candidates = filter_morphology_candidates(candidates)
-        if not morphology_candidates:
-            morphology_candidates = filter_morphology_candidates(practice_bank_for_language(language_hint))
-        if morphology_candidates:
-            candidates = morphology_candidates
+        candidates = [
+            word
+            for word in practice_bank_for_language(language_hint)
+            if is_valid_source_token(word) and is_language_match(word, language_hint)
+        ]
 
     rng.shuffle(candidates)
-    selected_words = (candidates * ((count // len(candidates)) + 1))[:count]
     exercises: list[dict] = []
 
-    for index, word in enumerate(selected_words):
+    for index in range(count):
         selected_type = choose_exercise_type(exercise_type, index)
+        pool = exercise_candidate_pool(
+            candidates,
+            selected_type,
+            difficulty_level,
+            requested_language,
+        )
+
         if (
             exercise_type == "mixed"
             and selected_type in MORPHOLOGY_EXERCISE_TYPES
-            and not split_root_suffixes(word)[1]
+            and not pool
         ):
             selected_type = "syllable_order"
-        exercises.append(build_exercise(word, selected_type, difficulty_level, rng))
+            pool = exercise_candidate_pool(
+                candidates,
+                selected_type,
+                difficulty_level,
+                requested_language,
+            )
+
+        if not pool:
+            selected_type = "auditory_match"
+            pool = exercise_candidate_pool(
+                candidates,
+                selected_type,
+                difficulty_level,
+                requested_language,
+            )
+
+        if not pool:
+            pool = practice_bank_for_language(language_hint)[:]
+
+        word = pool[index % len(pool)]
+        exercises.append(build_exercise(word, selected_type, difficulty_level, rng, requested_language))
 
     return exercises
 
@@ -153,7 +190,7 @@ def select_candidate_words(source_words: list[str], difficulty_level: int, langu
         for word in split_source_words(raw_word):
             normalized = word.strip()
             lowered = normalized.lower()
-            if len(lowered) < 4 or lowered in seen:
+            if lowered in seen or not is_valid_source_token(normalized):
                 continue
             if not is_language_match(normalized, language_hint):
                 continue
@@ -167,17 +204,46 @@ def select_candidate_words(source_words: list[str], difficulty_level: int, langu
 
 def split_source_words(text: str) -> list[str]:
     cyrillic_words = split_text_to_words(text)
-    if cyrillic_words:
-        return cyrillic_words
-    return re.findall(r"[A-Za-z]+", text)
+    latin_words = LATIN_WORD_PATTERN.findall(text)
+    numeric_tokens = NUMERIC_TOKEN_PATTERN.findall(text)
+    return [*cyrillic_words, *latin_words, *numeric_tokens]
 
 
 def practice_bank_for_language(language_hint: str) -> list[str]:
-    if language_hint.startswith("en"):
+    normalized = normalize_language_hint(language_hint)
+    if normalized == "en":
         return ENGLISH_PRACTICE_WORD_BANK
+    if normalized == "ru":
+        return RUSSIAN_PRACTICE_WORD_BANK
+    return KAZAKH_PRACTICE_WORD_BANK
+
+
+def normalize_language_hint(language_hint: str) -> str:
+    if language_hint.startswith("en"):
+        return "en"
     if language_hint.startswith("ru"):
-        return [word for word in PRACTICE_WORD_BANK if detect_language(word) == "ru"]
-    return [word for word in PRACTICE_WORD_BANK if detect_language(word) in {"kk", "ru"}]
+        return "ru"
+    return "kk"
+
+
+def is_valid_source_token(token: str) -> bool:
+    normalized = token.strip()
+    if len(normalized) <= 1:
+        return False
+    if NUMERIC_TOKEN_PATTERN.fullmatch(normalized):
+        return False
+    if not WORD_TOKEN_PATTERN.fullmatch(normalized):
+        return False
+    letters_only = normalized.replace("'", "").replace("’", "").replace("-", "")
+    if not letters_only.isalpha():
+        return False
+    if is_roman_numeral(normalized):
+        return False
+    return True
+
+
+def is_roman_numeral(token: str) -> bool:
+    return bool(ROMAN_NUMERAL_PATTERN.fullmatch(token))
 
 
 def is_language_match(word: str, language_hint: str) -> bool:
@@ -207,34 +273,96 @@ def choose_exercise_type(exercise_type: str, index: int) -> str:
     return EXERCISE_TYPES[index % len(EXERCISE_TYPES)]
 
 
-def build_exercise(word: str, exercise_type: str, difficulty_level: int, rng: random.Random) -> dict:
+def exercise_candidate_pool(
+    candidates: list[str],
+    exercise_type: str,
+    difficulty_level: int,
+    language_hint: str,
+) -> list[str]:
+    pool = [
+        word
+        for word in candidates
+        if is_valid_word_for_exercise_type(word, exercise_type, difficulty_level)
+    ]
+    if pool:
+        return pool
+
+    fallback_words = select_candidate_words(
+        practice_bank_for_language(language_hint),
+        difficulty_level,
+        language_hint,
+    )
+    if not fallback_words:
+        fallback_words = [
+            word
+            for word in practice_bank_for_language(language_hint)
+            if is_valid_source_token(word)
+        ]
+    return [
+        word
+        for word in fallback_words
+        if is_valid_word_for_exercise_type(word, exercise_type, difficulty_level)
+    ]
+
+
+def is_valid_word_for_exercise_type(word: str, exercise_type: str, difficulty_level: int) -> bool:
+    if not is_valid_source_token(word):
+        return False
+    if exercise_type == "syllable_order":
+        return is_valid_syllable_order_word(word)
+    if exercise_type in MORPHOLOGY_EXERCISE_TYPES:
+        return bool(split_root_suffixes(word)[1])
+    features = prepare_word_features(word)
+    return is_word_allowed_for_difficulty(features.syllables, difficulty_level)
+
+
+def is_valid_syllable_order_word(word: str) -> bool:
+    syllables = meaningful_syllables(prepare_word_features(word).syllables)
+    return len(syllables) >= 2 and len({syllable.lower() for syllable in syllables}) > 1
+
+
+def meaningful_syllables(syllables: list[str]) -> list[str]:
+    return [
+        syllable.strip()
+        for syllable in syllables
+        if syllable.strip() and any(character.isalpha() for character in syllable)
+    ]
+
+
+def build_exercise(
+    word: str,
+    exercise_type: str,
+    difficulty_level: int,
+    rng: random.Random,
+    language_hint: str,
+) -> dict:
     features = prepare_word_features(word)
     syllables = features.syllables
     correct_answer = features.adapted
 
     if exercise_type == "missing_syllable":
-        return build_missing_syllable(features, difficulty_level, rng)
+        return build_missing_syllable(features, difficulty_level, rng, language_hint)
     if exercise_type == "word_to_syllables":
-        return build_word_to_syllables(features, difficulty_level, rng)
+        return build_word_to_syllables(features, difficulty_level, rng, language_hint)
     if exercise_type == "auditory_match":
-        return build_auditory_match(features, difficulty_level, rng)
+        return build_auditory_match(features, difficulty_level, rng, language_hint)
     if exercise_type == "root_suffix_identification":
-        return build_root_suffix_identification(features, difficulty_level, rng)
+        return build_root_suffix_identification(features, difficulty_level, rng, language_hint)
     if exercise_type == "word_segmentation":
-        return build_word_segmentation(features, difficulty_level, rng)
+        return build_word_segmentation(features, difficulty_level, rng, language_hint)
 
     options = syllables[:]
     rng.shuffle(options)
     return {
         "exercise_id": str(uuid4()),
         "type": "syllable_order",
-        "prompt": "Буындарды дұрыс ретпен орналастыр / Расставь слоги по порядку",
+        "prompt": prompt_for("syllable_order", language_hint),
         "target_word": word,
         "syllables": syllables,
         "options": options,
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
-        "language_hint": features.language_hint,
+        "language_hint": normalize_language_hint(language_hint),
     }
 
 
@@ -271,7 +399,39 @@ def format_morphology_answer(root: str, suffixes: list[str]) -> str:
     return " + ".join([root, *suffixes])
 
 
-def build_root_suffix_identification(features, difficulty_level: int, rng: random.Random) -> dict:
+def prompt_for(exercise_type: str, language_hint: str, target: str | None = None) -> str:
+    language = normalize_language_hint(language_hint)
+    prompts = {
+        "syllable_order": {
+            "en": "Put the syllables in order",
+            "ru": "Расставь слоги по порядку",
+            "kk": "Буындарды дұрыс ретпен орналастыр",
+        },
+        "root_suffix_identification": {
+            "en": f"{target}: choose the root and suffixes",
+            "ru": f"{target}: выбери корень и суффиксы",
+            "kk": f"{target}: түбір мен жұрнақтарды таңда",
+        },
+        "word_segmentation": {
+            "en": f"{target}: choose the base word",
+            "ru": f"{target}: выбери основу",
+            "kk": f"{target}: негізді таңда",
+        },
+        "word_to_syllables": {
+            "en": f"{target}: choose the correct syllable split",
+            "ru": f"{target}: выбери правильное деление на слоги",
+            "kk": f"{target}: дұрыс буындауды таңда",
+        },
+        "auditory_match": {
+            "en": "Listen and choose the word",
+            "ru": "Послушай и выбери слово",
+            "kk": "Тыңдап, дұрыс сөзді таңда",
+        },
+    }
+    return prompts.get(exercise_type, prompts["syllable_order"])[language]
+
+
+def build_root_suffix_identification(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
     root, suffixes = split_root_suffixes(features.original)
     correct_answer = format_morphology_answer(root, suffixes)
     options = {correct_answer}
@@ -288,23 +448,23 @@ def build_root_suffix_identification(features, difficulty_level: int, rng: rando
         "exercise_id": str(uuid4()),
         "type": "root_suffix_identification",
         "sub_exercise": "morphology",
-        "prompt": f"{features.original}: түбір мен жұрнақтарды таңда / выбери корень и суффиксы",
+        "prompt": prompt_for("root_suffix_identification", language_hint, features.original),
         "target_word": features.original,
         "syllables": [root, *suffixes],
         "options": option_list[: max(3, min(4, difficulty_level + 1))],
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
-        "language_hint": features.language_hint,
+        "language_hint": normalize_language_hint(language_hint),
     }
 
 
-def build_word_segmentation(features, difficulty_level: int, rng: random.Random) -> dict:
+def build_word_segmentation(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
     root, suffixes = split_root_suffixes(features.original)
     suffix_bundle = "".join(suffixes)
     correct_answer = root
     options = {correct_answer}
 
-    for word in PRACTICE_WORD_BANK:
+    for word in practice_bank_for_language(language_hint):
         candidate_root, _ = split_root_suffixes(word)
         if candidate_root != correct_answer:
             options.add(candidate_root)
@@ -317,17 +477,17 @@ def build_word_segmentation(features, difficulty_level: int, rng: random.Random)
         "exercise_id": str(uuid4()),
         "type": "word_segmentation",
         "sub_exercise": "morphology",
-        "prompt": f"{suffix_bundle}: негізді таңда / выбери основу",
+        "prompt": prompt_for("word_segmentation", language_hint, suffix_bundle),
         "target_word": suffix_bundle,
         "syllables": suffixes,
         "options": option_list[: max(3, min(4, difficulty_level + 1))],
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
-        "language_hint": features.language_hint,
+        "language_hint": normalize_language_hint(language_hint),
     }
 
 
-def build_missing_syllable(features, difficulty_level: int, rng: random.Random) -> dict:
+def build_missing_syllable(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
     syllables = features.syllables
     missing_index = len(syllables) // 2 if len(syllables) > 1 else 0
     prompt_syllables = syllables[:]
@@ -343,11 +503,11 @@ def build_missing_syllable(features, difficulty_level: int, rng: random.Random) 
         "options": options,
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
-        "language_hint": features.language_hint,
+        "language_hint": normalize_language_hint(language_hint),
     }
 
 
-def build_word_to_syllables(features, difficulty_level: int, rng: random.Random) -> dict:
+def build_word_to_syllables(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
     correct_answer = features.adapted
     options = {correct_answer}
     joined = "".join(features.syllables)
@@ -364,35 +524,41 @@ def build_word_to_syllables(features, difficulty_level: int, rng: random.Random)
     return {
         "exercise_id": str(uuid4()),
         "type": "word_to_syllables",
-        "prompt": f"{features.original}: дұрыс буындауды таңда / выбери правильное деление",
+        "prompt": prompt_for("word_to_syllables", language_hint, features.original),
         "target_word": features.original,
         "syllables": features.syllables,
         "options": option_list[:4],
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
-        "language_hint": features.language_hint,
+        "language_hint": normalize_language_hint(language_hint),
     }
 
 
-def build_auditory_match(features, difficulty_level: int, rng: random.Random) -> dict:
+def build_auditory_match(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
     same_language_words = [
         word
-        for word in PRACTICE_WORD_BANK
+        for word in practice_bank_for_language(language_hint)
         if word.lower() != features.original.lower() and detect_language(word) == features.language_hint
     ]
+    if not same_language_words:
+        same_language_words = [
+            word
+            for word in practice_bank_for_language(language_hint)
+            if word.lower() != features.original.lower()
+        ]
     rng.shuffle(same_language_words)
     options = [features.original, *same_language_words[:3]]
     rng.shuffle(options)
     return {
         "exercise_id": str(uuid4()),
         "type": "auditory_match",
-        "prompt": "Тыңдап, дұрыс сөзді таңда / Послушай и выбери слово",
+        "prompt": prompt_for("auditory_match", language_hint),
         "target_word": features.original,
         "syllables": features.syllables,
         "options": options,
         "correct_answer": features.original,
         "difficulty_level": difficulty_level,
-        "language_hint": features.language_hint,
+        "language_hint": normalize_language_hint(language_hint),
     }
 
 

@@ -34,6 +34,9 @@
     <string name="training_submit">Check</string>
     <string name="training_next_word">Next word</string>
     <string name="training_listen"> Listen</string>
+    <string name="training_reset_answer">Reset</string>
+    <string name="training_feedback_correct">Correct!</string>
+    <string name="training_feedback_incorrect">Not quite. Correct answer: %1$s</string>
     <string name="training_sync_synced">All answers synced</string>
     <string name="training_sync_pending">Pending sync: %1$d</string>
     <string name="training_attempt_saved_pending">Saved offline. It will sync when the connection returns.</string>
@@ -41,6 +44,8 @@
     <string name="screening_title">Reading check</string>
     <string name="screening_disclaimer_kk">Бұл медициналық диагноз емес. Бұл тек оқу қолдауының деңгейін шамамен бағалау.</string>
     <string name="screening_disclaimer_ru">Это не медицинский диагноз. Это примерная оценка уровня поддержки чтения.</string>
+    <string name="screening_disclaimer">Not a diagnosis. For reading support only.</string>
+    <string name="screening_result_disclaimer">This result is only an estimate for reading support.</string>
     <string name="screening_sample_text">Today the student read a book. The student calmly repeated new words. The teacher helped pronounce each word clearly.\nThe children discussed the text together. Each child read at a comfortable pace. Making mistakes is not shameful, because reading improves with practice.\nIt is important to rest the eyes and take short breaks. This text is used only to estimate reading support needs.</string>
     <string name="screening_wpm">WPM: %1$.2f</string>
     <string name="screening_accuracy">Accuracy: %1$d%%</string>
@@ -50,6 +55,9 @@
     <string name="screening_error_button">Error</string>
     <string name="screening_finish">Finish</string>
     <string name="screening_start">Start</string>
+    <string name="support_level_low">Low</string>
+    <string name="support_level_moderate">Moderate</string>
+    <string name="support_level_high">High</string>
 
     <string name="progress_title">Progress</string>
     <string name="progress_profile_loading">Preparing profile...</string>
@@ -61,6 +69,7 @@
     <string name="progress_current_difficulty">Current difficulty</string>
     <string name="progress_phonological_skill">Phonological skill</string>
     <string name="progress_support_level">Support level</string>
+    <string name="progress_no_screening_yet">No screening yet</string>
     <string name="progress_chart_title">Reading speed and accuracy</string>
     <string name="progress_chart_empty">No data</string>
     <string name="progress_wpm_label">WPM</string>
@@ -68,7 +77,9 @@
     <string name="progress_refresh">Refresh</string>
 
     <string name="settings_title">Settings</string>
-    <string name="settings_language_title">Language / Тіл / Язык</string>
+    <string name="settings_language_title">App language</string>
+    <string name="settings_advanced">Advanced</string>
+    <string name="settings_hide_advanced">Hide advanced</string>
     <string name="language_english">English</string>
     <string name="language_russian">Русский</string>
     <string name="language_kazakh">Қазақша</string>
@@ -82,6 +93,7 @@
     <string name="profile_username">Username: %1$s</string>
     <string name="profile_user_id">User ID: %1$s</string>
     <string name="profile_backend_language">Backend language: %1$s</string>
+    <string name="profile_selected_language">Selected language: %1$s</string>
 
     <string name="document_status_camera_ready">Textbook page is ready. Sulu-Read is sending it for adaptation.</string>
     <string name="document_status_gallery_ready">Textbook photo is loaded. Sulu-Read is sending it for adaptation.</string>

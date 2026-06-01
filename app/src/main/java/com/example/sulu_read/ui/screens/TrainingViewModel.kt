@@ -17,6 +17,7 @@ data class TrainingSessionState(
     val selectedAnswer: String = "",
     val feedback: String? = null,
     val feedbackResId: Int? = null,
+    val feedbackAnswer: String? = null,
     val lastAnswerCorrect: Boolean? = null,
     val isSubmitting: Boolean = false,
     val pendingSyncCount: Int = 0,
@@ -56,7 +57,18 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
 
     fun selectAnswer(answer: String) {
         val current = (_state.value as? UiState.Success)?.data ?: return
+        if (current.feedbackResId != null || current.feedback != null) {
+            return
+        }
         _state.value = UiState.Success(current.copy(selectedAnswer = answer))
+    }
+
+    fun resetAnswer() {
+        val current = (_state.value as? UiState.Success)?.data ?: return
+        if (current.feedbackResId != null || current.feedback != null) {
+            return
+        }
+        _state.value = UiState.Success(current.copy(selectedAnswer = ""))
     }
 
     fun submit(userId: String) {
@@ -73,12 +85,13 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                 onSuccess = {
                     UiState.Success(
                         current.copy(
-                            feedback = it.feedback.takeIf { feedback -> feedback.isNotBlank() },
-                            feedbackResId = if (it.isPendingSync) {
-                                R.string.training_attempt_saved_pending
+                            feedback = null,
+                            feedbackResId = if (it.isCorrect) {
+                                R.string.training_feedback_correct
                             } else {
-                                null
+                                R.string.training_feedback_incorrect
                             },
+                            feedbackAnswer = if (it.isCorrect) null else exercise.correctAnswer,
                             lastAnswerCorrect = it.isCorrect,
                             isSubmitting = false
                         )
@@ -89,6 +102,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                         current.copy(
                             feedback = null,
                             feedbackResId = R.string.training_attempt_save_error,
+                            feedbackAnswer = null,
                             lastAnswerCorrect = null,
                             isSubmitting = false
                         )
@@ -106,6 +120,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
                 selectedAnswer = "",
                 feedback = null,
                 feedbackResId = null,
+                feedbackAnswer = null,
                 lastAnswerCorrect = null,
                 startedAtMs = SystemClock.elapsedRealtime()
             )

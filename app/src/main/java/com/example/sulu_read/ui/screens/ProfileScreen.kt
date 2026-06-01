@@ -14,6 +14,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -44,7 +45,13 @@ fun ProfileScreen(
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var displayName by rememberSaveable { mutableStateOf("") }
+    var showAdvanced by rememberSaveable { mutableStateOf(false) }
     val canSubmitAccount = canSubmitAccountForm(username, password)
+    val selectedLanguageLabel = when (AppLanguage.fromCode(selectedLanguageCode)) {
+        AppLanguage.English -> stringResource(R.string.language_english)
+        AppLanguage.Russian -> stringResource(R.string.language_russian)
+        AppLanguage.Kazakh -> stringResource(R.string.language_kazakh)
+    }
 
     Column(
         modifier = modifier
@@ -56,10 +63,43 @@ fun ProfileScreen(
         Text(text = stringResource(R.string.settings_title), style = MaterialTheme.typography.headlineSmall)
 
         SuluCard {
+            Text(
+                text = stringResource(R.string.settings_language_title),
+                style = MaterialTheme.typography.titleMedium
+            )
+            AppLanguage.entries.forEach { language ->
+                LanguageRadioRow(
+                    label = when (language) {
+                        AppLanguage.English -> stringResource(R.string.language_english)
+                        AppLanguage.Russian -> stringResource(R.string.language_russian)
+                        AppLanguage.Kazakh -> stringResource(R.string.language_kazakh)
+                    },
+                    selected = selectedLanguageCode == language.code,
+                    onClick = { onLanguageSelected(language.code) }
+                )
+            }
+        }
+
+        SuluCard {
             Text(text = stringResource(R.string.profile_student, user?.displayName ?: "..."))
             user?.username?.let { Text(text = stringResource(R.string.profile_username, it)) }
-            Text(text = stringResource(R.string.profile_user_id, user?.userId ?: "..."))
-            Text(text = stringResource(R.string.profile_backend_language, user?.languagePreference ?: selectedLanguageCode))
+            Text(text = stringResource(R.string.profile_selected_language, selectedLanguageLabel))
+            TextButton(onClick = { showAdvanced = !showAdvanced }) {
+                Text(
+                    text = if (showAdvanced) {
+                        stringResource(R.string.settings_hide_advanced)
+                    } else {
+                        stringResource(R.string.settings_advanced)
+                    }
+                )
+            }
+            if (showAdvanced) {
+                Text(
+                    text = stringResource(R.string.profile_user_id, user?.userId ?: "..."),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
 
         SuluCard {
@@ -111,24 +151,6 @@ fun ProfileScreen(
                 ) {
                     Text(text = stringResource(R.string.account_register))
                 }
-            }
-        }
-
-        SuluCard {
-            Text(
-                text = stringResource(R.string.settings_language_title),
-                style = MaterialTheme.typography.titleMedium
-            )
-            AppLanguage.entries.forEach { language ->
-                LanguageRadioRow(
-                    label = when (language) {
-                        AppLanguage.English -> stringResource(R.string.language_english)
-                        AppLanguage.Russian -> stringResource(R.string.language_russian)
-                        AppLanguage.Kazakh -> stringResource(R.string.language_kazakh)
-                    },
-                    selected = selectedLanguageCode == language.code,
-                    onClick = { onLanguageSelected(language.code) }
-                )
             }
         }
     }

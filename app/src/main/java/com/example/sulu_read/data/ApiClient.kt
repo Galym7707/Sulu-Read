@@ -151,7 +151,7 @@ object ApiClient : SuluReadApi {
             totalExercises = json.optInt("total_exercises"),
             exerciseAccuracy = json.optDouble("exercise_accuracy"),
             averageResponseTimeMs = json.optInt("average_response_time_ms"),
-            latestSupportLevel = json.optString("latest_support_level").ifBlank { null },
+            latestSupportLevel = json.optNullableString("latest_support_level"),
             skillProfile = parseSkillProfile(json.getJSONObject("skill_profile")),
             recentScreenings = (0 until screenings.length()).map { index ->
                 val item = screenings.getJSONObject(index)
@@ -181,6 +181,13 @@ object ApiClient : SuluReadApi {
                 )
             }
         )
+    }
+
+    private fun JSONObject.optNullableString(name: String): String? {
+        if (!has(name) || isNull(name)) {
+            return null
+        }
+        return optString(name).takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }
     }
 
     override suspend fun simplify(text: String, languageHint: String): SimplifyDto {

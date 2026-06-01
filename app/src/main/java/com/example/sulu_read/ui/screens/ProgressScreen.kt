@@ -5,6 +5,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -54,7 +55,8 @@ fun ProgressScreen(
         modifier = modifier
             .fillMaxSize()
             .verticalScroll(rememberScrollState())
-            .padding(18.dp),
+            .padding(18.dp)
+            .padding(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
         Text(text = stringResource(R.string.progress_title), style = MaterialTheme.typography.headlineSmall)
@@ -78,17 +80,56 @@ private fun ProgressContent(progress: ProgressSummary, onRefresh: () -> Unit) {
             Text(text = stringResource(R.string.progress_empty))
         }
     }
-    ProgressMetricCard(label = stringResource(R.string.progress_total_exercises), value = progress.totalExercises.toString())
-    ProgressMetricCard(label = stringResource(R.string.progress_accuracy), value = "${(progress.exerciseAccuracy * 100).toInt()}%")
-    ProgressMetricCard(label = stringResource(R.string.progress_average_response), value = "${progress.averageResponseTimeMs} ms")
-    ProgressMetricCard(label = stringResource(R.string.progress_current_difficulty), value = progress.skillProfile.currentDifficulty.toString())
-    ProgressMetricCard(label = stringResource(R.string.progress_phonological_skill), value = "${(progress.skillProfile.phonologicalSkill * 100).toInt()}%")
-    progress.latestSupportLevel?.let {
-        ProgressMetricCard(label = stringResource(R.string.progress_support_level), value = it)
-    }
+    val supportLevel = progress.latestSupportLevel
+        ?.takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }
+        ?.let { localizedSupportLevel(it) }
+        ?: stringResource(R.string.progress_no_screening_yet)
+    MetricGrid(
+        metrics = listOf(
+            stringResource(R.string.progress_total_exercises) to progress.totalExercises.toString(),
+            stringResource(R.string.progress_accuracy) to "${(progress.exerciseAccuracy * 100).toInt()}%",
+            stringResource(R.string.progress_average_response) to "${progress.averageResponseTimeMs} ms",
+            stringResource(R.string.progress_current_difficulty) to progress.skillProfile.currentDifficulty.toString(),
+            stringResource(R.string.progress_phonological_skill) to "${(progress.skillProfile.phonologicalSkill * 100).toInt()}%",
+            stringResource(R.string.progress_support_level) to supportLevel
+        )
+    )
     DailyWpmChart(dailyWpm = progress.dailyWpm)
     Button(onClick = onRefresh) {
         Text(text = stringResource(R.string.progress_refresh))
+    }
+}
+
+@Composable
+private fun localizedSupportLevel(value: String): String {
+    return when (value.lowercase()) {
+        "low" -> stringResource(R.string.support_level_low)
+        "moderate" -> stringResource(R.string.support_level_moderate)
+        "high" -> stringResource(R.string.support_level_high)
+        else -> value
+    }
+}
+
+@Composable
+private fun MetricGrid(metrics: List<Pair<String, String>>) {
+    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+        metrics.chunked(2).forEach { rowMetrics ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                rowMetrics.forEach { (label, value) ->
+                    ProgressMetricCard(
+                        label = label,
+                        value = value,
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+                if (rowMetrics.size == 1) {
+                    Box(modifier = Modifier.weight(1f))
+                }
+            }
+        }
     }
 }
 
@@ -169,7 +210,7 @@ private fun DailyWpmChart(dailyWpm: List<DailyWpm>) {
 
 @Composable
 private fun ChartLegend(wpmColor: Color, accuracyColor: Color) {
-    androidx.compose.foundation.layout.Row(
+    Row(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
@@ -180,7 +221,7 @@ private fun ChartLegend(wpmColor: Color, accuracyColor: Color) {
 
 @Composable
 private fun LegendItem(color: Color, label: String) {
-    androidx.compose.foundation.layout.Row(
+    Row(
         horizontalArrangement = Arrangement.spacedBy(6.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {

@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -32,13 +34,14 @@ fun ScreeningScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(18.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(18.dp)
+            .padding(bottom = 96.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
         Text(text = stringResource(R.string.screening_title), style = MaterialTheme.typography.headlineSmall)
         SuluCard {
-            Text(text = stringResource(R.string.screening_disclaimer_kk), style = MaterialTheme.typography.bodyMedium)
-            Text(text = stringResource(R.string.screening_disclaimer_ru), style = MaterialTheme.typography.bodyMedium)
+            Text(text = stringResource(R.string.screening_disclaimer), style = MaterialTheme.typography.bodyMedium)
         }
 
         SuluCard {
@@ -52,8 +55,14 @@ fun ScreeningScreen(
                 SuluCard {
                     Text(text = stringResource(R.string.screening_wpm, result.wpm), style = MaterialTheme.typography.titleMedium)
                     Text(text = stringResource(R.string.screening_accuracy, (result.accuracy * 100).toInt()), style = MaterialTheme.typography.titleMedium)
-                    Text(text = stringResource(R.string.screening_support_level, result.supportLevel), style = MaterialTheme.typography.titleMedium)
-                    Text(text = result.disclaimer, style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        text = stringResource(
+                            R.string.screening_support_level,
+                            localizedSupportLevel(result.supportLevel)
+                        ),
+                        style = MaterialTheme.typography.titleMedium
+                    )
+                    Text(text = stringResource(R.string.screening_result_disclaimer), style = MaterialTheme.typography.bodyMedium)
                 }
                 Button(onClick = viewModel::start, modifier = Modifier.fillMaxWidth()) {
                     Text(text = stringResource(R.string.screening_restart))
@@ -81,5 +90,15 @@ fun ScreeningScreen(
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun localizedSupportLevel(value: String): String {
+    return when (value.lowercase()) {
+        "low" -> stringResource(R.string.support_level_low)
+        "moderate" -> stringResource(R.string.support_level_moderate)
+        "high" -> stringResource(R.string.support_level_high)
+        else -> value
     }
 }
