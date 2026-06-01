@@ -1,7 +1,7 @@
 import logging
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 
 from .config import settings
@@ -30,12 +30,27 @@ def init_database() -> bool:
         from . import models  # noqa: F401
 
         Base.metadata.create_all(bind=engine)
+        ensure_schema_compatibility()
         _db_ready = True
         return True
     except Exception:
         _db_ready = False
         logger.exception("Database initialization failed")
         return False
+
+
+def ensure_schema_compatibility() -> None:
+    inspector = inspect(engine)
+    table_names = set(inspector.get_table_names())
+    if "exercise_attempts" not in table_names:
+        return
+
+    exercise_attempt_columns = {
+        column["name"] for column in inspector.get_columns("exercise_attempts")
+    }
+    if "sub_exercise" not in exercise_attempt_columns:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE exercise_attempts ADD COLUMN sub_exercise VARCHAR(80)"))
 
 
 def check_database_ready() -> bool:

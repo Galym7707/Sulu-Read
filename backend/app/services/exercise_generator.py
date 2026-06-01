@@ -42,8 +42,68 @@ ENGLISH_PRACTICE_WORD_BANK = [
     "student",
     "library",
 ]
-EXERCISE_TYPES = ("syllable_order", "missing_syllable", "word_to_syllables", "auditory_match")
+MORPHOLOGY_EXERCISE_TYPES = ("root_suffix_identification", "word_segmentation")
+EXERCISE_TYPES = (
+    "syllable_order",
+    "missing_syllable",
+    "word_to_syllables",
+    "auditory_match",
+    *MORPHOLOGY_EXERCISE_TYPES,
+)
 SYLLABLE_DISTRACTORS = ["ба", "ла", "ма", "ры", "ға", "де", "не", "қа", "тан", "дар", "по", "ра"]
+KAZAKH_SUFFIXES = sorted(
+    {
+        "ларыңыз",
+        "леріңіз",
+        "дарымыз",
+        "деріміз",
+        "тарымыз",
+        "теріміз",
+        "ымыз",
+        "іміз",
+        "мыз",
+        "міз",
+        "ыңыз",
+        "іңіз",
+        "сыз",
+        "сіз",
+        "лар",
+        "лер",
+        "дар",
+        "дер",
+        "тар",
+        "тер",
+        "ның",
+        "нің",
+        "дың",
+        "дің",
+        "тың",
+        "тің",
+        "мен",
+        "пен",
+        "бен",
+        "ға",
+        "ге",
+        "қа",
+        "ке",
+        "да",
+        "де",
+        "та",
+        "те",
+        "на",
+        "не",
+        "ым",
+        "ім",
+        "ың",
+        "ің",
+        "сы",
+        "сі",
+        "ы",
+        "і",
+    },
+    key=len,
+    reverse=True,
+)
 
 
 def generate_exercises(
@@ -62,12 +122,25 @@ def generate_exercises(
     if not candidates:
         candidates = practice_bank_for_language(language_hint)[:]
 
+    if exercise_type in MORPHOLOGY_EXERCISE_TYPES:
+        morphology_candidates = filter_morphology_candidates(candidates)
+        if not morphology_candidates:
+            morphology_candidates = filter_morphology_candidates(practice_bank_for_language(language_hint))
+        if morphology_candidates:
+            candidates = morphology_candidates
+
     rng.shuffle(candidates)
     selected_words = (candidates * ((count // len(candidates)) + 1))[:count]
     exercises: list[dict] = []
 
     for index, word in enumerate(selected_words):
         selected_type = choose_exercise_type(exercise_type, index)
+        if (
+            exercise_type == "mixed"
+            and selected_type in MORPHOLOGY_EXERCISE_TYPES
+            and not split_root_suffixes(word)[1]
+        ):
+            selected_type = "syllable_order"
         exercises.append(build_exercise(word, selected_type, difficulty_level, rng))
 
     return exercises
@@ -145,6 +218,10 @@ def build_exercise(word: str, exercise_type: str, difficulty_level: int, rng: ra
         return build_word_to_syllables(features, difficulty_level, rng)
     if exercise_type == "auditory_match":
         return build_auditory_match(features, difficulty_level, rng)
+    if exercise_type == "root_suffix_identification":
+        return build_root_suffix_identification(features, difficulty_level, rng)
+    if exercise_type == "word_segmentation":
+        return build_word_segmentation(features, difficulty_level, rng)
 
     options = syllables[:]
     rng.shuffle(options)
@@ -155,6 +232,95 @@ def build_exercise(word: str, exercise_type: str, difficulty_level: int, rng: ra
         "target_word": word,
         "syllables": syllables,
         "options": options,
+        "correct_answer": correct_answer,
+        "difficulty_level": difficulty_level,
+        "language_hint": features.language_hint,
+    }
+
+
+def split_root_suffixes(word: str) -> tuple[str, list[str]]:
+    normalized = word.strip().lower()
+    suffixes_reversed: list[str] = []
+    stem = normalized
+
+    while stem:
+        suffix = next(
+            (
+                candidate
+                for candidate in KAZAKH_SUFFIXES
+                if stem.endswith(candidate) and len(stem) - len(candidate) >= 2
+            ),
+            None,
+        )
+        if suffix is None:
+            break
+        suffixes_reversed.append(suffix)
+        stem = stem[: -len(suffix)]
+
+    if not stem:
+        stem = prepare_word_features(normalized).syllables[0]
+
+    return stem, list(reversed(suffixes_reversed))
+
+
+def filter_morphology_candidates(words: list[str]) -> list[str]:
+    return [word for word in words if split_root_suffixes(word)[1]]
+
+
+def format_morphology_answer(root: str, suffixes: list[str]) -> str:
+    return " + ".join([root, *suffixes])
+
+
+def build_root_suffix_identification(features, difficulty_level: int, rng: random.Random) -> dict:
+    root, suffixes = split_root_suffixes(features.original)
+    correct_answer = format_morphology_answer(root, suffixes)
+    options = {correct_answer}
+
+    if suffixes:
+        options.add(format_morphology_answer(root, list(reversed(suffixes))))
+        if len(suffixes) > 1:
+            options.add(format_morphology_answer(root + suffixes[0], suffixes[1:]))
+    options.add(format_morphology_answer(features.syllables[0], suffixes))
+
+    option_list = list(options)
+    rng.shuffle(option_list)
+    return {
+        "exercise_id": str(uuid4()),
+        "type": "root_suffix_identification",
+        "sub_exercise": "morphology",
+        "prompt": f"{features.original}: түбір мен жұрнақтарды таңда / выбери корень и суффиксы",
+        "target_word": features.original,
+        "syllables": [root, *suffixes],
+        "options": option_list[: max(3, min(4, difficulty_level + 1))],
+        "correct_answer": correct_answer,
+        "difficulty_level": difficulty_level,
+        "language_hint": features.language_hint,
+    }
+
+
+def build_word_segmentation(features, difficulty_level: int, rng: random.Random) -> dict:
+    root, suffixes = split_root_suffixes(features.original)
+    suffix_bundle = "".join(suffixes)
+    correct_answer = root
+    options = {correct_answer}
+
+    for word in PRACTICE_WORD_BANK:
+        candidate_root, _ = split_root_suffixes(word)
+        if candidate_root != correct_answer:
+            options.add(candidate_root)
+        if len(options) >= 4:
+            break
+
+    option_list = list(options)
+    rng.shuffle(option_list)
+    return {
+        "exercise_id": str(uuid4()),
+        "type": "word_segmentation",
+        "sub_exercise": "morphology",
+        "prompt": f"{suffix_bundle}: негізді таңда / выбери основу",
+        "target_word": suffix_bundle,
+        "syllables": suffixes,
+        "options": option_list[: max(3, min(4, difficulty_level + 1))],
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
         "language_hint": features.language_hint,

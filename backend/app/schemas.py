@@ -1,7 +1,19 @@
 from datetime import datetime
 from typing import Any
+from typing import Literal
 
 from pydantic import BaseModel, Field
+
+
+ExerciseType = Literal[
+    "mixed",
+    "syllable_order",
+    "missing_syllable",
+    "word_to_syllables",
+    "auditory_match",
+    "root_suffix_identification",
+    "word_segmentation",
+]
 
 
 class SkillProfileResponse(BaseModel):
@@ -33,7 +45,7 @@ class UpdateUserLanguageRequest(BaseModel):
 class GenerateExerciseRequest(BaseModel):
     user_id: str
     source_words: list[str] = Field(default_factory=list)
-    exercise_type: str = Field(default="mixed")
+    exercise_type: ExerciseType = Field(default="mixed")
     count: int = Field(default=5, ge=1, le=10)
     language_hint: str = Field(default="kk", max_length=20)
 
@@ -41,6 +53,7 @@ class GenerateExerciseRequest(BaseModel):
 class ExerciseResponse(BaseModel):
     exercise_id: str
     type: str
+    sub_exercise: str | None = None
     prompt: str
     target_word: str
     syllables: list[str]
@@ -53,6 +66,7 @@ class ExerciseResponse(BaseModel):
 class ExerciseAttemptRequest(BaseModel):
     user_id: str
     exercise_type: str
+    sub_exercise: str | None = Field(default=None, max_length=80)
     target_word: str
     correct_answer: str
     user_answer: str

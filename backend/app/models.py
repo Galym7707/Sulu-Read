@@ -75,6 +75,7 @@ class ExerciseAttempt(Base):
     id: Mapped[str] = mapped_column(String(36), primary_key=True, default=new_uuid)
     user_id: Mapped[str] = mapped_column(String(36), ForeignKey("user_profiles.id"), nullable=False, index=True)
     exercise_type: Mapped[str] = mapped_column(String(60), nullable=False)
+    sub_exercise: Mapped[str | None] = mapped_column(String(80), nullable=True)
     target_word: Mapped[str] = mapped_column(String(240), nullable=False)
     correct_answer: Mapped[str] = mapped_column(String(500), nullable=False)
     user_answer: Mapped[str] = mapped_column(String(500), nullable=False)

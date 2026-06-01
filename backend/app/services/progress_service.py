@@ -8,6 +8,9 @@ from sqlalchemy.orm import Session
 from .. import models
 
 
+MORPHOLOGY_EXERCISE_TYPES = {"root_suffix_identification", "word_segmentation", "morphology"}
+
+
 def clamp(value: float, lower: float = 0.0, upper: float = 1.0) -> float:
     return min(upper, max(lower, value))
 
@@ -17,6 +20,8 @@ def update_skill_profile_after_attempt(
     recent_attempts: list[models.ExerciseAttempt],
     is_correct: bool,
     response_time_ms: int,
+    exercise_type: str | None = None,
+    sub_exercise: str | None = None,
 ) -> models.UserSkillProfile:
     phonological_skill = skill_profile.phonological_skill if skill_profile.phonological_skill is not None else 0.50
     decoding_fluency = skill_profile.decoding_fluency if skill_profile.decoding_fluency is not None else 0.50
@@ -27,8 +32,14 @@ def update_skill_profile_after_attempt(
     if response_time_ms > 10_000:
         attempt_score *= 0.85
 
-    skill_profile.phonological_skill = clamp(phonological_skill * 0.75 + attempt_score * 0.25)
-    skill_profile.decoding_fluency = clamp(decoding_fluency * 0.80 + attempt_score * 0.20)
+    is_morphology = exercise_type in MORPHOLOGY_EXERCISE_TYPES or sub_exercise in MORPHOLOGY_EXERCISE_TYPES
+    phonological_weight = 0.30 if is_morphology else 0.25
+    decoding_weight = 0.24 if is_morphology else 0.20
+
+    skill_profile.phonological_skill = clamp(
+        phonological_skill * (1 - phonological_weight) + attempt_score * phonological_weight
+    )
+    skill_profile.decoding_fluency = clamp(decoding_fluency * (1 - decoding_weight) + attempt_score * decoding_weight)
     skill_profile.visual_tracking = clamp(visual_tracking * 0.90 + attempt_score * 0.10)
     skill_profile.current_difficulty = current_difficulty
 
@@ -63,6 +74,7 @@ def record_exercise_attempt(db: Session, payload) -> tuple[models.ExerciseAttemp
     attempt = models.ExerciseAttempt(
         user_id=payload.user_id,
         exercise_type=payload.exercise_type,
+        sub_exercise=payload.sub_exercise,
         target_word=payload.target_word,
         correct_answer=payload.correct_answer,
         user_answer=payload.user_answer,
@@ -87,6 +99,8 @@ def record_exercise_attempt(db: Session, payload) -> tuple[models.ExerciseAttemp
         recent_attempts=list(reversed(recent_attempts)),
         is_correct=is_correct,
         response_time_ms=payload.response_time_ms,
+        exercise_type=payload.exercise_type,
+        sub_exercise=payload.sub_exercise,
     )
     db.commit()
     db.refresh(attempt)

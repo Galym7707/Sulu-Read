@@ -40,6 +40,31 @@ def test_adaptive_difficulty_decrease():
     assert updated.phonological_skill < 0.50
 
 
+def test_morphology_attempt_has_stronger_skill_signal():
+    standard = models.UserSkillProfile(user_id="standard", current_difficulty=2)
+    morphology = models.UserSkillProfile(user_id="morphology", current_difficulty=2)
+    attempts = [make_attempt(True, 4_000) for _ in range(10)]
+
+    standard_updated = update_skill_profile_after_attempt(
+        standard,
+        attempts,
+        True,
+        4_000,
+        exercise_type="syllable_order",
+    )
+    morphology_updated = update_skill_profile_after_attempt(
+        morphology,
+        attempts,
+        True,
+        4_000,
+        exercise_type="root_suffix_identification",
+        sub_exercise="morphology",
+    )
+
+    assert morphology_updated.phonological_skill > standard_updated.phonological_skill
+    assert morphology_updated.decoding_fluency > standard_updated.decoding_fluency
+
+
 def test_progress_summary_with_empty_user_data():
     engine = create_engine("sqlite:///:memory:")
     Base.metadata.create_all(bind=engine)
