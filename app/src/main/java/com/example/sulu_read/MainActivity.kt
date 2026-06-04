@@ -71,6 +71,7 @@ import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -107,8 +108,10 @@ import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import org.json.JSONObject
 import java.io.BufferedOutputStream
 import java.io.ByteArrayOutputStream
@@ -120,7 +123,8 @@ import java.util.UUID
 import kotlin.math.max
 
 private const val CONNECT_TIMEOUT_MS = 20_000
-private const val READ_TIMEOUT_MS = 240_000
+private const val READ_TIMEOUT_MS = 120_000
+private const val ADAPTATION_TIMEOUT_MS = 150_000L
 private const val MAX_UPLOAD_IMAGE_SIDE = 1800
 private const val UPLOAD_JPEG_QUALITY = 86
 
@@ -354,26 +358,47 @@ fun SuluReadRoute(
     var documentStatus by rememberSaveable { mutableStateOf<String?>(null) }
     var pendingRequest by remember { mutableStateOf<PendingAdaptationRequest?>(null) }
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
+    var adaptationRunId by remember { mutableIntStateOf(0) }
+    var adaptationJob by remember { mutableStateOf<Job?>(null) }
+
+    fun cancelAdaptation() {
+        adaptationRunId += 1
+        adaptationJob?.cancel()
+        adaptationJob = null
+        pendingRequest = null
+        errorMessage = null
+        appState = AppState.Home
+    }
 
     fun runAdaptation(request: PendingAdaptationRequest) {
+        adaptationRunId += 1
+        val runId = adaptationRunId
+        adaptationJob?.cancel()
         pendingRequest = request
         errorMessage = null
         appState = AppState.Loading
 
-        coroutineScope.launch {
-            val result = when (request) {
-                is PendingAdaptationRequest.Image -> SuluReadApiClient.adaptImage(
-                    context = context,
-                    uri = request.uri,
-                    languageHint = AppLanguage.backendHintFor(languageCode)
-                )
+        adaptationJob = coroutineScope.launch {
+            val result = withTimeoutOrNull(ADAPTATION_TIMEOUT_MS) {
+                when (request) {
+                    is PendingAdaptationRequest.Image -> SuluReadApiClient.adaptImage(
+                        context = context,
+                        uri = request.uri,
+                        languageHint = AppLanguage.backendHintFor(languageCode)
+                    )
 
-                is PendingAdaptationRequest.Url -> SuluReadApiClient.adaptUrl(
-                    context = context,
-                    url = request.url,
-                    languageHint = AppLanguage.backendHintFor(languageCode)
-                )
+                    is PendingAdaptationRequest.Url -> SuluReadApiClient.adaptUrl(
+                        context = context,
+                        url = request.url,
+                        languageHint = AppLanguage.backendHintFor(languageCode)
+                    )
+                }
+            } ?: ApiResult.Error(context.getString(R.string.api_adaptation_timeout))
+
+            if (runId != adaptationRunId) {
+                return@launch
             }
+            adaptationJob = null
 
             when (result) {
                 is ApiResult.Success -> {
@@ -390,7 +415,7 @@ fun SuluReadRoute(
 
                 is ApiResult.Error -> {
                     errorMessage = result.message
-                    appState = AppState.Loading
+                    appState = AppState.Home
                 }
             }
         }
@@ -599,7 +624,10 @@ fun SuluReadRoute(
         }
 
         AppState.Loading -> {
-            LoadingScreen(modifier = modifier)
+            LoadingScreen(
+                modifier = modifier,
+                onCancel = ::cancelAdaptation
+            )
         }
 
         is AppState.Reading -> {
@@ -641,7 +669,8 @@ fun SuluReadRoute(
                 } else {
                     errorMessage = null
                 }
-            }
+            },
+            onCancel = ::cancelAdaptation
         )
     }
 }
@@ -720,7 +749,10 @@ private fun CameraScanScreen(
 }
 
 @Composable
-private fun LoadingScreen(modifier: Modifier = Modifier) {
+private fun LoadingScreen(
+    modifier: Modifier = Modifier,
+    onCancel: () -> Unit
+) {
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -742,6 +774,10 @@ private fun LoadingScreen(modifier: Modifier = Modifier) {
             color = TextPrimary,
             textAlign = TextAlign.Center
         )
+        Spacer(modifier = Modifier.height(18.dp))
+        TextButton(onClick = onCancel) {
+            Text(text = stringResource(R.string.cancel))
+        }
     }
 }
 
@@ -826,10 +862,11 @@ private fun ReadingScreen(
 private fun ProcessingErrorDialog(
     message: String,
     canRetry: Boolean,
-    onRetry: () -> Unit
+    onRetry: () -> Unit,
+    onCancel: () -> Unit
 ) {
     AlertDialog(
-        onDismissRequest = {},
+        onDismissRequest = onCancel,
         title = {
             Text(text = stringResource(R.string.processing_error_title))
         },
@@ -842,6 +879,11 @@ private fun ProcessingErrorDialog(
         confirmButton = {
             TextButton(onClick = onRetry) {
                 Text(text = if (canRetry) stringResource(R.string.try_again) else stringResource(R.string.ok))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onCancel) {
+                Text(text = stringResource(R.string.cancel))
             }
         },
         containerColor = WarmCream,

@@ -23,6 +23,7 @@
     <string name="processing_error_title">Could not process the material</string>
     <string name="try_again">Try again</string>
     <string name="ok">OK</string>
+    <string name="cancel">Cancel</string>
 
     <string name="training_title">Training</string>
     <string name="training_profile_loading">Preparing profile...</string>
@@ -138,6 +139,7 @@
     <string name="image_prepare_error">Could not prepare the photo for upload.</string>
     <string name="api_empty_adapted_text">The server returned empty adapted text.</string>
     <string name="api_adaptation_failed">The server could not adapt the text.</string>
+    <string name="api_adaptation_timeout">Text adaptation took too long. Check the connection and try again.</string>
     <string name="api_connection_error">Could not get a response from the Sulu-Read server. Check the internet and try again. First recognition on Hugging Face may take a few minutes.</string>
     <string name="error_profile_create">Could not create the profile. Check the connection.</string>
     <string name="error_account_auth">Could not sign in or register. Check the username, password, and connection.</string>
