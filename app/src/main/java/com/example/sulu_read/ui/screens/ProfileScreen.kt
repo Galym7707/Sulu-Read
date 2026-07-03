@@ -4,15 +4,23 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.example.sulu_read.R
 import com.example.sulu_read.domain.model.AppLanguage
@@ -40,13 +49,17 @@ fun ProfileScreen(
     onLanguageSelected: (String) -> Unit,
     onRegister: (username: String, password: String, displayName: String) -> Unit,
     onLogin: (username: String, password: String) -> Unit,
+    authFeedback: AuthFeedback? = null,
     modifier: Modifier = Modifier
 ) {
     var username by rememberSaveable { mutableStateOf("") }
     var password by rememberSaveable { mutableStateOf("") }
     var displayName by rememberSaveable { mutableStateOf("") }
     var showAdvanced by rememberSaveable { mutableStateOf(false) }
+    var authMode by rememberSaveable { mutableStateOf(AuthMode.Login) }
     val canSubmitAccount = canSubmitAccountForm(username, password)
+    val feedbackMessageResId = authFeedback?.messageResId ?: authErrorResId
+    val feedbackIsError = authFeedback?.isError ?: (authErrorResId != null)
     val selectedLanguageLabel = when (AppLanguage.fromCode(selectedLanguageCode)) {
         AppLanguage.English -> stringResource(R.string.language_english)
         AppLanguage.Russian -> stringResource(R.string.language_russian)
@@ -107,13 +120,24 @@ fun ProfileScreen(
                 text = stringResource(R.string.account_title),
                 style = MaterialTheme.typography.titleMedium
             )
-            authErrorResId?.let {
-                Text(
-                    text = stringResource(it),
-                    color = MaterialTheme.colorScheme.error,
-                    style = MaterialTheme.typography.bodyMedium
+
+            feedbackMessageResId?.let { messageResId ->
+                AuthFeedbackMessage(
+                    message = stringResource(messageResId),
+                    isError = feedbackIsError
                 )
             }
+
+            Text(
+                text = if (authMode == AuthMode.Login) {
+                    stringResource(R.string.account_login_hint)
+                } else {
+                    stringResource(R.string.account_register_hint)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
             OutlinedTextField(
                 value = username,
                 onValueChange = { username = it },
@@ -129,30 +153,108 @@ fun ProfileScreen(
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth()
             )
-            OutlinedTextField(
-                value = displayName,
-                onValueChange = { displayName = it },
-                label = { Text(text = stringResource(R.string.account_display_name)) },
-                singleLine = true,
-                modifier = Modifier.fillMaxWidth()
-            )
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                Button(
-                    onClick = { onLogin(username.trim(), password) },
-                    enabled = canSubmitAccount,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Text(text = stringResource(R.string.account_login))
+
+            if (authMode == AuthMode.Register) {
+                OutlinedTextField(
+                    value = displayName,
+                    onValueChange = { displayName = it },
+                    label = { Text(text = stringResource(R.string.account_display_name)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth()
+                )
+            }
+
+            Button(
+                onClick = {
+                    if (authMode == AuthMode.Login) {
+                        onLogin(username.trim(), password)
+                    } else {
+                        onRegister(username.trim(), password, displayName.trim())
+                    }
+                },
+                enabled = canSubmitAccount && !isBusy,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(56.dp),
+                shape = RoundedCornerShape(16.dp),
+                contentPadding = ButtonDefaults.ContentPadding
+            ) {
+                if (isBusy) {
+                    CircularProgressIndicator(
+                        color = MaterialTheme.colorScheme.onPrimary,
+                        strokeWidth = 2.dp,
+                        modifier = Modifier.size(22.dp)
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
                 }
-                Button(
-                    onClick = { onRegister(username.trim(), password, displayName.trim()) },
-                    enabled = canSubmitAccount,
-                    modifier = Modifier.weight(1f)
+                Text(
+                    text = if (authMode == AuthMode.Login) {
+                        stringResource(R.string.account_login)
+                    } else {
+                        stringResource(R.string.account_register)
+                    },
+                    maxLines = 1,
+                    style = MaterialTheme.typography.labelLarge
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.Center,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = if (authMode == AuthMode.Login) {
+                        stringResource(R.string.account_no_account)
+                    } else {
+                        stringResource(R.string.account_has_account)
+                    },
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                TextButton(
+                    onClick = {
+                        authMode = if (authMode == AuthMode.Login) AuthMode.Register else AuthMode.Login
+                    }
                 ) {
-                    Text(text = stringResource(R.string.account_register))
+                    Text(
+                        text = if (authMode == AuthMode.Login) {
+                            stringResource(R.string.account_register_link)
+                        } else {
+                            stringResource(R.string.account_login_link)
+                        },
+                        fontWeight = FontWeight.SemiBold
+                    )
                 }
             }
         }
+    }
+}
+
+@Composable
+private fun AuthFeedbackMessage(
+    message: String,
+    isError: Boolean
+) {
+    Surface(
+        modifier = Modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(14.dp),
+        color = if (isError) {
+            MaterialTheme.colorScheme.errorContainer
+        } else {
+            MaterialTheme.colorScheme.primaryContainer
+        }
+    ) {
+        Text(
+            text = message,
+            modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp),
+            style = MaterialTheme.typography.bodyMedium,
+            color = if (isError) {
+                MaterialTheme.colorScheme.onErrorContainer
+            } else {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            }
+        )
     }
 }
 
@@ -180,4 +282,9 @@ private fun LanguageRadioRow(
 
 private fun canSubmitAccountForm(username: String, password: String): Boolean {
     return username.trim().length >= 3 && password.length >= 4
+}
+
+private enum class AuthMode {
+    Login,
+    Register
 }

@@ -55,6 +55,7 @@ fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
     val factory = remember(repository) { SuluReadViewModelFactory(repository) }
     val mainViewModel: MainViewModel = viewModel(factory = factory)
     val userState by mainViewModel.userState.collectAsStateWithLifecycle()
+    val authFeedback by mainViewModel.authFeedback.collectAsStateWithLifecycle()
     val user = (userState as? UiState.Success<UserProfile>)?.data
     var trainingSourceWords by remember { mutableStateOf<List<String>>(emptyList()) }
 
@@ -142,6 +143,7 @@ fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
                     user = user,
                     selectedLanguageCode = languageCode,
                     isBusy = userState is UiState.Loading,
+                    authFeedback = authFeedback,
                     authErrorResId = (userState as? UiState.Error)?.messageResId,
                     onLanguageSelected = { selectedCode ->
                         mainViewModel.changeLanguage(selectedCode)

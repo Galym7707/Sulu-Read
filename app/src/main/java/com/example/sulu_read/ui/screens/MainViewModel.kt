@@ -1,5 +1,6 @@
 package com.example.sulu_read.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -14,6 +15,8 @@ import kotlinx.coroutines.launch
 class MainViewModel(private val repository: SuluReadRepository) : ViewModel() {
     private val _userState = MutableStateFlow<UiState<UserProfile>>(UiState.Loading)
     val userState: StateFlow<UiState<UserProfile>> = _userState.asStateFlow()
+    private val _authFeedback = MutableStateFlow<AuthFeedback?>(null)
+    val authFeedback: StateFlow<AuthFeedback?> = _authFeedback.asStateFlow()
 
     init {
         ensureUser()
@@ -46,28 +49,47 @@ class MainViewModel(private val repository: SuluReadRepository) : ViewModel() {
 
     fun register(username: String, password: String, displayName: String) {
         viewModelScope.launch {
+            _authFeedback.value = AuthFeedback(R.string.account_register_loading, isError = false)
             _userState.value = UiState.Loading
             _userState.value = runCatching {
                 repository.registerUser(username, password, displayName)
             }.fold(
-                onSuccess = { UiState.Success(it) },
-                onFailure = { UiState.Error(R.string.error_account_auth) }
+                onSuccess = {
+                    _authFeedback.value = AuthFeedback(R.string.account_register_success, isError = false)
+                    UiState.Success(it)
+                },
+                onFailure = {
+                    _authFeedback.value = AuthFeedback(R.string.account_register_error, isError = true)
+                    UiState.Error(R.string.error_account_auth)
+                }
             )
         }
     }
 
     fun login(username: String, password: String) {
         viewModelScope.launch {
+            _authFeedback.value = AuthFeedback(R.string.account_login_loading, isError = false)
             _userState.value = UiState.Loading
             _userState.value = runCatching {
                 repository.loginUser(username, password)
             }.fold(
-                onSuccess = { UiState.Success(it) },
-                onFailure = { UiState.Error(R.string.error_account_auth) }
+                onSuccess = {
+                    _authFeedback.value = AuthFeedback(R.string.account_login_success, isError = false)
+                    UiState.Success(it)
+                },
+                onFailure = {
+                    _authFeedback.value = AuthFeedback(R.string.account_login_error, isError = true)
+                    UiState.Error(R.string.error_account_auth)
+                }
             )
         }
     }
 }
+
+data class AuthFeedback(
+    @param:StringRes val messageResId: Int,
+    val isError: Boolean
+)
 
 class SuluReadViewModelFactory(
     private val repository: SuluReadRepository

@@ -274,6 +274,23 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return error_response(GENERIC_ERROR_MESSAGE, status_code=500)
 
 
+@app.get("/")
+async def root() -> dict[str, Any]:
+    return {
+        "status": "ok",
+        "service": "Sulu-Read API",
+        "health": "/health",
+        "docs": "/docs",
+        "endpoints": {
+            "adapt_url": "/v1/adapt-url",
+            "adapt_image": "/v1/adapt-image",
+            "register": "/v1/users/register",
+            "login": "/v1/users/login",
+            "ai_generate": "/ai/generate",
+        },
+    }
+
+
 @app.get("/health")
 async def health(request: Request) -> dict[str, Any]:
     request.app.state.db_ready = check_database_ready()
