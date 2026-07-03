@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from backend.app.database import check_database_ready, init_database
+from backend.app.database import check_database_ready, init_database, using_runtime_sqlite_fallback
 from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
 from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
@@ -280,6 +280,7 @@ async def health(request: Request) -> dict[str, Any]:
     return {
         "status": "ok",
         "db_ready": request.app.state.db_ready,
+        "db_runtime_sqlite_fallback": using_runtime_sqlite_fallback(),
         "training_ready": True,
         "ocr_ready": request.app.state.ocr_reader is not None,
         "ocr_status": request.app.state.ocr_status,

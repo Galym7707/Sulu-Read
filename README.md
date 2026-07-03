@@ -63,9 +63,12 @@ GEMINI_API_KEY=your_gemini_api_key
 GEMINI_MODEL=gemini-3.5-flash
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
+SULU_READ_RUNTIME_SQLITE_FALLBACK=true
 ```
 
-The backend reads `SUPABASE_DIRECT_CONNECTION_STRING` with SQLAlchemy and uses `postgresql+psycopg`. Mixed-case local aliases such as `SUPABASE_direct_connection_string`, `SUPABASE_project_url`, and `SUPABASE_publishable_key` are also accepted for compatibility, but new environments should use the uppercase names above. The URL is normalized for `sslmode=require` and for passwords containing special characters. If `SUPABASE_DIRECT_CONNECTION_STRING` is missing, the app logs a warning and falls back to `sqlite:///./sulu_read_local.db` for local development only. If the Supabase URL is present but unreachable or invalid, the backend logs the connection failure and `/health` returns `db_ready: false`; it does not silently switch production traffic to SQLite.
+The backend reads `SUPABASE_DIRECT_CONNECTION_STRING` with SQLAlchemy and uses `postgresql+psycopg`. Mixed-case local aliases such as `SUPABASE_direct_connection_string`, `SUPABASE_project_url`, and `SUPABASE_publishable_key` are also accepted for compatibility, but new environments should use the uppercase names above. The URL is normalized for `sslmode=require` and for passwords containing special characters. If `SUPABASE_DIRECT_CONNECTION_STRING` is missing, the app logs a warning and falls back to `sqlite:///./sulu_read_local.db`.
+
+If the configured Supabase URL is present but unreachable or invalid, the backend can also switch to the same SQLite fallback at startup so registration and training remain usable. This is controlled by `SULU_READ_RUNTIME_SQLITE_FALLBACK`; set it to `false` to fail closed instead. `/health` reports `db_runtime_sqlite_fallback` so deployments can detect when fallback storage is active.
 
 AI setup, fallback behavior, Android `AI_BACKEND_URL`, and manual test steps are documented in [AI_SETUP.md](AI_SETUP.md).
 
