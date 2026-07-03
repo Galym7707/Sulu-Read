@@ -138,7 +138,7 @@
     <string name="image_prepare_error">Фотоны жіберуге дайындау мүмкін болмады.</string>
     <string name="api_empty_adapted_text">Сервер бос бейімделген мәтін қайтарды.</string>
     <string name="api_adaptation_failed">Сервер мәтінді бейімдей алмады.</string>
-    <string name="api_adaptation_timeout">Мәтінді бейімдеу тым ұзаққа созылды. Қосылымды тексеріп, қайта көріңіз.</string>
+    <string name="api_adaptation_timeout">Мәтінді бейімдеу бірнеше минуттан ұзаққа созылды. Қосылымды тексеріп, қайта көріңіз.</string>
     <string name="api_connection_error">Sulu-Read серверінен жауап алу мүмкін болмады. Интернетті тексеріп, қайта көріңіз. Hugging Face-та алғашқы тану бірнеше минутқа созылуы мүмкін.</string>
     <string name="error_profile_create">Профиль жасау мүмкін болмады. Қосылымды тексеріңіз.</string>
     <string name="error_account_auth">Кіру немесе тіркелу мүмкін болмады. Логинді, құпия сөзді және қосылымды тексеріңіз.</string>

@@ -138,7 +138,7 @@
     <string name="image_prepare_error">Не удалось подготовить фото для отправки.</string>
     <string name="api_empty_adapted_text">Сервер вернул пустой адаптированный текст.</string>
     <string name="api_adaptation_failed">Сервер не смог адаптировать текст.</string>
-    <string name="api_adaptation_timeout">Адаптация текста заняла слишком много времени. Проверьте подключение и попробуйте снова.</string>
+    <string name="api_adaptation_timeout">Адаптация текста заняла больше нескольких минут. Проверьте подключение и попробуйте снова.</string>
     <string name="api_connection_error">Не удалось получить ответ от сервера Sulu-Read. Проверьте интернет и попробуйте еще раз. Первое распознавание на Hugging Face может занять несколько минут.</string>
     <string name="error_profile_create">Не удалось создать профиль. Проверьте подключение.</string>
     <string name="error_account_auth">Не удалось войти или зарегистрироваться. Проверьте логин, пароль и подключение.</string>

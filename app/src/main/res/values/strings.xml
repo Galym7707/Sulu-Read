@@ -139,7 +139,7 @@
     <string name="image_prepare_error">Could not prepare the photo for upload.</string>
     <string name="api_empty_adapted_text">The server returned empty adapted text.</string>
     <string name="api_adaptation_failed">The server could not adapt the text.</string>
-    <string name="api_adaptation_timeout">Text adaptation took too long. Check the connection and try again.</string>
+    <string name="api_adaptation_timeout">Text adaptation took more than several minutes. Check the connection and try again.</string>
     <string name="api_connection_error">Could not get a response from the Sulu-Read server. Check the internet and try again. First recognition on Hugging Face may take a few minutes.</string>
     <string name="error_profile_create">Could not create the profile. Check the connection.</string>
     <string name="error_account_auth">Could not sign in or register. Check the username, password, and connection.</string>

@@ -123,8 +123,8 @@ import java.util.UUID
 import kotlin.math.max
 
 private const val CONNECT_TIMEOUT_MS = 20_000
-private const val READ_TIMEOUT_MS = 120_000
-private const val ADAPTATION_TIMEOUT_MS = 150_000L
+private const val READ_TIMEOUT_MS = 270_000
+private const val ADAPTATION_TIMEOUT_MS = 300_000L
 private const val MAX_UPLOAD_IMAGE_SIDE = 1800
 private const val UPLOAD_JPEG_QUALITY = 86
 
