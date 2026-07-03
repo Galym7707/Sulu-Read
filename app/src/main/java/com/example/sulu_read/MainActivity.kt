@@ -103,6 +103,7 @@ import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
+import com.example.sulu_read.ui.screens.AiHelpState
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanningResult
@@ -344,7 +345,10 @@ fun SuluReadRoute(
     modifier: Modifier = Modifier,
     repository: SuluReadRepository,
     languageCode: String,
-    onCreateTrainingFromText: (List<String>) -> Unit
+    onCreateTrainingFromText: (List<String>) -> Unit,
+    aiHelpState: AiHelpState = AiHelpState.Idle,
+    onExplainTextWithAi: (String) -> Unit = {},
+    onDismissAiHelp: () -> Unit = {}
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
@@ -636,6 +640,9 @@ fun SuluReadRoute(
                 state = currentState,
                 repository = repository,
                 languageCode = languageCode,
+                aiHelpState = aiHelpState,
+                onExplainTextWithAi = onExplainTextWithAi,
+                onDismissAiHelp = onDismissAiHelp,
                 onCreateTrainingFromText = onCreateTrainingFromText,
                 onBackHome = {
                     selectedDocumentUri = null
@@ -787,6 +794,9 @@ private fun ReadingScreen(
     state: AppState.Reading,
     repository: SuluReadRepository,
     languageCode: String,
+    aiHelpState: AiHelpState,
+    onExplainTextWithAi: (String) -> Unit,
+    onDismissAiHelp: () -> Unit,
     onCreateTrainingFromText: (List<String>) -> Unit,
     onBackHome: () -> Unit
 ) {
@@ -847,6 +857,9 @@ private fun ReadingScreen(
             text = state.adaptedText,
             backendWords = state.words,
             onSimplifyText = { source -> repository.simplify(source, languageCode) },
+            aiHelpState = aiHelpState,
+            onExplainTextWithAi = onExplainTextWithAi,
+            onDismissAiHelp = onDismissAiHelp,
             languageCode = languageCode,
             readerDisplayPreferences = readerDisplayPreferences,
             onReaderDisplayPreferencesChange = { preferences ->

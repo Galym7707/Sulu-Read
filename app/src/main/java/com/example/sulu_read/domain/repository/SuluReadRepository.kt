@@ -26,6 +26,8 @@ class SuluReadRepository(
     private val pendingAttemptQueue: PendingAttemptQueue,
     private val schedulePendingAttemptSync: () -> Unit = {}
 ) {
+    private val aiRepository = AiRepository(api)
+
     val appLanguageCode: Flow<String> = preferences.languageCode
     val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = preferences.readerDisplayPreferences
     val pendingAttemptCount: Flow<Int> = pendingAttemptQueue.pendingCount
@@ -190,6 +192,61 @@ class SuluReadRepository(
     suspend fun simplify(text: String, languageCode: String? = null): String {
         val resolvedLanguageCode = languageCode ?: preferences.languageCode.first()
         return api.simplify(text, AppLanguage.backendHintFor(resolvedLanguageCode)).simplifiedText
+    }
+
+    suspend fun generateAiHelp(
+        task: String,
+        text: String,
+        languageCode: String,
+        level: String? = null,
+        mode: String = "explain",
+        extra: Map<String, String> = emptyMap()
+    ): String {
+        val response = aiRepository.generateAiHelp(
+            task = task,
+            text = text,
+            languageCode = languageCode,
+            level = level,
+            mode = mode,
+            extra = extra
+        )
+        if (!response.success) {
+            throw IllegalStateException(response.error ?: "AI help is unavailable.")
+        }
+        return response.result?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("AI returned an empty response.")
+    }
+
+    suspend fun explainTextWithAi(text: String, languageCode: String): String {
+        val response = aiRepository.explainTextWithAi(text, languageCode)
+        if (!response.success) {
+            throw IllegalStateException(response.error ?: "AI help is unavailable.")
+        }
+        return response.result?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("AI returned an empty response.")
+    }
+
+    suspend fun checkAnswerWithAi(
+        question: String,
+        correctAnswer: String,
+        userAnswer: String,
+        languageCode: String
+    ): String {
+        val response = aiRepository.checkAnswerWithAi(question, correctAnswer, userAnswer, languageCode)
+        if (!response.success) {
+            throw IllegalStateException(response.error ?: "AI help is unavailable.")
+        }
+        return response.result?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("AI returned an empty response.")
+    }
+
+    suspend fun generateExerciseWithAi(text: String, languageCode: String, level: String? = null): String {
+        val response = aiRepository.generateExerciseWithAi(text, languageCode, level)
+        if (!response.success) {
+            throw IllegalStateException(response.error ?: "AI help is unavailable.")
+        }
+        return response.result?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("AI returned an empty response.")
     }
 
     suspend fun saveLanguageCode(languageCode: String, userId: String? = null) {

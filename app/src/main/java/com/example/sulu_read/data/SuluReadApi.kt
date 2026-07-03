@@ -1,5 +1,7 @@
 package com.example.sulu_read.data
 
+import com.example.sulu_read.data.dto.AiGenerateRequestDto
+import com.example.sulu_read.data.dto.AiGenerateResponseDto
 import com.example.sulu_read.data.dto.ExerciseAttemptResultDto
 import com.example.sulu_read.data.dto.ExerciseDto
 import com.example.sulu_read.data.dto.ProgressDto
@@ -41,4 +43,5 @@ interface SuluReadApi {
     ): ScreeningResultDto
     suspend fun getProgress(userId: String): ProgressDto
     suspend fun simplify(text: String, languageHint: String): SimplifyDto
+    suspend fun generateAi(request: AiGenerateRequestDto): AiGenerateResponseDto
 }

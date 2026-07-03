@@ -1,5 +1,8 @@
 package com.example.sulu_read.data
 
+import com.example.sulu_read.BuildConfig
+import com.example.sulu_read.data.dto.AiGenerateRequestDto
+import com.example.sulu_read.data.dto.AiGenerateResponseDto
 import com.example.sulu_read.data.dto.DailyActivityDto
 import com.example.sulu_read.data.dto.DailyWpmDto
 import com.example.sulu_read.data.dto.ExerciseAttemptResultDto
@@ -19,12 +22,13 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 object ApiClient : SuluReadApi {
-    val backendBaseUrls: List<String> = listOf(
-        "https://galym7707-sulu-read-backend.hf.space",
-        "http://10.0.2.2:8000",
-        "http://192.168.0.100:8000",
-        "http://192.168.0.103:8000"
-    )
+    val backendBaseUrls: List<String> = buildList {
+        BuildConfig.AI_BACKEND_URL.trim().trimEnd('/').takeIf { it.isNotBlank() }?.let(::add)
+        add("https://galym7707-sulu-read-backend.hf.space")
+        add("http://10.0.2.2:8000")
+        add("http://192.168.0.100:8000")
+        add("http://192.168.0.103:8000")
+    }.distinct()
 
     private const val CONNECT_TIMEOUT_MS = 20_000
     private const val READ_TIMEOUT_MS = 240_000
@@ -201,6 +205,21 @@ object ApiClient : SuluReadApi {
         )
     }
 
+    override suspend fun generateAi(request: AiGenerateRequestDto): AiGenerateResponseDto {
+        val extraJson = JSONObject()
+        request.extra.forEach { (key, value) ->
+            extraJson.put(key, value)
+        }
+        val payload = JSONObject()
+            .put("task", request.task)
+            .put("text", request.text)
+            .put("language", request.language)
+            .put("level", request.level)
+            .put("mode", request.mode)
+            .put("extra", extraJson)
+        return parseAiGenerateResponse(postJson("/ai/generate", payload))
+    }
+
     suspend fun postJson(path: String, payload: JSONObject): JSONObject = withContext(Dispatchers.IO) {
         request(path = path, method = "POST", payload = payload).let(::JSONObject)
     }
@@ -302,4 +321,21 @@ object ApiClient : SuluReadApi {
         if (this == null) return emptyList()
         return (0 until length()).map { index -> optString(index) }
     }
+}
+
+internal fun parseAiGenerateResponse(json: JSONObject): AiGenerateResponseDto {
+    return AiGenerateResponseDto(
+        success = json.optBoolean("success"),
+        provider = json.optNullableStringValue("provider"),
+        model = json.optNullableStringValue("model"),
+        result = json.optNullableStringValue("result"),
+        error = json.optNullableStringValue("error")
+    )
+}
+
+private fun JSONObject.optNullableStringValue(name: String): String? {
+    if (!has(name) || isNull(name)) {
+        return null
+    }
+    return optString(name).takeUnless { it.isBlank() || it.equals("null", ignoreCase = true) }
 }

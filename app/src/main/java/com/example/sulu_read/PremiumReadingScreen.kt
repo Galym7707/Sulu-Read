@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.VolumeUp
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.Stop
@@ -87,6 +88,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
+import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
@@ -186,6 +188,9 @@ fun PremiumReadingScreen(
     text: String,
     backendWords: List<SyllableWord> = emptyList(),
     onSimplifyText: suspend (String) -> String,
+    aiHelpState: AiHelpState = AiHelpState.Idle,
+    onExplainTextWithAi: (String) -> Unit = {},
+    onDismissAiHelp: () -> Unit = {},
     languageCode: String,
     readerDisplayPreferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
     onReaderDisplayPreferencesChange: (ReaderDisplayPreferences) -> Unit = {},
@@ -253,7 +258,8 @@ fun PremiumReadingScreen(
             onColorSyllablesChange = { enabled ->
                 state.colorSyllables = enabled
                 onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
-            }
+            },
+            onAiHelpClick = { onExplainTextWithAi(text) }
         )
 
         Box(
@@ -296,6 +302,13 @@ fun PremiumReadingScreen(
             }
         )
     }
+
+    if (aiHelpState !is AiHelpState.Idle) {
+        AiHelpSheet(
+            state = aiHelpState,
+            onDismissRequest = onDismissAiHelp
+        )
+    }
 }
 
 @Composable
@@ -305,7 +318,8 @@ private fun ReadingControls(
     onPlay: () -> Unit,
     onStop: () -> Unit,
     onShowSyllableBreaksChange: (Boolean) -> Unit,
-    onColorSyllablesChange: (Boolean) -> Unit
+    onColorSyllablesChange: (Boolean) -> Unit,
+    onAiHelpClick: () -> Unit
 ) {
     Column(
         modifier = Modifier
@@ -416,6 +430,22 @@ private fun ReadingControls(
             checked = state.colorSyllables,
             onCheckedChange = onColorSyllablesChange
         )
+
+        Button(
+            onClick = onAiHelpClick,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(54.dp),
+            shape = RoundedCornerShape(14.dp)
+        ) {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = null,
+                modifier = Modifier.size(22.dp)
+            )
+            Spacer(modifier = Modifier.width(10.dp))
+            Text(text = stringResource(R.string.reader_ai_help))
+        }
     }
 }
 
@@ -776,6 +806,97 @@ private fun SimplifiedTextSheet(
                 else -> {
                     Text(
                         text = text,
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            lineHeight = 32.sp,
+                            letterSpacing = 0.4.sp
+                        ),
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                }
+            }
+
+            Button(
+                onClick = onDismissRequest,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(54.dp),
+                shape = RoundedCornerShape(14.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                )
+            ) {
+                Text(text = stringResource(R.string.reader_close))
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun AiHelpSheet(
+    state: AiHelpState,
+    onDismissRequest: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 24.dp)
+                .padding(bottom = 30.dp),
+            verticalArrangement = Arrangement.spacedBy(18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text(
+                    text = stringResource(R.string.reader_ai_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                IconButton(onClick = onDismissRequest) {
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = stringResource(R.string.reader_close),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
+            when (state) {
+                AiHelpState.Idle -> Unit
+                AiHelpState.Loading -> {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                        Text(
+                            text = stringResource(R.string.reader_ai_loading),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                    }
+                }
+
+                is AiHelpState.Error -> {
+                    Text(
+                        text = state.message.ifBlank { stringResource(R.string.reader_ai_error) },
+                        style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 30.sp),
+                        color = MaterialTheme.colorScheme.error
+                    )
+                }
+
+                is AiHelpState.Success -> {
+                    Text(
+                        text = state.result,
                         style = MaterialTheme.typography.bodyLarge.copy(
                             lineHeight = 32.sp,
                             letterSpacing = 0.4.sp

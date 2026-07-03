@@ -19,7 +19,7 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.app.database import check_database_ready, init_database
-from backend.app.routers import exercises, progress, screening, simplify, users
+from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
 from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
 
@@ -243,6 +243,7 @@ app.include_router(exercises.router)
 app.include_router(screening.router)
 app.include_router(progress.router)
 app.include_router(simplify.router)
+app.include_router(ai.router)
 
 
 @app.exception_handler(RequestValidationError)
@@ -252,6 +253,14 @@ async def validation_exception_handler(request: Request, exc: RequestValidationE
         return error_response(URL_ERROR_MESSAGE)
     if request.url.path == "/v1/adapt-image":
         return error_response(IMAGE_ERROR_MESSAGE)
+    if request.url.path == "/ai/generate":
+        return JSONResponse(
+            status_code=200,
+            content={
+                "success": False,
+                "error": "AI help is temporarily unavailable. Please try again later.",
+            },
+        )
     return error_response(GENERIC_ERROR_MESSAGE)
 
 

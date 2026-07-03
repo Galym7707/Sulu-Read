@@ -17,6 +17,10 @@
     <string name="reader_simplify_title">Простыми словами ✨</string>
     <string name="reader_simplify_loading">Упрощаем текст...</string>
     <string name="reader_simplify_error">Не удалось упростить текст. Попробуйте ещё раз.</string>
+    <string name="reader_ai_help">AI-помощь</string>
+    <string name="reader_ai_title">AI-помощь</string>
+    <string name="reader_ai_loading">Спрашиваем AI...</string>
+    <string name="reader_ai_error">AI-помощь временно недоступна. Попробуйте ещё раз.</string>
     <string name="reader_close">Закрыть</string>
 
     <string name="loading_adaptation">Sulu-Read адаптирует текст учебника, пожалуйста подождите...</string>

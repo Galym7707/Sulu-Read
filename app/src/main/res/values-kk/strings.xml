@@ -17,6 +17,10 @@
     <string name="reader_simplify_title">Қарапайым сөзбен ✨</string>
     <string name="reader_simplify_loading">Мәтін жеңілдетілуде...</string>
     <string name="reader_simplify_error">Мәтінді жеңілдету мүмкін болмады. Қайта көріңіз.</string>
+    <string name="reader_ai_help">AI көмегі</string>
+    <string name="reader_ai_title">AI көмегі</string>
+    <string name="reader_ai_loading">AI-дан сұрап жатырмыз...</string>
+    <string name="reader_ai_error">AI көмегі уақытша қолжетімсіз. Қайта көріңіз.</string>
     <string name="reader_close">Жабу</string>
 
     <string name="loading_adaptation">Sulu-Read оқулық мәтінін бейімдеп жатыр, сәл күтіңіз...</string>

@@ -7,6 +7,9 @@ plugins {
 android {
     namespace = "com.example.sulu_read"
     compileSdk = 35
+    val aiBackendUrl = providers.gradleProperty("AI_BACKEND_URL")
+        .orElse(providers.environmentVariable("AI_BACKEND_URL"))
+        .orElse("")
 
     defaultConfig {
         applicationId = "com.example.sulu_read"
@@ -16,6 +19,7 @@ android {
         versionName = "1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        buildConfigField("String", "AI_BACKEND_URL", "\"${aiBackendUrl.get().replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
     buildTypes {
@@ -36,6 +40,7 @@ android {
     }
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 }
 
@@ -57,6 +62,7 @@ dependencies {
     implementation("androidx.work:work-runtime-ktx:2.9.1")
     implementation("com.google.android.gms:play-services-mlkit-document-scanner:16.0.0")
     testImplementation(libs.junit)
+    testImplementation("org.json:json:20240303")
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
     androidTestImplementation(platform(libs.androidx.compose.bom))

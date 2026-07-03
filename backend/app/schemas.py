@@ -15,6 +15,16 @@ ExerciseType = Literal[
     "word_segmentation",
 ]
 
+AiLanguage = Literal["kk", "ru", "en"]
+AiMode = Literal[
+    "explain",
+    "exercise",
+    "check_answer",
+    "generate_task",
+    "reading_help",
+    "morphology_help",
+]
+
 
 class SkillProfileResponse(BaseModel):
     phonological_skill: float
@@ -179,3 +189,24 @@ class AdaptationResponseWithWords(BaseModel):
     words: list[WordFeature]
     title: str | None = None
     metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+class AiGenerateRequest(BaseModel):
+    task: str = Field(min_length=1, max_length=4_000)
+    text: str = Field(min_length=1, max_length=20_000)
+    language: AiLanguage = "kk"
+    level: str | None = Field(default=None, max_length=80)
+    mode: AiMode = "explain"
+    extra: dict[str, Any] = Field(default_factory=dict)
+
+
+class AiGenerateResponse(BaseModel):
+    success: bool = True
+    provider: str
+    model: str
+    result: str
+
+
+class AiGenerateErrorResponse(BaseModel):
+    success: bool = False
+    error: str

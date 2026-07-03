@@ -4,6 +4,8 @@ import com.example.sulu_read.data.PendingAttempt
 import com.example.sulu_read.data.PendingAttemptQueue
 import com.example.sulu_read.data.SuluReadApi
 import com.example.sulu_read.data.UserPreferenceStore
+import com.example.sulu_read.data.dto.AiGenerateRequestDto
+import com.example.sulu_read.data.dto.AiGenerateResponseDto
 import com.example.sulu_read.data.dto.ExerciseAttemptResultDto
 import com.example.sulu_read.data.dto.ExerciseDto
 import com.example.sulu_read.data.dto.ProgressDto
@@ -106,6 +108,7 @@ private object FailingAttemptApi : SuluReadApi {
 
     override suspend fun getProgress(userId: String): ProgressDto = error("unused")
     override suspend fun simplify(text: String, languageHint: String): SimplifyDto = error("unused")
+    override suspend fun generateAi(request: AiGenerateRequestDto): AiGenerateResponseDto = error("unused")
 }
 
 private object FakePreferences : UserPreferenceStore {
