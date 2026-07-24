@@ -76,6 +76,10 @@ OCR_MAX_IMAGE_SIDE = int(os.getenv("SULU_READ_OCR_MAX_IMAGE_SIDE", "2600"))
 GROQ_TIMEOUT_SECONDS = float(os.getenv("SULU_READ_GROQ_TIMEOUT_SECONDS", "90"))
 GROQ_VISION_MODEL = os.getenv(
     "SULU_READ_GROQ_VISION_MODEL",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
+)
+GROQ_VISION_FALLBACK_MODEL = os.getenv(
+    "SULU_READ_GROQ_VISION_FALLBACK_MODEL",
     "meta-llama/llama-4-scout-17b-16e-instruct",
 )
 GROQ_MAX_IMAGE_SIDE = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_SIDE", "1800"))
@@ -92,6 +96,7 @@ CYRILLIC_LETTERS = set(
     "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
     "әғқңөұүһіӘҒҚҢӨҰҮҺІ"
 )
+LATIN_LETTERS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 LETTER_CLASS = "A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі"
 STANDARD_SYLLABLE_DELIMITER = "-"
@@ -355,6 +360,7 @@ async def adapt_image(
                     read_text_with_groq_vision,
                     image_bytes,
                     file.filename,
+                    language_hint,
                 ),
                 timeout=GROQ_TIMEOUT_SECONDS,
             )
@@ -410,7 +416,9 @@ def should_use_gpu() -> bool:
 
 
 def get_easyocr_languages() -> list[str]:
-    languages = ["ru", "rs_cyrillic", "mn", "en"]
+    # "mn" shares the Cyrillic model and adds ө/ү needed for Kazakh; Serbian
+    # ("rs_cyrillic") is excluded because it injects ђјљњћџ into ru/kk text.
+    languages = ["ru", "mn", "en"]
     try:
         from easyocr.config import all_lang_list
     except Exception:
@@ -418,7 +426,8 @@ def get_easyocr_languages() -> list[str]:
 
     if "kk" in all_lang_list:
         return ["ru", "kk", "en"]
-    return [language for language in languages if language in all_lang_list]
+    filtered = [language for language in languages if language in all_lang_list]
+    return filtered or ["ru", "en"]
 
 
 def is_valid_http_url(url: str) -> bool:
@@ -560,14 +569,14 @@ def read_text_from_image(reader: Any, image_path: str) -> str:
                 best_score = score
                 best_text = text
 
-            if count_cyrillic_letters(best_text) >= OCR_MIN_CYRILLIC_CHARS and len(best_text) >= 80:
+            if count_readable_letters(best_text) >= OCR_MIN_CYRILLIC_CHARS and len(best_text) >= 80:
                 break
     finally:
         for candidate_path in candidate_paths:
             if candidate_path != image_path:
                 remove_temp_file(candidate_path)
 
-    return best_text if count_cyrillic_letters(best_text) >= OCR_MIN_CYRILLIC_CHARS else ""
+    return best_text if count_readable_letters(best_text) >= OCR_MIN_CYRILLIC_CHARS else ""
 
 
 def create_ocr_candidate_images(image_path: str) -> list[str]:
@@ -756,8 +765,7 @@ def extract_text_from_ocr_result(ocr_result: list[Any]) -> str:
 
 
 def score_ocr_text(text: str, ocr_result: list[Any]) -> float:
-    cyrillic_count = count_cyrillic_letters(text)
-    total_letters = sum(1 for character in text if character.isalpha())
+    readable_count = count_readable_letters(text)
     digit_count = sum(1 for character in text if character.isdigit())
     confidence_values = [
         float(item[2])
@@ -767,11 +775,19 @@ def score_ocr_text(text: str, ocr_result: list[Any]) -> float:
         and isinstance(item[2], (int, float))
     ]
     average_confidence = sum(confidence_values) / len(confidence_values) if confidence_values else 0.0
-    return cyrillic_count * 3.0 + total_letters + digit_count * 0.5 + average_confidence * 30.0
+    return readable_count * 3.0 + digit_count * 0.5 + average_confidence * 30.0
 
 
 def count_cyrillic_letters(text: str) -> int:
     return sum(1 for character in text if character in CYRILLIC_LETTERS)
+
+
+def count_latin_letters(text: str) -> int:
+    return sum(1 for character in text if character in LATIN_LETTERS)
+
+
+def count_readable_letters(text: str) -> int:
+    return count_cyrillic_letters(text) + count_latin_letters(text)
 
 
 def has_groq_vision_key() -> bool:
@@ -782,7 +798,42 @@ def get_groq_api_key() -> str:
     return (os.getenv("GROQ_API") or os.getenv("GROQ_API_KEY") or "").strip()
 
 
-def read_text_with_groq_vision(image_bytes: bytes, filename: str | None = None) -> str:
+GROQ_LANGUAGE_HINT_NAMES = {
+    "kk": "Kazakh",
+    "ru": "Russian",
+    "en": "English",
+}
+
+
+def build_groq_ocr_prompt(language_hint: str) -> str:
+    hint_name = GROQ_LANGUAGE_HINT_NAMES.get((language_hint or "").strip().lower())
+    hint_sentence = (
+        f"The text is most likely in {hint_name}, but other languages may also appear. "
+        if hint_name
+        else ""
+    )
+    return (
+        "You are a precise OCR engine for photos of school textbook pages in Kazakh, "
+        "Russian, and English. "
+        + hint_sentence +
+        "Extract ONLY the text that is actually printed in the image, exactly as written. "
+        "Kazakh uses these extra Cyrillic letters: Әә Ғғ Ққ Ңң Өө Ұұ Үү Һһ Іі — reproduce "
+        "them exactly and NEVER replace them with similar Russian letters (қ is not к, "
+        "ә is not а, ө is not о, ұ/ү is not у, і is not и, ғ is not г, ң is not н). "
+        "Never swap Latin letters for Cyrillic lookalikes or vice versa. "
+        "Keep the original letter case, punctuation, and line breaks where useful. "
+        "Do not summarize, translate, explain, answer questions, or invent missing words. "
+        "Ignore page shadows, fingers, table edges, UI elements, and neighboring pages. "
+        "Return JSON with exactly one key: {\"text\":\"...\"}. "
+        "If no printed text is readable, return {\"text\":\"\"}."
+    )
+
+
+def read_text_with_groq_vision(
+    image_bytes: bytes,
+    filename: str | None = None,
+    language_hint: str = "kk",
+) -> str:
     api_key = get_groq_api_key()
     if not api_key:
         return ""
@@ -790,72 +841,81 @@ def read_text_with_groq_vision(image_bytes: bytes, filename: str | None = None) 
     try:
         image_payload = prepare_image_for_groq(image_bytes)
         image_base64 = base64.b64encode(image_payload).decode("ascii")
-        response = requests.post(
-            "https://api.groq.com/openai/v1/chat/completions",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "model": GROQ_VISION_MODEL,
-                "temperature": 0,
-                "max_completion_tokens": 4096,
-                "response_format": {"type": "json_object"},
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": [
-                            {
-                                "type": "text",
-                                "text": (
-                                    "You are an OCR engine for Kazakh and Russian school textbook photos. "
-                                    "Extract only the readable printed text from the image. "
-                                    "Preserve line breaks where useful. Do not summarize, translate, explain, "
-                                    "answer questions, or invent missing words. Ignore page shadows, table edges, "
-                                    "hands, UI, and neighboring pages. Return JSON with exactly one key: "
-                                    "{\"text\":\"...\"}. If no textbook text is readable, return {\"text\":\"\"}."
-                                ),
-                            },
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": f"data:image/jpeg;base64,{image_base64}",
-                                },
-                            },
-                        ],
-                    }
-                ],
-            },
-            timeout=GROQ_TIMEOUT_SECONDS,
-        )
-
-        if response.status_code >= 400:
-            logger.warning(
-                "Groq Vision OCR failed with status %s: %s",
-                response.status_code,
-                response.text[:500],
-            )
-            return ""
-
-        payload = response.json()
-        content = (
-            payload.get("choices", [{}])[0]
-            .get("message", {})
-            .get("content", "")
-        )
-        text = extract_groq_text_content(content)
-        if count_cyrillic_letters(text) < OCR_MIN_CYRILLIC_CHARS:
-            return ""
-
-        logger.info(
-            "Groq Vision OCR extracted %s characters from %s",
-            len(text),
-            filename or "uploaded image",
-        )
-        return text
     except Exception:
-        logger.exception("Groq Vision OCR fallback failed")
+        logger.exception("Groq Vision image preparation failed")
         return ""
+
+    models_to_try = [GROQ_VISION_MODEL]
+    if GROQ_VISION_FALLBACK_MODEL and GROQ_VISION_FALLBACK_MODEL not in models_to_try:
+        models_to_try.append(GROQ_VISION_FALLBACK_MODEL)
+
+    prompt = build_groq_ocr_prompt(language_hint)
+    for model in models_to_try:
+        try:
+            response = requests.post(
+                "https://api.groq.com/openai/v1/chat/completions",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "model": model,
+                    "temperature": 0,
+                    "max_completion_tokens": 4096,
+                    "response_format": {"type": "json_object"},
+                    "messages": [
+                        {
+                            "role": "user",
+                            "content": [
+                                {"type": "text", "text": prompt},
+                                {
+                                    "type": "image_url",
+                                    "image_url": {
+                                        "url": f"data:image/jpeg;base64,{image_base64}",
+                                    },
+                                },
+                            ],
+                        }
+                    ],
+                },
+                timeout=GROQ_TIMEOUT_SECONDS,
+            )
+
+            if response.status_code >= 400:
+                logger.warning(
+                    "Groq Vision OCR (%s) failed with status %s: %s",
+                    model,
+                    response.status_code,
+                    response.text[:500],
+                )
+                continue
+
+            payload = response.json()
+            content = (
+                payload.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+            )
+            text = extract_groq_text_content(content)
+            if count_readable_letters(text) < OCR_MIN_CYRILLIC_CHARS:
+                logger.info(
+                    "Groq Vision OCR (%s) returned too little text (%s readable letters)",
+                    model,
+                    count_readable_letters(text),
+                )
+                continue
+
+            logger.info(
+                "Groq Vision OCR (%s) extracted %s characters from %s",
+                model,
+                len(text),
+                filename or "uploaded image",
+            )
+            return text
+        except Exception:
+            logger.exception("Groq Vision OCR failed for model %s", model)
+
+    return ""
 
 
 def prepare_image_for_groq(image_bytes: bytes) -> bytes:

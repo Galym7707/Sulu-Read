@@ -80,19 +80,36 @@ def normalize_text(text: str) -> str:
 
 def clean_ocr_text(raw_ocr_text: str) -> str:
     cleaned_text = raw_ocr_text
-    for old_value, new_value in OCR_TEXT_REPLACEMENTS:
-        cleaned_text = cleaned_text.replace(old_value, new_value)
 
-    cleaned_text = re.sub(r"§\s+(\d)", r"§\1", cleaned_text)
+    # "$" is a misread "§" only in Cyrillic textbook text; in English text a
+    # dollar sign is meaningful, so only substitute when Cyrillic dominates.
+    cyrillic_count = sum(1 for character in cleaned_text if character in CYRILLIC_LETTERS)
+    latin_count = sum(1 for character in cleaned_text if "a" <= character.lower() <= "z")
+    if cyrillic_count >= latin_count:
+        for old_value, new_value in OCR_TEXT_REPLACEMENTS:
+            cleaned_text = cleaned_text.replace(old_value, new_value)
+        cleaned_text = re.sub(r"§\s+(\d)", r"§\1", cleaned_text)
+
     cleaned_text = re.sub(r"(?<=\d)\s+([.,:;!?])", r"\1", cleaned_text)
     return normalize_text(cleaned_text)
+
+
+def mostly_uppercase(text: str) -> bool:
+    letters = [character for character in text if character.isalpha()]
+    if not letters:
+        return False
+    uppercase_count = sum(1 for character in letters if character.isupper())
+    return uppercase_count / len(letters) > 0.60
 
 
 def prepare_text_for_adaptation(text: str, *, source: str = "text") -> str:
     prepared_text = normalize_text(text)
     if source == "image":
         prepared_text = clean_ocr_text(prepared_text)
-        prepared_text = sentence_case_text(prepared_text.lower())
+        # Re-casing destroys names and acronyms, so only normalize when OCR
+        # returned shouting caps (typical for headings-only misreads).
+        if mostly_uppercase(prepared_text):
+            prepared_text = sentence_case_text(prepared_text.lower())
 
     prepared_text = remove_existing_syllable_markup(prepared_text)
     if source == "image":
