@@ -309,6 +309,9 @@ async def health(request: Request) -> dict[str, Any]:
         "ocr_languages": request.app.state.ocr_languages,
         "ocr_error": request.app.state.ocr_error,
         "groq_vision_ready": has_groq_vision_key(),
+        "groq_vision_models": (
+            get_groq_vision_models(get_groq_api_key())[:4] if has_groq_vision_key() else []
+        ),
     }
 
 
@@ -794,6 +797,48 @@ def has_groq_vision_key() -> bool:
     return bool(get_groq_api_key())
 
 
+GROQ_MODELS_CACHE: dict[str, list[str] | None] = {"models": None}
+
+
+def list_groq_models(api_key: str) -> list[str]:
+    cached = GROQ_MODELS_CACHE["models"]
+    if cached is not None:
+        return cached
+
+    try:
+        response = requests.get(
+            "https://api.groq.com/openai/v1/models",
+            headers={"Authorization": f"Bearer {api_key}"},
+            timeout=20,
+        )
+        response.raise_for_status()
+        model_ids = [str(item.get("id", "")) for item in response.json().get("data", [])]
+        GROQ_MODELS_CACHE["models"] = model_ids
+        logger.info("Groq models available: %s", model_ids)
+        return model_ids
+    except Exception:
+        logger.exception("Groq models listing failed")
+        return []
+
+
+def get_groq_vision_models(api_key: str) -> list[str]:
+    preferred = [model for model in dict.fromkeys([GROQ_VISION_MODEL, GROQ_VISION_FALLBACK_MODEL]) if model]
+    available = list_groq_models(api_key)
+    if not available:
+        return preferred
+
+    models = [model for model in preferred if model in available]
+    vision_markers = ("llama-4", "maverick", "scout", "vision", "llava", "-vl-", "vl-")
+    for model_id in available:
+        lowered = model_id.lower()
+        if model_id in models or "guard" in lowered or "whisper" in lowered or "tts" in lowered:
+            continue
+        if any(marker in lowered for marker in vision_markers):
+            models.append(model_id)
+
+    return models or preferred
+
+
 def get_groq_api_key() -> str:
     return (os.getenv("GROQ_API") or os.getenv("GROQ_API_KEY") or "").strip()
 
@@ -845,10 +890,7 @@ def read_text_with_groq_vision(
         logger.exception("Groq Vision image preparation failed")
         return ""
 
-    models_to_try = [GROQ_VISION_MODEL]
-    if GROQ_VISION_FALLBACK_MODEL and GROQ_VISION_FALLBACK_MODEL not in models_to_try:
-        models_to_try.append(GROQ_VISION_FALLBACK_MODEL)
-
+    models_to_try = get_groq_vision_models(api_key)[:4]
     prompt = build_groq_ocr_prompt(language_hint)
     for model in models_to_try:
         try:
