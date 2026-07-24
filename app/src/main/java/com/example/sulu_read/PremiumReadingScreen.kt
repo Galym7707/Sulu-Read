@@ -1,7 +1,5 @@
 package com.example.sulu_read
 
-import android.os.Build
-import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -86,20 +84,23 @@ import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.sulu_read.audio.applyNaturalVoice
+import com.example.sulu_read.audio.detectSpeechLanguageCode
+import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import java.util.Locale
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
 data class SyllableWord(
     val original: String,
-    val syllables: List<String>
+    val syllables: List<String>,
+    val languageHint: String? = null
 )
 
 private const val DEFAULT_LETTER_SPACING = 1.5f
@@ -948,7 +949,7 @@ private fun rememberTextToSpeechController(
 
             val initialized = status == TextToSpeech.SUCCESS
             if (initialized) {
-                engine?.applyPreferredLanguage(AppLanguage.localeFor(languageCode))
+                engine?.applyNaturalVoice(languageCode)
                 engine?.setSpeechRate(0.88f)
                 engine?.setPitch(1.0f)
                 engine?.setOnUtteranceProgressListener(
@@ -1012,8 +1013,8 @@ private fun rememberTextToSpeechController(
             return@LaunchedEffect
         }
 
-        val tracking = buildUtteranceTracking(words, startIndex)
-        if (tracking.text.isBlank()) {
+        val tracking = buildUtteranceTracking(words, startIndex, languageCode)
+        if (tracking.isEmpty) {
             state.currentPlayingWordIndex = NO_PLAYING_WORD
             return@LaunchedEffect
         }
@@ -1021,18 +1022,15 @@ private fun rememberTextToSpeechController(
         activeUtterance.set(tracking)
         rangeCallbackSeen.set(false)
         textToSpeech?.stop()
-        textToSpeech?.speakCompat(
-            text = tracking.text,
-            utteranceId = tracking.utteranceId
-        )
+        textToSpeech?.speakTracking(tracking)
 
         // Not every Android TTS engine emits onRangeStart for every language or voice.
         // This timed loop keeps highlighting usable when exact per-word callbacks are unavailable.
-        for (range in tracking.ranges) {
+        for (range in tracking.allRanges) {
             if (!isActive) {
                 return@LaunchedEffect
             }
-            if (activeUtterance.get()?.utteranceId != tracking.utteranceId) {
+            if (activeUtterance.get() !== tracking) {
                 return@LaunchedEffect
             }
             if (!rangeCallbackSeen.get()) {
@@ -1057,8 +1055,20 @@ private data class TextToSpeechController(
 )
 
 private data class UtteranceTracking(
+    val chunks: List<SpeechChunk>
+) {
+    val isEmpty: Boolean get() = chunks.all { it.text.isBlank() }
+    val allRanges: List<WordTextRange> get() = chunks.flatMap { it.ranges }
+    fun firstWordIndex(): Int? = allRanges.firstOrNull()?.wordIndex
+    fun isLastUtterance(utteranceId: String?): Boolean {
+        return utteranceId != null && chunks.lastOrNull()?.utteranceId == utteranceId
+    }
+}
+
+private data class SpeechChunk(
     val utteranceId: String,
     val text: String,
+    val languageCode: String,
     val ranges: List<WordTextRange>
 )
 
@@ -1070,12 +1080,37 @@ private data class WordTextRange(
 
 private fun buildUtteranceTracking(
     words: List<IndexedSyllableWord>,
-    startIndex: Int
+    startIndex: Int,
+    fallbackLanguageCode: String
 ): UtteranceTracking {
+    val chunks = mutableListOf<SpeechChunk>()
     val builder = StringBuilder()
     val ranges = mutableListOf<WordTextRange>()
+    var currentLanguageCode: String? = null
+
+    fun flushChunk() {
+        val languageCode = currentLanguageCode
+        val text = builder.toString().trim()
+        if (!languageCode.isNullOrBlank() && text.isNotBlank()) {
+            chunks += SpeechChunk(
+                utteranceId = "sulu-read-${System.nanoTime()}-${chunks.size}",
+                text = text,
+                languageCode = languageCode,
+                ranges = ranges.toList()
+            )
+        }
+        builder.clear()
+        ranges.clear()
+    }
 
     words.drop(startIndex).forEach { word ->
+        val wordLanguageCode = word.value.languageHint
+            ?.takeIf { it in AppLanguage.supportedCodes }
+            ?: detectSpeechLanguageCode(word.value.original, currentLanguageCode ?: fallbackLanguageCode)
+        if (currentLanguageCode != null && currentLanguageCode != wordLanguageCode) {
+            flushChunk()
+        }
+        currentLanguageCode = wordLanguageCode
         if (builder.isNotEmpty()) {
             builder.append(' ')
         }
@@ -1087,12 +1122,9 @@ private fun buildUtteranceTracking(
             endExclusive = builder.length
         )
     }
+    flushChunk()
 
-    return UtteranceTracking(
-        utteranceId = "sulu-read-${System.nanoTime()}",
-        text = builder.toString(),
-        ranges = ranges
-    )
+    return UtteranceTracking(chunks)
 }
 
 private fun buildUtteranceProgressListener(
@@ -1103,8 +1135,11 @@ private fun buildUtteranceProgressListener(
 ): UtteranceProgressListener {
     return object : UtteranceProgressListener() {
         override fun onStart(utteranceId: String?) {
-            val tracking = activeUtterance.getMatching(utteranceId) ?: return
-            val firstWord = tracking.ranges.firstOrNull()?.wordIndex ?: return
+            val firstWord = activeUtterance.getMatchingChunk(utteranceId)
+                ?.ranges
+                ?.firstOrNull()
+                ?.wordIndex
+                ?: return
             mainHandler.postPlayingWord(state, firstWord)
         }
 
@@ -1122,14 +1157,17 @@ private fun buildUtteranceProgressListener(
         }
 
         override fun onRangeStart(utteranceId: String?, start: Int, end: Int, frame: Int) {
-            val tracking = activeUtterance.getMatching(utteranceId) ?: return
-            val wordIndex = tracking.findWordIndex(start) ?: return
+            val chunk = activeUtterance.getMatchingChunk(utteranceId) ?: return
+            val wordIndex = chunk.findWordIndex(start) ?: return
             rangeCallbackSeen.set(true)
             mainHandler.postPlayingWord(state, wordIndex)
         }
 
         private fun finishUtterance(utteranceId: String?) {
-            val tracking = activeUtterance.getMatching(utteranceId) ?: return
+            val tracking = activeUtterance.get() ?: return
+            if (!tracking.isLastUtterance(utteranceId)) {
+                return
+            }
             activeUtterance.compareAndSet(tracking, null)
             rangeCallbackSeen.set(false)
             mainHandler.postPlayingWord(state, NO_PLAYING_WORD)
@@ -1137,11 +1175,14 @@ private fun buildUtteranceProgressListener(
     }
 }
 
-private fun AtomicReference<UtteranceTracking?>.getMatching(utteranceId: String?): UtteranceTracking? {
-    return get()?.takeIf { it.utteranceId == utteranceId }
+private fun AtomicReference<UtteranceTracking?>.getMatchingChunk(utteranceId: String?): SpeechChunk? {
+    if (utteranceId == null) {
+        return null
+    }
+    return get()?.chunks?.firstOrNull { it.utteranceId == utteranceId }
 }
 
-private fun UtteranceTracking.findWordIndex(rangeStart: Int): Int? {
+private fun SpeechChunk.findWordIndex(rangeStart: Int): Int? {
     return ranges.firstOrNull { range ->
         rangeStart >= range.startInclusive && rangeStart < range.endExclusive
     }?.wordIndex ?: ranges.lastOrNull { range ->
@@ -1155,25 +1196,14 @@ private fun Handler.postPlayingWord(state: ReadingScreenState, wordIndex: Int) {
     }
 }
 
-private fun TextToSpeech.applyPreferredLanguage(selectedLocale: Locale) {
-    val preferredLocales = listOf(
-        selectedLocale,
-        Locale.getDefault()
-    ).distinctBy { it.toLanguageTag() }
-    val supportedLocale = preferredLocales.firstOrNull { locale ->
-        isLanguageAvailable(locale) >= TextToSpeech.LANG_AVAILABLE
-    }
-    if (supportedLocale != null) {
-        language = supportedLocale
-    }
-}
-
-private fun TextToSpeech.speakCompat(text: String, utteranceId: String) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-        speak(text, TextToSpeech.QUEUE_FLUSH, Bundle(), utteranceId)
-    } else {
-        @Suppress("DEPRECATION")
-        speak(text, TextToSpeech.QUEUE_FLUSH, null)
+private fun TextToSpeech.speakTracking(tracking: UtteranceTracking) {
+    tracking.chunks.forEachIndexed { index, chunk ->
+        applyNaturalVoice(chunk.languageCode)
+        speakCompat(
+            text = chunk.text,
+            queueMode = if (index == 0) TextToSpeech.QUEUE_FLUSH else TextToSpeech.QUEUE_ADD,
+            utteranceId = chunk.utteranceId
+        )
     }
 }
 

@@ -6,7 +6,6 @@ import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.FitnessCenter
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.TrackChanges
 import androidx.compose.material3.Icon
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
@@ -19,6 +18,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -32,8 +32,6 @@ import com.example.sulu_read.ui.screens.ProgressScreen
 import com.example.sulu_read.ui.screens.ProgressViewModel
 import com.example.sulu_read.ui.screens.ProfileScreen
 import com.example.sulu_read.ui.screens.ReaderScreen
-import com.example.sulu_read.ui.screens.ScreeningScreen
-import com.example.sulu_read.ui.screens.ScreeningViewModel
 import com.example.sulu_read.ui.screens.SuluReadViewModelFactory
 import com.example.sulu_read.ui.screens.TrainingScreen
 import com.example.sulu_read.ui.screens.TrainingViewModel
@@ -44,7 +42,6 @@ import com.example.sulu_read.R
 private enum class SuluDestination(val route: String, val labelRes: Int) {
     Reader("reader", R.string.nav_reader),
     Training("training", R.string.nav_training),
-    Screening("screening", R.string.nav_screening),
     Progress("progress", R.string.nav_progress),
     Settings("settings", R.string.nav_settings)
 }
@@ -82,14 +79,20 @@ fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
                                 imageVector = when (destination) {
                                     SuluDestination.Reader -> Icons.AutoMirrored.Filled.MenuBook
                                     SuluDestination.Training -> Icons.Default.FitnessCenter
-                                    SuluDestination.Screening -> Icons.Default.TrackChanges
                                     SuluDestination.Progress -> Icons.Default.Analytics
                                     SuluDestination.Settings -> Icons.Default.Settings
                                 },
                                 contentDescription = label
                             )
                         },
-                        label = { Text(label) }
+                        label = {
+                            Text(
+                                text = label,
+                                maxLines = 1,
+                                softWrap = false,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
                     )
                 }
             }
@@ -121,13 +124,6 @@ fun SuluReadNavGraph(repository: SuluReadRepository, languageCode: String) {
                     onRetryProfile = mainViewModel::ensureUser,
                     sourceWords = trainingSourceWords,
                     languageCode = languageCode,
-                    viewModel = viewModel
-                )
-            }
-            composable(SuluDestination.Screening.route) {
-                val viewModel: ScreeningViewModel = viewModel(factory = factory)
-                ScreeningScreen(
-                    userId = user?.userId,
                     viewModel = viewModel
                 )
             }

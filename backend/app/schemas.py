@@ -11,6 +11,7 @@ ExerciseType = Literal[
     "missing_syllable",
     "word_to_syllables",
     "auditory_match",
+    "word_recognition",
     "root_suffix_identification",
     "word_segmentation",
 ]
@@ -70,7 +71,7 @@ class GenerateExerciseRequest(BaseModel):
     user_id: str
     source_words: list[str] = Field(default_factory=list)
     exercise_type: ExerciseType = Field(default="mixed")
-    count: int = Field(default=5, ge=1, le=10)
+    count: int = Field(default=6, ge=1, le=10)
     language_hint: str = Field(default="kk", max_length=20)
 
 

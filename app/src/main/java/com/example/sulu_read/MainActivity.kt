@@ -1499,7 +1499,8 @@ private object SuluReadApiClient {
 
             SyllableWord(
                 original = original,
-                syllables = syllables.ifEmpty { listOf(original) }
+                syllables = syllables.ifEmpty { listOf(original) },
+                languageHint = item.optString("language_hint").ifBlank { null }
             )
         }
     }

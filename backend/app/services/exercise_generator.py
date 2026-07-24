@@ -3,6 +3,9 @@ import re
 from uuid import uuid4
 
 from .syllabification import (
+    ENGLISH_VOWELS,
+    KAZAKH_VOWELS,
+    RUSSIAN_VOWELS,
     STANDARD_SYLLABLE_DELIMITER,
     detect_language,
     prepare_word_features,
@@ -21,6 +24,16 @@ KAZAKH_PRACTICE_WORD_BANK = [
     "оқушы",
     "дәптер",
     "достар",
+    "терезе",
+    "мұғалім",
+    "отбасы",
+    "жаңбыр",
+    "аспан",
+    "қалам",
+    "орман",
+    "әдемі",
+    "жолдас",
+    "сурет",
 ]
 RUSSIAN_PRACTICE_WORD_BANK = [
     "учитель",
@@ -31,6 +44,18 @@ RUSSIAN_PRACTICE_WORD_BANK = [
     "страница",
     "помощь",
     "внимание",
+    "книга",
+    "школа",
+    "дорога",
+    "молоко",
+    "весна",
+    "друзья",
+    "солнце",
+    "улица",
+    "письмо",
+    "рисунок",
+    "праздник",
+    "зима",
 ]
 PRACTICE_WORD_BANK = [
     *KAZAKH_PRACTICE_WORD_BANK,
@@ -47,16 +72,62 @@ ENGLISH_PRACTICE_WORD_BANK = [
     "helpful",
     "student",
     "library",
+    "animal",
+    "basic",
+    "music",
+    "story",
+    "paper",
+    "lesson",
+    "morning",
+    "friend",
+    "letter",
+    "picture",
 ]
 MORPHOLOGY_EXERCISE_TYPES = ("root_suffix_identification", "word_segmentation")
 EXERCISE_TYPES = (
-    "syllable_order",
-    "missing_syllable",
-    "word_to_syllables",
     "auditory_match",
+    "missing_syllable",
+    "syllable_order",
+    "word_to_syllables",
+    "word_recognition",
     *MORPHOLOGY_EXERCISE_TYPES,
 )
-SYLLABLE_DISTRACTORS = ["ба", "ла", "ма", "ры", "ға", "де", "не", "қа", "тан", "дар", "по", "ра"]
+# Frequent syllables per language used only as a last-resort distractor pool.
+SYLLABLE_DISTRACTORS_BY_LANGUAGE = {
+    "kk": ["ба", "ла", "ма", "ры", "ға", "де", "не", "қа", "тан", "дар", "мыз", "лер"],
+    "ru": ["по", "ра", "ло", "ни", "ка", "те", "ва", "ми", "со", "ре", "ду", "ста"],
+    "en": ["ing", "er", "le", "re", "an", "ish", "ton", "ent", "ly", "ted"],
+}
+# Letters that children with dyslexia most often confuse visually
+# (mirrored, rotated, or graphically similar shapes).
+VISUAL_CONFUSIONS_CYRILLIC = {
+    "б": "д", "д": "б",
+    "п": "т", "т": "п",
+    "и": "н", "н": "и",
+    "ш": "щ", "щ": "ш",
+    "л": "м", "м": "л",
+    "о": "а", "а": "о",
+    "з": "э", "э": "з",
+    "ц": "щ",
+    "ж": "х", "х": "ж",
+}
+VISUAL_CONFUSIONS_KAZAKH_EXTRA = {
+    "г": "ғ", "ғ": "г",
+    "к": "қ", "қ": "к",
+    "у": "ү", "ү": "ұ", "ұ": "у",
+    "ө": "о", "ә": "а", "і": "и", "ң": "н",
+}
+VISUAL_CONFUSIONS_KAZAKH = {**VISUAL_CONFUSIONS_CYRILLIC, **VISUAL_CONFUSIONS_KAZAKH_EXTRA}
+VISUAL_CONFUSIONS_LATIN = {
+    "b": "d", "d": "b",
+    "p": "q", "q": "p",
+    "m": "n", "n": "u", "u": "n",
+    "i": "l", "l": "i",
+    "a": "o", "o": "a",
+    "v": "w", "w": "v",
+    "f": "t", "t": "f",
+    "e": "c", "c": "e",
+}
 LATIN_WORD_PATTERN = re.compile(r"[A-Za-z]+")
 NUMERIC_TOKEN_PATTERN = re.compile(r"\d+(?:[.,]\d+)?")
 WORD_TOKEN_PATTERN = re.compile(r"[\w'-]+", re.UNICODE)
@@ -312,6 +383,8 @@ def is_valid_word_for_exercise_type(word: str, exercise_type: str, difficulty_le
         return is_valid_syllable_order_word(word)
     if exercise_type in MORPHOLOGY_EXERCISE_TYPES:
         return bool(split_root_suffixes(word)[1])
+    if exercise_type == "word_recognition" and len(word) < 4:
+        return False
     features = prepare_word_features(word)
     return is_word_allowed_for_difficulty(features.syllables, difficulty_level)
 
@@ -346,6 +419,8 @@ def build_exercise(
         return build_word_to_syllables(features, difficulty_level, rng, language_hint)
     if exercise_type == "auditory_match":
         return build_auditory_match(features, difficulty_level, rng, language_hint)
+    if exercise_type == "word_recognition":
+        return build_word_recognition(features, difficulty_level, rng, language_hint)
     if exercise_type == "root_suffix_identification":
         return build_root_suffix_identification(features, difficulty_level, rng, language_hint)
     if exercise_type == "word_segmentation":
@@ -427,6 +502,11 @@ def prompt_for(exercise_type: str, language_hint: str, target: str | None = None
             "ru": "Послушай и выбери слово",
             "kk": "Тыңдап, дұрыс сөзді таңда",
         },
+        "word_recognition": {
+            "en": "Find the correctly written word",
+            "ru": "Найди правильно написанное слово",
+            "kk": "Дұрыс жазылған сөзді тап",
+        },
     }
     return prompts.get(exercise_type, prompts["syllable_order"])[language]
 
@@ -493,7 +573,7 @@ def build_missing_syllable(features, difficulty_level: int, rng: random.Random, 
     prompt_syllables = syllables[:]
     prompt_syllables[missing_index] = "__"
     correct_answer = syllables[missing_index]
-    options = build_unique_options(correct_answer, difficulty_level, rng)
+    options = build_syllable_distractors(features, correct_answer, difficulty_level, rng, language_hint)
     return {
         "exercise_id": str(uuid4()),
         "type": "missing_syllable",
@@ -535,43 +615,189 @@ def build_word_to_syllables(features, difficulty_level: int, rng: random.Random,
 
 
 def build_auditory_match(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
+    word = features.original
+    # Near-miss words force the reader to check every letter instead of
+    # recognising the word by its first letters or overall shape.
+    near_words = make_near_word_distractors(word, rng, limit=2)
     same_language_words = [
-        word
-        for word in practice_bank_for_language(language_hint)
-        if word.lower() != features.original.lower() and detect_language(word) == features.language_hint
+        bank_word
+        for bank_word in practice_bank_for_language(language_hint)
+        if bank_word.lower() != word.lower()
+        and bank_word.lower() not in {near.lower() for near in near_words}
     ]
-    if not same_language_words:
-        same_language_words = [
-            word
-            for word in practice_bank_for_language(language_hint)
-            if word.lower() != features.original.lower()
-        ]
     rng.shuffle(same_language_words)
-    options = [features.original, *same_language_words[:3]]
+    options = [word, *near_words, *same_language_words]
+    options = dedupe_preserving_case(options)[:4]
     rng.shuffle(options)
     return {
         "exercise_id": str(uuid4()),
         "type": "auditory_match",
         "prompt": prompt_for("auditory_match", language_hint),
-        "target_word": features.original,
+        "target_word": word,
         "syllables": features.syllables,
         "options": options,
-        "correct_answer": features.original,
+        "correct_answer": word,
         "difficulty_level": difficulty_level,
         "language_hint": normalize_language_hint(language_hint),
     }
 
 
-def build_unique_options(correct_answer: str, difficulty_level: int, rng: random.Random) -> list[str]:
-    options = {correct_answer}
-    distractors = SYLLABLE_DISTRACTORS[:]
-    rng.shuffle(distractors)
-    for distractor in distractors:
-        if distractor != correct_answer:
-            options.add(distractor)
-        if len(options) >= min(4, max(3, difficulty_level)):
+def build_word_recognition(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
+    word = features.original
+    distractors = make_near_word_distractors(word, rng, limit=3)
+    options = dedupe_preserving_case([word, *distractors])[:4]
+    rng.shuffle(options)
+    return {
+        "exercise_id": str(uuid4()),
+        "type": "word_recognition",
+        "prompt": prompt_for("word_recognition", language_hint),
+        "target_word": word,
+        "syllables": features.syllables,
+        "options": options,
+        "correct_answer": word,
+        "difficulty_level": difficulty_level,
+        "language_hint": normalize_language_hint(language_hint),
+    }
+
+
+def vowel_set_for(word: str) -> set[str]:
+    language = detect_language(word)
+    if language == "en":
+        return {vowel.lower() for vowel in ENGLISH_VOWELS}
+    if language == "ru":
+        return {vowel.lower() for vowel in RUSSIAN_VOWELS}
+    return {vowel.lower() for vowel in KAZAKH_VOWELS}
+
+
+def confusion_map_for(word: str) -> dict[str, str]:
+    language = detect_language(word)
+    if language == "en":
+        return VISUAL_CONFUSIONS_LATIN
+    if language == "kk":
+        return VISUAL_CONFUSIONS_KAZAKH
+    return VISUAL_CONFUSIONS_CYRILLIC
+
+
+def match_case(template: str, replacement: str) -> str:
+    return replacement.upper() if template.isupper() else replacement
+
+
+def dedupe_preserving_case(values: list[str]) -> list[str]:
+    seen: set[str] = set()
+    unique: list[str] = []
+    for value in values:
+        key = value.lower()
+        if key in seen or not value:
+            continue
+        seen.add(key)
+        unique.append(value)
+    return unique
+
+
+def make_near_word_distractors(word: str, rng: random.Random, limit: int = 3) -> list[str]:
+    """Build plausible misspellings that mirror typical dyslexic reading errors:
+    swapped adjacent letters, visually confusable letters, and dropped letters."""
+    confusions = confusion_map_for(word)
+    candidates: list[str] = []
+
+    # 1. Adjacent-letter transpositions (sequencing errors).
+    transpositions = list(range(len(word) - 1))
+    rng.shuffle(transpositions)
+    for index in transpositions:
+        if word[index].lower() == word[index + 1].lower():
+            continue
+        candidates.append(word[:index] + word[index + 1] + word[index] + word[index + 2:])
+
+    # 2. Visually confusable letter substitutions (mirror/shape errors).
+    positions = list(range(len(word)))
+    rng.shuffle(positions)
+    for index in positions:
+        replacement = confusions.get(word[index].lower())
+        if replacement is None:
+            continue
+        candidates.append(word[:index] + match_case(word[index], replacement) + word[index + 1:])
+
+    # 3. A dropped letter (omission errors) for longer words.
+    if len(word) >= 5:
+        drop_index = rng.randrange(1, len(word) - 1)
+        candidates.append(word[:drop_index] + word[drop_index + 1:])
+
+    unique: list[str] = []
+    seen = {word.lower()}
+    for candidate in candidates:
+        key = candidate.lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(candidate)
+        if len(unique) >= limit:
             break
-    option_list = list(options)
+    return unique
+
+
+def build_syllable_distractors(
+    features,
+    correct_answer: str,
+    difficulty_level: int,
+    rng: random.Random,
+    language_hint: str,
+) -> list[str]:
+    """Distractors for the missing syllable: other syllables of the same word,
+    vowel-swapped variants, and visually confusable variants — all in the word's
+    own language instead of a fixed foreign-syllable list."""
+    options = {correct_answer}
+    target_count = min(4, max(3, difficulty_level))
+
+    # 1. Other syllables of the same word (forces attention to position).
+    other_syllables = [
+        syllable for syllable in features.syllables
+        if syllable.lower() != correct_answer.lower()
+    ]
+    rng.shuffle(other_syllables)
+    for syllable in other_syllables[:1]:
+        options.add(syllable)
+
+    # 2. Vowel-swapped variants of the correct syllable (а↔о, е↔и ...).
+    vowels = sorted(vowel_set_for(features.original))
+    positions = list(range(len(correct_answer)))
+    rng.shuffle(positions)
+    for index in positions:
+        if len(options) >= target_count:
+            break
+        character = correct_answer[index]
+        if character.lower() not in vowels:
+            continue
+        replacements = [vowel for vowel in vowels if vowel != character.lower()]
+        rng.shuffle(replacements)
+        for replacement in replacements[:2]:
+            variant = correct_answer[:index] + match_case(character, replacement) + correct_answer[index + 1:]
+            if variant.lower() != correct_answer.lower():
+                options.add(variant)
+            if len(options) >= target_count:
+                break
+
+    # 3. Visually confusable consonant variant.
+    if len(options) < target_count:
+        confusions = confusion_map_for(features.original)
+        for index, character in enumerate(correct_answer):
+            replacement = confusions.get(character.lower())
+            if replacement is None:
+                continue
+            options.add(correct_answer[:index] + match_case(character, replacement) + correct_answer[index + 1:])
+            if len(options) >= target_count:
+                break
+
+    # 4. Last resort: frequent syllables of the same language.
+    if len(options) < target_count:
+        fallback = SYLLABLE_DISTRACTORS_BY_LANGUAGE[normalize_language_hint(language_hint)][:]
+        rng.shuffle(fallback)
+        for distractor in fallback:
+            if distractor.lower() != correct_answer.lower():
+                options.add(distractor)
+            if len(options) >= target_count:
+                break
+
+    option_list = dedupe_preserving_case(list(options))
     rng.shuffle(option_list)
     return option_list
 

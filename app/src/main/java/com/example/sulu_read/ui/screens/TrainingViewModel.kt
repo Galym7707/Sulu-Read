@@ -40,7 +40,7 @@ class TrainingViewModel(private val repository: SuluReadRepository) : ViewModel(
         }
     }
 
-    fun start(userId: String, sourceWords: List<String>, languageCode: String, count: Int = 5) {
+    fun start(userId: String, sourceWords: List<String>, languageCode: String, count: Int = 6) {
         viewModelScope.launch {
             _state.value = UiState.Loading
             _state.value = runCatching {
