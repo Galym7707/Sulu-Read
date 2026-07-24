@@ -5,6 +5,7 @@ import logging
 import os
 import re
 import tempfile
+import time
 from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Annotated, Any
@@ -76,11 +77,11 @@ OCR_MAX_IMAGE_SIDE = int(os.getenv("SULU_READ_OCR_MAX_IMAGE_SIDE", "2600"))
 GROQ_TIMEOUT_SECONDS = float(os.getenv("SULU_READ_GROQ_TIMEOUT_SECONDS", "90"))
 GROQ_VISION_MODEL = os.getenv(
     "SULU_READ_GROQ_VISION_MODEL",
-    "meta-llama/llama-4-maverick-17b-128e-instruct",
+    "qwen/qwen3.6-27b",
 )
 GROQ_VISION_FALLBACK_MODEL = os.getenv(
     "SULU_READ_GROQ_VISION_FALLBACK_MODEL",
-    "meta-llama/llama-4-scout-17b-16e-instruct",
+    "meta-llama/llama-4-maverick-17b-128e-instruct",
 )
 GROQ_MAX_IMAGE_SIDE = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_SIDE", "1800"))
 GROQ_MAX_IMAGE_BYTES = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_BYTES", str(2_800_000)))
@@ -358,15 +359,19 @@ async def adapt_image(
         temp_path = write_temp_image(image_bytes, file.filename)
 
         if has_groq_vision_key():
-            extracted_text = await asyncio.wait_for(
-                asyncio.to_thread(
-                    read_text_with_groq_vision,
-                    image_bytes,
-                    file.filename,
-                    language_hint,
-                ),
-                timeout=GROQ_TIMEOUT_SECONDS,
-            )
+            try:
+                extracted_text = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        read_text_with_groq_vision,
+                        image_bytes,
+                        file.filename,
+                        language_hint,
+                    ),
+                    timeout=GROQ_TIMEOUT_SECONDS + 30,
+                )
+            except asyncio.TimeoutError:
+                logger.warning("Groq Vision OCR timed out; falling back to EasyOCR")
+                extracted_text = ""
 
         if not extracted_text and request.app.state.ocr_reader is not None:
             logger.info("Groq Vision did not extract enough text; using EasyOCR fallback")
@@ -828,7 +833,7 @@ def get_groq_vision_models(api_key: str) -> list[str]:
         return preferred
 
     models = [model for model in preferred if model in available]
-    vision_markers = ("llama-4", "maverick", "scout", "vision", "llava", "-vl-", "vl-")
+    vision_markers = ("qwen3.6", "llama-4", "maverick", "scout", "vision", "llava", "omni", "-vl-", "vl-")
     for model_id in available:
         lowered = model_id.lower()
         if model_id in models or "guard" in lowered or "whisper" in lowered or "tts" in lowered:
@@ -892,38 +897,83 @@ def read_text_with_groq_vision(
 
     models_to_try = get_groq_vision_models(api_key)[:4]
     prompt = build_groq_ocr_prompt(language_hint)
+    for attempt in range(2):
+        result = _try_groq_vision_models(api_key, models_to_try, prompt, image_base64, filename)
+        if isinstance(result, str):
+            return result
+        # result is True when at least one model hit a rate limit (413/429)
+        if not result or attempt == 1:
+            break
+        logger.info("Groq Vision rate-limited; retrying once after backoff")
+        time.sleep(18)
+
+    return ""
+
+
+def _try_groq_vision_models(
+    api_key: str,
+    models_to_try: list[str],
+    prompt: str,
+    image_base64: str,
+    filename: str | None,
+) -> str | bool:
+    saw_rate_limit = False
     for model in models_to_try:
         try:
+            body: dict[str, Any] = {
+                "model": model,
+                "temperature": 0,
+                # Keep the completion budget small: Groq's rate limiter counts
+                # prompt estimate + max_completion_tokens against the TPM cap.
+                "max_completion_tokens": 3000,
+                "response_format": {"type": "json_object"},
+                "messages": [
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": f"data:image/jpeg;base64,{image_base64}",
+                                },
+                            },
+                        ],
+                    }
+                ],
+            }
+            if "qwen" in model.lower():
+                # Disable thinking so the budget goes to the transcription.
+                body["reasoning_effort"] = "none"
+
             response = requests.post(
                 "https://api.groq.com/openai/v1/chat/completions",
                 headers={
                     "Authorization": f"Bearer {api_key}",
                     "Content-Type": "application/json",
                 },
-                json={
-                    "model": model,
-                    "temperature": 0,
-                    "max_completion_tokens": 4096,
-                    "response_format": {"type": "json_object"},
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": [
-                                {"type": "text", "text": prompt},
-                                {
-                                    "type": "image_url",
-                                    "image_url": {
-                                        "url": f"data:image/jpeg;base64,{image_base64}",
-                                    },
-                                },
-                            ],
-                        }
-                    ],
-                },
-                timeout=GROQ_TIMEOUT_SECONDS,
+                json=body,
+                timeout=min(GROQ_TIMEOUT_SECONDS, 60.0),
             )
+            if (
+                response.status_code == 400
+                and "reasoning_effort" in body
+                and "reasoning" in response.text.lower()
+            ):
+                del body["reasoning_effort"]
+                response = requests.post(
+                    "https://api.groq.com/openai/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                    timeout=min(GROQ_TIMEOUT_SECONDS, 60.0),
+                )
 
             if response.status_code >= 400:
+                if response.status_code in (413, 429):
+                    saw_rate_limit = True
                 logger.warning(
                     "Groq Vision OCR (%s) failed with status %s: %s",
                     model,
@@ -957,7 +1007,7 @@ def read_text_with_groq_vision(
         except Exception:
             logger.exception("Groq Vision OCR failed for model %s", model)
 
-    return ""
+    return saw_rate_limit
 
 
 def prepare_image_for_groq(image_bytes: bytes) -> bytes:
@@ -1010,7 +1060,8 @@ def resize_to_max_side(image: np.ndarray, max_side: int) -> np.ndarray:
 
 
 def extract_groq_text_content(content: str) -> str:
-    cleaned = content.strip()
+    # Reasoning models (e.g. qwen3.x) may prepend a <think>...</think> block.
+    cleaned = re.sub(r"<think>.*?</think>", "", content, flags=re.DOTALL).strip()
     if cleaned.startswith("```"):
         cleaned = re.sub(r"^```(?:json)?", "", cleaned, flags=re.IGNORECASE).strip()
         cleaned = re.sub(r"```$", "", cleaned).strip()
