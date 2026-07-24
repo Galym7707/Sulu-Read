@@ -4,6 +4,7 @@ from dataclasses import dataclass
 
 RUSSIAN_VOWELS = set("аеёиоуыэюяАЕЁИОУЫЭЮЯ")
 KAZAKH_VOWELS = set("аәеёиоөұүыіуАӘЕЁИОӨҰҮЫІУ")
+ENGLISH_VOWELS = set("aeiouyAEIOUY")
 ALL_CYRILLIC_VOWELS = RUSSIAN_VOWELS | KAZAKH_VOWELS
 KAZAKH_FRONT_VOWELS = set("әеөүіӘЕӨҮІ")
 KAZAKH_BACK_VOWELS = set("аоұыАОҰЫ")
@@ -45,6 +46,18 @@ SPECIAL_SYLLABLES = {
     "сұлтандарға": ["сұл", "тан", "дар", "ға"],
     "қарапайым": ["қа", "ра", "па", "йым"],
     "денесіне": ["де", "не", "сі", "не"],
+}
+ENGLISH_SPECIAL_SYLLABLES = {
+    "reading": ["read", "ing"],
+    "teacher": ["teach", "er"],
+    "pencil": ["pen", "cil"],
+    "window": ["win", "dow"],
+    "simple": ["sim", "ple"],
+    "garden": ["gar", "den"],
+    "family": ["fam", "i", "ly"],
+    "helpful": ["help", "ful"],
+    "student": ["stu", "dent"],
+    "library": ["li", "bra", "ry"],
 }
 
 
@@ -154,6 +167,8 @@ def detect_language(word: str) -> str:
         return "kk"
     if any(character in CYRILLIC_LETTERS for character in word):
         return "ru"
+    if word.isascii() and any(character.isalpha() for character in word):
+        return "en"
     return "unknown"
 
 
@@ -210,6 +225,54 @@ def split_kazakh_russian_syllables(word: str) -> list[str]:
     return syllables or [clean_word]
 
 
+def split_english_syllables(word: str) -> list[str]:
+    clean_word = remove_existing_syllable_markup(word)
+    special = ENGLISH_SPECIAL_SYLLABLES.get(clean_word.lower())
+    if special is not None:
+        return apply_word_casing(clean_word, special)
+
+    vowel_groups: list[tuple[int, int]] = []
+    index = 0
+    while index < len(clean_word):
+        if clean_word[index] not in ENGLISH_VOWELS:
+            index += 1
+            continue
+        start = index
+        while index + 1 < len(clean_word) and clean_word[index + 1] in ENGLISH_VOWELS:
+            index += 1
+        vowel_groups.append((start, index))
+        index += 1
+
+    if len(vowel_groups) <= 1:
+        return [clean_word]
+
+    split_indices: list[int] = []
+    for (_, left_vowel_end), (right_vowel_start, _) in zip(vowel_groups, vowel_groups[1:]):
+        consonant_cluster_length = right_vowel_start - left_vowel_end - 1
+        if consonant_cluster_length <= 0:
+            split_index = left_vowel_end + 1
+        elif consonant_cluster_length == 1:
+            split_index = left_vowel_end + 1
+        else:
+            split_index = left_vowel_end + 2
+        if 0 < split_index < len(clean_word):
+            split_indices.append(split_index)
+
+    syllables: list[str] = []
+    start = 0
+    for split_index in sorted(set(split_indices)):
+        syllable = clean_word[start:split_index]
+        if syllable:
+            syllables.append(syllable)
+        start = split_index
+
+    tail = clean_word[start:]
+    if tail:
+        syllables.append(tail)
+
+    return syllables or [clean_word]
+
+
 def choose_split_index(left_vowel: int, right_vowel: int, consonant_cluster_length: int) -> int:
     if consonant_cluster_length <= 1:
         return left_vowel + 1
@@ -226,8 +289,8 @@ def apply_word_casing(word: str, lowercase_syllables: list[str]) -> list[str]:
 
 
 def prepare_word_features(word: str) -> WordFeatures:
-    syllables = split_kazakh_russian_syllables(word)
     language = detect_language(word)
+    syllables = split_english_syllables(word) if language == "en" else split_kazakh_russian_syllables(word)
     return WordFeatures(
         original=word,
         adapted=STANDARD_SYLLABLE_DELIMITER.join(syllables),
@@ -240,7 +303,7 @@ def prepare_word_features(word: str) -> WordFeatures:
 def adapt_text(text: str) -> str:
     adapted_tokens: list[str] = []
     for token in TOKEN_PATTERN.findall(text):
-        if any(character in CYRILLIC_LETTERS for character in token):
+        if any(character in CYRILLIC_LETTERS for character in token) or (token.isascii() and token.isalpha()):
             adapted_tokens.append(prepare_word_features(token).adapted)
         else:
             adapted_tokens.append(token)

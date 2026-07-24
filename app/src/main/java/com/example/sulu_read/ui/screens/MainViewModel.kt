@@ -100,7 +100,6 @@ class SuluReadViewModelFactory(
             modelClass.isAssignableFrom(MainViewModel::class.java) -> MainViewModel(repository) as T
             modelClass.isAssignableFrom(AiHelpViewModel::class.java) -> AiHelpViewModel(repository) as T
             modelClass.isAssignableFrom(TrainingViewModel::class.java) -> TrainingViewModel(repository) as T
-            modelClass.isAssignableFrom(ScreeningViewModel::class.java) -> ScreeningViewModel(repository) as T
             modelClass.isAssignableFrom(ProgressViewModel::class.java) -> ProgressViewModel(repository) as T
             modelClass.isAssignableFrom(ProfileViewModel::class.java) -> ProfileViewModel(repository) as T
             else -> throw IllegalArgumentException("Unknown ViewModel class: ${modelClass.name}")

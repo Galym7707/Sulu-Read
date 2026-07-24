@@ -1,4 +1,5 @@
 from backend.app.services.exercise_generator import generate_exercises, is_roman_numeral, split_root_suffixes
+from backend.app.services.syllabification import prepare_word_features
 
 
 def test_generate_mixed_exercises_from_source_words():
@@ -41,7 +42,7 @@ def test_generate_mixed_level_one_includes_word_to_syllables_without_hanging():
     )
 
     assert len(exercises) == 4
-    word_to_syllables = exercises[2]
+    word_to_syllables = next(exercise for exercise in exercises if exercise["type"] == "word_to_syllables")
     assert word_to_syllables["type"] == "word_to_syllables"
     assert len(word_to_syllables["options"]) == 4
     assert word_to_syllables["correct_answer"] in word_to_syllables["options"]
@@ -58,6 +59,26 @@ def test_generate_english_exercises_when_language_hint_is_english():
 
     assert len(exercises) == 3
     assert all(exercise["target_word"].isascii() for exercise in exercises)
+
+
+def test_english_words_are_split_into_readable_syllables():
+    features = prepare_word_features("reading")
+
+    assert features.language_hint == "en"
+    assert features.syllables == ["read", "ing"]
+
+    exercises = generate_exercises(
+        source_words=["reading"],
+        exercise_type="syllable_order",
+        count=1,
+        difficulty_level=2,
+        language_hint="en",
+    )
+
+    exercise = exercises[0]
+    assert exercise["type"] == "syllable_order"
+    assert exercise["correct_answer"] == "read-ing"
+    assert sorted(exercise["options"]) == ["ing", "read"]
 
 
 def test_split_root_suffixes_for_kazakh_agglutinative_word():
@@ -96,6 +117,54 @@ def test_generate_word_segmentation_exercise():
     assert exercise["target_word"] == "ларымызға"
     assert exercise["correct_answer"] == "бала"
     assert "бала" in exercise["options"]
+
+
+def test_generate_word_recognition_exercise():
+    exercises = generate_exercises(
+        source_words=["страница"],
+        exercise_type="word_recognition",
+        count=1,
+        difficulty_level=3,
+        language_hint="ru",
+    )
+
+    exercise = exercises[0]
+    assert exercise["type"] == "word_recognition"
+    assert exercise["correct_answer"] == "страница"
+    assert exercise["correct_answer"] in exercise["options"]
+    assert len(exercise["options"]) >= 3
+    lowered = [option.lower() for option in exercise["options"]]
+    assert len(set(lowered)) == len(lowered)
+
+
+def test_missing_syllable_distractors_stay_in_word_language():
+    exercises = generate_exercises(
+        source_words=["страница"],
+        exercise_type="missing_syllable",
+        count=1,
+        difficulty_level=3,
+        language_hint="ru",
+    )
+
+    exercise = exercises[0]
+    assert exercise["correct_answer"] in exercise["options"]
+    assert len(exercise["options"]) >= 3
+    kazakh_only_letters = set("ғқңөұүәһі")
+    for option in exercise["options"]:
+        assert not (kazakh_only_letters & set(option.lower()))
+
+
+def test_mixed_session_includes_word_recognition():
+    exercises = generate_exercises(
+        source_words=["страница", "внимание", "учитель", "тетрадь", "чтение", "помощь"],
+        exercise_type="mixed",
+        count=6,
+        difficulty_level=3,
+        language_hint="ru",
+    )
+
+    assert len(exercises) == 6
+    assert any(exercise["type"] == "word_recognition" for exercise in exercises)
 
 
 def test_roman_numerals_are_filtered_from_source_words():
