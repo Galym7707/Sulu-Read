@@ -99,6 +99,16 @@ CYRILLIC_LETTERS = set(
 )
 LATIN_LETTERS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
+OCR_ALLOWLIST = (
+    "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+    "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+    "әғқңөұүһіӘҒҚҢӨҰҮҺІ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    " .,:;!?()[]«»\"'-–—/%№§+=*"
+)
+
 LETTER_CLASS = "A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі"
 STANDARD_SYLLABLE_DELIMITER = "-"
 SECONDARY_SYLLABLE_DIVIDERS = "·•∙⋅●"
@@ -564,6 +574,7 @@ def read_text_from_image(reader: Any, image_path: str) -> str:
                     text_threshold=0.45,
                     low_text=0.25,
                     link_threshold=0.25,
+                    allowlist=OCR_ALLOWLIST,
                 )
             except TypeError:
                 ocr_result = reader.readtext(candidate_path, detail=1, paragraph=False)
@@ -868,9 +879,12 @@ def build_groq_ocr_prompt(language_hint: str) -> str:
         + hint_sentence +
         "Extract ONLY the text that is actually printed in the image, exactly as written. "
         "Kazakh uses these extra Cyrillic letters: Әә Ғғ Ққ Ңң Өө Ұұ Үү Һһ Іі — reproduce "
-        "them exactly and NEVER replace them with similar Russian letters (қ is not к, "
-        "ә is not а, ө is not о, ұ/ү is not у, і is not и, ғ is not г, ң is not н). "
-        "Never swap Latin letters for Cyrillic lookalikes or vice versa. "
+        "them exactly. These pairs are DIFFERENT letters and must never be substituted "
+        "for one another: қ≠к, ғ≠г, ә≠а, ө≠о, ұ≠у, ү≠у, і≠и, ң≠н, һ≠х. "
+        "When a Kazakh word contains қ or ғ its vowels are а, о, ұ, ы; when it contains "
+        "к or г its vowels are ә, ө, ү, е, і. Use this to disambiguate blurred letters. "
+        "A Cyrillic word must contain no Latin letters, and a Latin word no Cyrillic "
+        "letters — never mix lookalikes such as a/а, c/с, e/е, o/о, p/р, x/х, y/у. "
         "Keep the original letter case, punctuation, and line breaks where useful. "
         "Do not summarize, translate, explain, answer questions, or invent missing words. "
         "Ignore page shadows, fingers, table edges, UI elements, and neighboring pages. "
