@@ -44,18 +44,6 @@ LATIN_TO_CYRILLIC = {
 }
 CYRILLIC_TO_LATIN = {value: key for key, value in LATIN_TO_CYRILLIC.items()}
 
-RUSSIAN_ONLY_SIGNALS = set("ёщъьэцчЁЩЪЬЭЦЧ")
-
-# Genitive/possessive endings whose ң is routinely flattened by OCR. Back
-# vowel harmony only: these two endings are self-identifying (a scanned
-# "нын"/"дын" is unambiguously the "ның"/"дың" suffix), so no vowel-class
-# computation over the whole word is needed to apply them.
-SUFFIX_REPAIRS = (
-    ("нын", "ның"),
-    ("дын", "дың"),
-)
-MIN_SUFFIX_REPAIR_LENGTH = 5
-
 # Kazakh suffixes used as evidence that a document is Kazakh.
 KAZAKH_SUFFIX_EVIDENCE = (
     "ның",
@@ -72,83 +60,6 @@ KAZAKH_SUFFIX_EVIDENCE = (
     "терге",
     "ымыз",
     "іміз",
-)
-
-# Words that legitimately break vowel harmony: Russian and international
-# loanwords in common school vocabulary. Lowercase, no suffixes.
-LOANWORD_EXCEPTIONS = frozenset(
-    {
-        "автобус",
-        "аптека",
-        "банк",
-        "велосипед",
-        "газ",
-        "газет",
-        "газета",
-        "гектар",
-        "географ",
-        "география",
-        "геометрия",
-        "гимн",
-        "глобус",
-        "грамм",
-        "грамматика",
-        "группа",
-        "директор",
-        "доктор",
-        "журнал",
-        "институт",
-        "информатика",
-        "калькулятор",
-        "карта",
-        "картина",
-        "касса",
-        "кино",
-        "километр",
-        "класс",
-        "клуб",
-        "код",
-        "команда",
-        "компас",
-        "компьютер",
-        "конверт",
-        "конкурс",
-        "концерт",
-        "космос",
-        "лагерь",
-        "лампа",
-        "литр",
-        "магазин",
-        "математика",
-        "машина",
-        "метр",
-        "микрофон",
-        "минут",
-        "музыка",
-        "музей",
-        "оператор",
-        "парк",
-        "план",
-        "планета",
-        "поезд",
-        "программа",
-        "радио",
-        "ракета",
-        "секунд",
-        "спорт",
-        "стадион",
-        "телефон",
-        "тонна",
-        "трактор",
-        "троллейбус",
-        "фабрика",
-        "физика",
-        "фильм",
-        "футбол",
-        "химия",
-        "цифра",
-        "экран",
-    }
 )
 
 # Small closed set of Arabic/Persian loans where х is a misread һ.
@@ -211,18 +122,11 @@ def _has_kazakh_evidence(word: str) -> bool:
 
 
 def _repair_kazakh(word: str) -> str:
-    lowered = word.lower()
-    if lowered in LOANWORD_EXCEPTIONS:
-        return word
-    if any(character in RUSSIAN_ONLY_SIGNALS for character in word):
-        return word
-
     repaired = _repair_h_loanword(word)
     if repaired != word:
         return repaired
 
-    repaired = _fix_initial_eng(word)
-    return _repair_suffix(repaired)
+    return _fix_initial_eng(word)
 
 
 def _repair_h_loanword(word: str) -> str:
@@ -239,17 +143,6 @@ def _fix_initial_eng(word: str) -> str:
         return "н" + word[1:]
     if word.startswith("Ң"):
         return "Н" + word[1:]
-    return word
-
-
-def _repair_suffix(word: str) -> str:
-    if len(word) < MIN_SUFFIX_REPAIR_LENGTH:
-        return word
-
-    lowered = word.lower()
-    for wrong, right in SUFFIX_REPAIRS:
-        if lowered.endswith(wrong):
-            return word[: -len(wrong)] + right
     return word
 
 

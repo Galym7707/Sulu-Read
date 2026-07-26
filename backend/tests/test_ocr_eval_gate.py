@@ -14,13 +14,20 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from scripts.ocr_eval import evaluate
 
-# Re-derived after the vowel-harmony rules were removed (2026-07-26 review):
-# they were the source of most of the old reduction, and post-hoc harmony
-# rewriting damaged correct text (see ocr_correction.py). The surviving
-# rules (homoglyph folding, word-initial ң, the нын/дын genitive repair, the
-# closed h-loanword set) measure ~29.5% CER reduction on the corpus. The
-# threshold is set to a round number just below that measured value.
-MINIMUM_CER_REDUCTION = 0.25
+# Re-derived after a second review round (2026-07-26) deleted the last
+# suffix-repair rules (нын/дын -> ның/дың): they collided with the
+# productive -ын/-ін possessive-accusative pattern (e.g. "телефонын",
+# "орнын") and rewrote correctly-spelled words into different, wrong ones.
+# The eval corpus also grew four snippets that exercise that exact pattern
+# (kk-21..kk-24), which is why this number moved from the prior ~29.5%.
+#
+# What remains in the Kazakh path (homoglyph folding, word-initial ң, the
+# closed h-loanword set) measures ~25.6% CER reduction on the corpus.
+# Almost all of that reduction is homoglyph folding, not Kazakh-letter
+# repair: see test_homoglyph_folding_reduces_character_error_rate below and
+# its docstring. The threshold is a round number just below the measured
+# value.
+MINIMUM_CER_REDUCTION = 0.20
 
 
 @pytest.fixture(scope="module")
@@ -33,7 +40,17 @@ def test_corpus_is_actually_corrupted(report):
     assert report["cer_raw"] > 0.02
 
 
-def test_correction_reduces_character_error_rate(report):
+def test_homoglyph_folding_reduces_character_error_rate(report):
+    # Despite the name of the fields involved (cer_raw/cer_corrected cover
+    # the whole corpus, both corruption channels combined), this gate is
+    # driven almost entirely by homoglyph folding, not Kazakh-letter repair:
+    # the isolated-channel measurement shows the Kazakh-letter-drop channel
+    # gets ZERO CER improvement from correction (raw == corrected), while
+    # the homoglyph channel goes from noisy to perfect. Homoglyph folding
+    # (Latin/Cyrillic lookalike repair, an exact bijection) is real,
+    # useful production behavior and is worth a regression gate on its
+    # own merits -- it must simply not be read as evidence about Kazakh
+    # letter correction, which this rule set barely touches anymore.
     reduction = 1 - report["cer_corrected"] / report["cer_raw"]
     assert reduction >= MINIMUM_CER_REDUCTION, (
         f"CER reduction {reduction:.3f} is below the {MINIMUM_CER_REDUCTION} target "

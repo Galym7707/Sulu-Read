@@ -25,6 +25,16 @@ CORPUS = [
     {"id": "kk-18", "language_hint": "kk", "text": "Үйде әкем кітап оқып отыр."},
     {"id": "kk-19", "language_hint": "kk", "text": "Астана — еліміздің астанасы."},
     {"id": "kk-20", "language_hint": "kk", "text": "Алматы қаласында тау бар."},
+    # -ын/-ін possessive-accusative (3rd-person possessive "-ы"/"-і" plus
+    # accusative "-н"): a productive, correctly-spelled pattern that a
+    # string-pattern rule cannot distinguish from a flattened genitive
+    # "-ның"/"-дың" on stems ending in н/д. Added after a deleted repair
+    # rule was found rewriting these into a different, wrong word (see
+    # docs/superpowers/specs/2026-07-26-kazakh-russian-ocr-accuracy-design.md).
+    {"id": "kk-21", "language_hint": "kk", "text": "Ол телефонын үстелге қойды."},
+    {"id": "kk-22", "language_hint": "kk", "text": "Кітаптың орнын тауып алдым."},
+    {"id": "kk-23", "language_hint": "kk", "text": "Ол кітабын сөмкеге салды."},
+    {"id": "kk-24", "language_hint": "kk", "text": "Асан жанын аямай еңбек етті."},
     {"id": "ru-01", "language_hint": "ru", "text": "Мы идём в школу каждый день."},
     {"id": "ru-02", "language_hint": "ru", "text": "Ученики читают новую книгу."},
     {"id": "ru-03", "language_hint": "ru", "text": "Учитель написал задание на доске."},

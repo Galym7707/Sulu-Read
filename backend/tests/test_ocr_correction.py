@@ -64,10 +64,6 @@ def test_back_vowel_ghayn_word_is_not_kazakhized():
     assert correct_ocr_text("тагы", language_hint="kk") == "тагы"
 
 
-def test_front_vowel_word_keeps_plain_k():
-    assert correct_ocr_text("мектеп", language_hint="kk") == "мектеп"
-
-
 def test_front_vowel_word_is_not_kazakhized():
     assert correct_ocr_text("олке", language_hint="kk") == "олке"
     # "олкелер" has two front markers (е, е); the deleted harmony rule used
@@ -75,28 +71,8 @@ def test_front_vowel_word_is_not_kazakhized():
     assert correct_ocr_text("олкелер", language_hint="kk") == "олкелер"
 
 
-def test_mixed_evidence_word_is_left_alone():
-    # "кітап" genuinely mixes classes (і front, а back). Must not be touched.
-    assert correct_ocr_text("кітап", language_hint="kk") == "кітап"
-
-
-def test_loanword_exception_is_not_kazakhized():
-    assert correct_ocr_text("класс", language_hint="kk") == "класс"
-    assert correct_ocr_text("кино", language_hint="kk") == "кино"
-    assert correct_ocr_text("космос", language_hint="kk") == "космос"
-
-
-def test_word_with_russian_only_letter_is_skipped():
-    # ь never appears in a native Kazakh stem, so this is a loanword.
-    assert correct_ocr_text("компьютер", language_hint="kk") == "компьютер"
-
-
 def test_word_initial_eng_is_corrected():
     assert correct_ocr_text("ңан", language_hint="kk") == "нан"
-
-
-def test_back_genitive_suffix_restores_eng():
-    assert correct_ocr_text("баланын", language_hint="kk") == "баланың"
 
 
 def test_front_genitive_suffix_is_no_longer_repaired():
@@ -116,34 +92,45 @@ def test_russian_document_is_not_kazakhized():
 
 def test_explicit_ru_hint_closes_gate_even_with_kazakh_evidence():
     # The gate is closed by an explicit hint now: document evidence (the
-    # Kazakh-specific letters here) can no longer override "ru"/"en".
-    source = "Бүгін кала кітапханасы ашық."
+    # Kazakh-specific letters here) can no longer override "ru"/"en". The
+    # probe word "ңан" is the only surviving rule that could change this
+    # text (word-initial ң -> н); it must survive untouched with the gate
+    # closed. Contrast with test_kazakh_document_detected_without_hint,
+    # where the same kind of probe IS repaired once the gate opens.
+    source = "Бүгін кала кітапханасы ашық, ңан үстелде."
     assert correct_ocr_text(source, language_hint="ru") == source
 
 
 def test_kazakh_document_detected_without_hint():
     # With no hint, evidence still opens the gate (>= 2 evidence words here:
-    # "кітапханасы" carries і, "ашық" carries қ) and the surviving genitive
-    # repair applies.
-    source = "Бүгін кітапханасы ашық, баланын кітабы үстелде."
-    assert "баланың" in correct_ocr_text(source, language_hint="")
+    # "Бүгін" carries ү, "кітапханасы" carries і, "ашық" carries қ) and the
+    # surviving word-initial-ң repair applies to the probe word "ңан".
+    source = "Бүгін кітапханасы ашық, ңан үстелде."
+    corrected = correct_ocr_text(source, language_hint="")
+    assert "нан" in corrected
+    assert "ңан" not in corrected
 
 
 def test_single_evidence_word_does_not_open_gate():
     # A lone stray Kazakh-looking letter must not be enough: at least 2
     # evidence words are required, not just the 5% ratio. Only "қала" here
     # carries Kazakh-specific evidence; every other word is plain Russian.
-    source = "Мы сегодня читаем интересную книгу дома. Там был қала."
+    # "гаухар" is used as the probe (not "ңан") because ң is itself
+    # Kazakh-specific evidence and would wrongly supply the second word.
+    # With the gate closed, the probe must not become "гауһар".
+    source = "Мы сегодня читаем интересную книгу дома. Там был қала и гаухар."
     assert correct_ocr_text(source, language_hint="") == source
 
 
 def test_russian_document_with_no_kazakh_evidence_stays_closed():
-    source = "Ученики читают книгу в классе."
+    # The explicit "en" hint closes the gate outright; the probe word "ңан"
+    # would be repaired to "нан" if the Kazakh path ran.
+    source = "Ученики читают книгу в классе. Там лежит ңан."
     assert correct_ocr_text(source, language_hint="en") == source
 
 
 def test_kazakh_repair_is_idempotent():
-    source = "кала тагы баланын мектептин"
+    source = "кала тагы ңан мектептин"
     once = correct_ocr_text(source, language_hint="kk")
     assert correct_ocr_text(once, language_hint="kk") == once
 
@@ -164,9 +151,26 @@ def test_clean_kazakh_words_are_unchanged():
         "картасы",
         "Москва",
         "музыкалық",
+        # -ын/-ін possessive-accusative (3rd-person possessive "-ы"/"-і" +
+        # accusative "-н") on stems ending in н/д: a real, productive
+        # pattern that a scanned "нын"/"дын" cannot be told apart from the
+        # flattened genitive "-ның"/"-дың" by string pattern alone. The
+        # SUFFIX_REPAIRS rule that rewrote these into a different word with
+        # a different meaning was deleted; these guard against bringing it
+        # back.
+        "телефонын",
+        "орнын",
+        "жанын",
+        "заводын",
+        "стадионын",
     )
     for word in words:
         assert correct_ocr_text(word, language_hint="kk") == word
+
+
+def test_possessive_accusative_sentence_is_unchanged():
+    source = "Ол телефонын үстелге қойды."
+    assert correct_ocr_text(source, language_hint="kk") == source
 
 
 def test_russian_sentence_with_stray_letter_is_unchanged():

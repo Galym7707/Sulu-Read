@@ -302,3 +302,85 @@ A lexicon-gated version of harmony recovery — one that checks a candidate corr
 against a real word list before applying it — remains possible future work, listed
 above, but is a separate project with a real accuracy signal, not a tuning pass on the
 rules removed here.
+
+## Post-review revision, round two (2026-07-26)
+
+A second, final review found that the one suffix repair which survived the first
+round — `нын`/`дын` → `ның`/`дың` — has the same defect as the harmony rules it was
+kept alongside: it was rewriting correct text into a different, wrong word, not
+recovering a scanning error. The premise that a scanned `нын`/`дын` is unambiguously
+the flattened genitive suffix is false. Kazakh's 3rd-person possessive `-ы`/`-і`
+plus the accusative case marker `-н` produces a genuine, correctly-spelled `-ын`/`-ін`
+ending on any stem already ending in `н` or `д` — a productive, common pattern, not an
+edge case. Confirmed live: `телефонын` (his phone, accusative) → `телефоның` (your
+phone), `орнын` → `орның`, `жанын` → `жаның`, `заводын` → `заводың`, `стадионын` →
+`стадионың`, and the sentence `Ол телефонын үстелге қойды.` → `Ол телефоның үстелге
+қойды.`. `LOANWORD_EXCEPTIONS` did not save this rule either, for the same
+agglutination reason it failed to save the harmony rules: `телефон` is on the list,
+but `телефонын` still matched the suffix pattern and got rewritten.
+
+Removed as a result (see `backend/app/services/ocr_correction.py`):
+
+- `SUFFIX_REPAIRS`, `MIN_SUFFIX_REPAIR_LENGTH`, and `_repair_suffix`, and its call
+  site in `_repair_kazakh`. No suffix-pattern repair remains in the Kazakh path.
+- `LOANWORD_EXCEPTIONS` and `RUSSIAN_ONLY_SIGNALS`. With the suffix repairs gone,
+  these guards no longer change any output: neither set has a member that starts
+  with `ң`/`Ң` (the word-initial fix's trigger) or a member that collides with an
+  `H_LOANWORD_REPAIRS` key (the closed loanword table) — verified by direct
+  enumeration of both sets against both surviving rules before deletion. Leaving
+  dead guard code in place reads as protection that no longer exists, which is
+  exactly the false reassurance that let `телефонын` through in the first place.
+
+What remains in the Kazakh path after both rounds: Tier 1 homoglyph folding, the
+word-initial `ң` → `н` fix (`ң` genuinely never starts a Kazakh word), and the closed
+`H_LOANWORD_REPAIRS` table (a small, exact-match set of Arabic/Persian loans, not a
+generalizable pattern). No string-pattern suffix repair remains, because no string
+pattern in an agglutinative language can distinguish a flattened suffix from a
+morphologically valid word built the same way.
+
+The review also found that the offline test suite could not catch any of this:
+
+- Every test in `test_ocr_eval_gate.py` still passed with the entire Kazakh repair
+  path stubbed to identity — the CER gate was measuring homoglyph folding (an exact
+  bijection), not Kazakh-letter repair. The isolated-channel measurement bears this
+  out: the Kazakh-letter-drop channel gets zero CER improvement from correction
+  (raw == corrected), while the homoglyph channel goes from noisy to perfect. The
+  test is renamed to `test_homoglyph_folding_reduces_character_error_rate` and its
+  docstring states this plainly; it is not deleted, because homoglyph folding is
+  real, useful, tested behavior — it just is not evidence about Kazakh letters.
+- The two language-gate tests in `test_ocr_correction.py` used source text that no
+  surviving rule would ever alter, so they passed whether `_is_kazakh_document`
+  returned `True` or `False` unconditionally. All four gate tests
+  (`test_explicit_ru_hint_closes_gate_even_with_kazakh_evidence`,
+  `test_kazakh_document_detected_without_hint`,
+  `test_single_evidence_word_does_not_open_gate`,
+  `test_russian_document_with_no_kazakh_evidence_stays_closed`) were rewritten to
+  embed a probe word the Kazakh path would actually change if the gate opened
+  (`ңан` → `нан`, or `гаухар` → `гауһар` where `ңан` would itself count as
+  Kazakh-specific evidence and defeat the point of the test). Each was verified by
+  temporarily monkeypatching `_is_kazakh_document` to the wrong return value and
+  confirming the assertion now fails.
+
+Retired outright (they asserted behavior no rule can produce, under names implying
+a mechanism that no longer exists): `test_loanword_exception_is_not_kazakhized`,
+`test_word_with_russian_only_letter_is_skipped`, `test_mixed_evidence_word_is_left_alone`,
+`test_front_vowel_word_keeps_plain_k` (a duplicate of
+`test_pure_cyrillic_word_is_unchanged`), and `test_back_genitive_suffix_restores_eng`
+(tested the exact rule deleted this round). The `test_clean_*_unchanged` regression
+block gained the five damaged words and the sentence above, all under
+`language_hint="kk"`, all asserted unchanged.
+
+The eval corpus (`scripts/ocr_eval_corpus.py`) had no word ending in `нын`/`дын`/`-ын`,
+which is why the clean-input no-op gate measured 0 while this defect was live in the
+shipped corrector — the corpus simply never exercised the pattern. Four snippets
+(`kk-21`..`kk-24`) using `-ын`/`-ін` possessive-accusative forms were added
+(`телефонын`, `орнын`, `кітабын`, `жанын`) to close that blind spot. This is not
+gaming the eval; it makes the corpus strictly harder and would have caught the
+regression before it shipped.
+
+With the corpus change, the measured CER reduction moved from ~29.5% to ~25.6%
+(`.venv/Scripts/python.exe scripts/ocr_eval.py`, re-run after the corpus and rule
+changes). `MINIMUM_CER_REDUCTION` in `test_ocr_eval_gate.py` was re-derived from this
+new measurement and rounded down to `0.20`; the baseline
+(`scripts/ocr_eval_baseline.json`) was regenerated with `--save-baseline`. The noise
+model, its seeds, and the clean-input no-op assertion were not touched.

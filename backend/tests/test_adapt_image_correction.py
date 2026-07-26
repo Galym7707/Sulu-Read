@@ -12,17 +12,20 @@ def test_correction_kill_switch(monkeypatch):
 
 
 def test_apply_ocr_correction_repairs_kazakh(monkeypatch):
-    # "кала" -> "қала" was the old vowel-harmony rewrite, which is now
-    # deleted (it damaged correct text). "баланын" -> "баланың" is the
-    # surviving genitive suffix repair, still exercised through the same
-    # wrapper and kill switch.
+    # "кала" -> "қала" was the old vowel-harmony rewrite, and
+    # "баланын" -> "баланың" was the last surviving suffix repair; both are
+    # now deleted (they damaged correct text -- "-ын"/"-ін" is a productive
+    # possessive-accusative ending indistinguishable from a flattened
+    # genitive by string pattern alone). "ңан" -> "нан" (word-initial ң) is
+    # the surviving rule, still exercised through the same wrapper and kill
+    # switch.
     monkeypatch.delenv("SULU_READ_OCR_CORRECTION", raising=False)
-    assert main.apply_ocr_correction("баланын", "kk") == "баланың"
+    assert main.apply_ocr_correction("ңан", "kk") == "нан"
 
 
 def test_apply_ocr_correction_respects_kill_switch(monkeypatch):
     monkeypatch.setenv("SULU_READ_OCR_CORRECTION", "false")
-    assert main.apply_ocr_correction("баланын", "kk") == "баланын"
+    assert main.apply_ocr_correction("ңан", "kk") == "ңан"
 
 
 def test_apply_ocr_correction_survives_a_broken_corrector(monkeypatch):
