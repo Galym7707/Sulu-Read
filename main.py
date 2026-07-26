@@ -23,6 +23,7 @@ from backend.app.database import check_database_ready, init_database, using_runt
 from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
 from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
+from backend.app.services.ocr_correction import correct_ocr_text
 
 try:
     import cv2
@@ -319,6 +320,7 @@ async def health(request: Request) -> dict[str, Any]:
         "ocr_status": request.app.state.ocr_status,
         "ocr_languages": request.app.state.ocr_languages,
         "ocr_error": request.app.state.ocr_error,
+        "ocr_correction_enabled": ocr_correction_enabled(),
         "groq_vision_ready": has_groq_vision_key(),
         "groq_vision_models": (
             get_groq_vision_models(get_groq_api_key())[:4] if has_groq_vision_key() else []
@@ -395,6 +397,7 @@ async def adapt_image(
                     timeout=OCR_TIMEOUT_SECONDS,
                 )
 
+        extracted_text = apply_ocr_correction(extracted_text, language_hint)
         extracted_text = service_clean_ocr_text(extracted_text)
         if not extracted_text:
             return error_response(IMAGE_ERROR_MESSAGE)
@@ -431,6 +434,26 @@ def should_use_gpu() -> bool:
         "y",
         "on",
     }
+
+
+def ocr_correction_enabled() -> bool:
+    return os.getenv("SULU_READ_OCR_CORRECTION", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "n",
+        "off",
+    }
+
+
+def apply_ocr_correction(text: str, language_hint: str) -> str:
+    if not text or not ocr_correction_enabled():
+        return text
+    try:
+        return correct_ocr_text(text, language_hint=language_hint)
+    except Exception:
+        logger.exception("OCR correction failed; using uncorrected text")
+        return text
 
 
 def get_easyocr_languages() -> list[str]:
