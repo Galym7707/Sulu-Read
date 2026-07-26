@@ -50,6 +50,155 @@ DIGIT_TO_CYRILLIC = {
     "6": "б",
 }
 
+RUSSIAN_ONLY_SIGNALS = set("ёщъьэцчЁЩЪЬЭЦЧ")
+
+BACK_MARKERS = set("аоұыАОҰЫқғҚҒ")
+FRONT_MARKERS = set("әөүеіӘӨҮЕІ")
+
+TO_BACK = {
+    "к": "қ",
+    "г": "ғ",
+    "ә": "а",
+    "ө": "о",
+    "ү": "ұ",
+    "К": "Қ",
+    "Г": "Ғ",
+    "Ә": "А",
+    "Ө": "О",
+    "Ү": "Ұ",
+}
+TO_FRONT = {
+    "қ": "к",
+    "ғ": "г",
+    "а": "ә",
+    "о": "ө",
+    "ұ": "ү",
+    "Қ": "К",
+    "Ғ": "Г",
+    "А": "Ә",
+    "О": "Ө",
+    "Ұ": "Ү",
+}
+
+# Genitive/possessive endings whose ң (and і) are routinely flattened by OCR.
+BACK_SUFFIX_REPAIRS = (
+    ("нын", "ның"),
+    ("дын", "дың"),
+    ("тын", "тың"),
+)
+FRONT_SUFFIX_REPAIRS = (
+    ("нин", "нің"),
+    ("дин", "дің"),
+    ("тин", "тің"),
+)
+MIN_SUFFIX_REPAIR_LENGTH = 5
+
+# Kazakh suffixes used as evidence that a document is Kazakh.
+KAZAKH_SUFFIX_EVIDENCE = (
+    "ның",
+    "нің",
+    "дың",
+    "дің",
+    "тың",
+    "тің",
+    "ларға",
+    "лерге",
+    "дарға",
+    "дерге",
+    "тарға",
+    "терге",
+    "ымыз",
+    "іміз",
+)
+
+# Words that legitimately break vowel harmony: Russian and international
+# loanwords in common school vocabulary. Lowercase, no suffixes.
+LOANWORD_EXCEPTIONS = frozenset(
+    {
+        "автобус",
+        "аптека",
+        "банк",
+        "велосипед",
+        "газ",
+        "газет",
+        "газета",
+        "гектар",
+        "географ",
+        "география",
+        "геометрия",
+        "гимн",
+        "глобус",
+        "грамм",
+        "грамматика",
+        "группа",
+        "директор",
+        "доктор",
+        "журнал",
+        "институт",
+        "информатика",
+        "калькулятор",
+        "карта",
+        "картина",
+        "касса",
+        "кино",
+        "километр",
+        "класс",
+        "клуб",
+        "код",
+        "команда",
+        "компас",
+        "компьютер",
+        "конверт",
+        "конкурс",
+        "концерт",
+        "космос",
+        "лагерь",
+        "лампа",
+        "литр",
+        "магазин",
+        "математика",
+        "машина",
+        "метр",
+        "микрофон",
+        "минут",
+        "музыка",
+        "музей",
+        "оператор",
+        "парк",
+        "план",
+        "планета",
+        "поезд",
+        "программа",
+        "радио",
+        "ракета",
+        "секунд",
+        "спорт",
+        "стадион",
+        "телефон",
+        "тонна",
+        "трактор",
+        "троллейбус",
+        "фабрика",
+        "физика",
+        "фильм",
+        "футбол",
+        "химия",
+        "цифра",
+        "экран",
+    }
+)
+
+# Small closed set of Arabic/Persian loans where х is a misread һ.
+H_LOANWORD_REPAIRS = {
+    "гаухар": "гауһар",
+    "жихаз": "жиһаз",
+    "кахарман": "қаһарман",
+    "шахар": "шаһар",
+    "жахан": "жаһан",
+}
+
+KK_EVIDENCE_MIN_RATIO = 0.05
+
 
 def correct_ocr_text(text: str, *, language_hint: str = "kk") -> str:
     """Return `text` with OCR letter confusions repaired.
@@ -59,13 +208,92 @@ def correct_ocr_text(text: str, *, language_hint: str = "kk") -> str:
     if not text or not text.strip():
         return text
 
-    return WORD_PATTERN.sub(lambda match: _correct_word(match.group(0)), text)
+    kazakh_document = _is_kazakh_document(text, language_hint)
+    return WORD_PATTERN.sub(
+        lambda match: _correct_word(match.group(0), kazakh=kazakh_document),
+        text,
+    )
 
 
-def _correct_word(word: str) -> str:
+def _correct_word(word: str, *, kazakh: bool = False) -> str:
     corrected = _fold_homoglyphs(word)
     corrected = _fold_digits(corrected)
+    if kazakh:
+        corrected = _repair_kazakh(corrected)
     return corrected
+
+
+def _is_kazakh_document(text: str, language_hint: str) -> bool:
+    if (language_hint or "").strip().lower() == "kk":
+        return True
+
+    words = WORD_PATTERN.findall(text)
+    if not words:
+        return False
+
+    evidence = sum(1 for word in words if _has_kazakh_evidence(word))
+    return evidence / len(words) >= KK_EVIDENCE_MIN_RATIO
+
+
+def _has_kazakh_evidence(word: str) -> bool:
+    if any(character in KAZAKH_SPECIFIC_LETTERS for character in word):
+        return True
+    lowered = word.lower()
+    return any(lowered.endswith(suffix) for suffix in KAZAKH_SUFFIX_EVIDENCE)
+
+
+def _repair_kazakh(word: str) -> str:
+    lowered = word.lower()
+    if lowered in LOANWORD_EXCEPTIONS:
+        return word
+    if any(character in RUSSIAN_ONLY_SIGNALS for character in word):
+        return word
+
+    repaired = _repair_h_loanword(word)
+    if repaired != word:
+        return repaired
+
+    repaired = _fix_initial_eng(word)
+
+    back_count = sum(1 for character in repaired if character in BACK_MARKERS)
+    front_count = sum(1 for character in repaired if character in FRONT_MARKERS)
+    if back_count == front_count:
+        return repaired
+
+    if back_count > front_count:
+        repaired = "".join(TO_BACK.get(character, character) for character in repaired)
+        return _repair_suffix(repaired, BACK_SUFFIX_REPAIRS)
+
+    repaired = "".join(TO_FRONT.get(character, character) for character in repaired)
+    return _repair_suffix(repaired, FRONT_SUFFIX_REPAIRS)
+
+
+def _repair_h_loanword(word: str) -> str:
+    replacement = H_LOANWORD_REPAIRS.get(word.lower())
+    if replacement is None:
+        return word
+    if word[:1].isupper():
+        return replacement[:1].upper() + replacement[1:]
+    return replacement
+
+
+def _fix_initial_eng(word: str) -> str:
+    if word.startswith("ң"):
+        return "н" + word[1:]
+    if word.startswith("Ң"):
+        return "Н" + word[1:]
+    return word
+
+
+def _repair_suffix(word: str, repairs: tuple[tuple[str, str], ...]) -> str:
+    if len(word) < MIN_SUFFIX_REPAIR_LENGTH:
+        return word
+
+    lowered = word.lower()
+    for wrong, right in repairs:
+        if lowered.endswith(wrong):
+            return word[: -len(wrong)] + right
+    return word
 
 
 def _fold_homoglyphs(word: str) -> str:
