@@ -2,9 +2,9 @@
   "engine": "synthetic-noise",
   "snippets": 40,
   "cer_raw": 0.07873150509435772,
-  "cer_corrected": 0.03549977912941467,
+  "cer_corrected": 0.055503170865890225,
   "wer_raw": 0.345,
-  "wer_corrected": 0.15958333333333335,
+  "wer_corrected": 0.27041666666666664,
   "russian_cer_raw": 0.027012424016121583,
   "russian_cer_corrected": 0.0,
   "kazakh_letters_raw": {
@@ -44,11 +44,11 @@
   "kazakh_letters_corrected": {
     "қ": {
       "expected": 25,
-      "present": 27
+      "present": 14
     },
     "ң": {
       "expected": 10,
-      "present": 6
+      "present": 5
     },
     "і": {
       "expected": 26,
@@ -60,7 +60,7 @@
     },
     "ғ": {
       "expected": 13,
-      "present": 13
+      "present": 3
     },
     "ұ": {
       "expected": 6,
@@ -68,11 +68,16 @@
     },
     "ә": {
       "expected": 5,
-      "present": 4
+      "present": 3
     },
     "ө": {
       "expected": 4,
       "present": 1
     }
-  }
+  },
+  "kazakh_drop_cer_raw": 0.055503170865890225,
+  "kazakh_drop_cer_corrected": 0.055503170865890225,
+  "homoglyph_cer_raw": 0.02322833422846749,
+  "homoglyph_cer_corrected": 0.0,
+  "clean_input_no_op_count": 0
 }

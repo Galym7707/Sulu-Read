@@ -164,6 +164,8 @@ def evaluate(engine: str = "synthetic-noise") -> dict:
         )
 
     russian_rows = [row for row in rows if row["language_hint"] == "ru"]
+    channels = _evaluate_channels(engine)
+    no_op_count = _count_clean_input_no_ops()
     return {
         "engine": engine,
         "snippets": len(rows),
@@ -175,8 +177,67 @@ def evaluate(engine: str = "synthetic-noise") -> dict:
         "russian_cer_corrected": _mean(row["cer_corrected"] for row in russian_rows),
         "kazakh_letters_raw": raw_recovery,
         "kazakh_letters_corrected": corrected_recovery,
+        **channels,
+        "clean_input_no_op_count": no_op_count,
         "rows": rows,
     }
+
+
+def _evaluate_channels(engine: str) -> dict:
+    """CER for each corruption channel in isolation.
+
+    Folded into one headline number, the homoglyph channel (a bijection whose
+    exact inverse is hardcoded in the corrector) would make the combined
+    result look better than the harder, lossy Kazakh-letter-drop channel
+    actually is. Only meaningful for the synthetic-noise engine, which is
+    the only one that applies these two corruption models separately.
+    """
+    if engine != "synthetic-noise":
+        return {
+            "kazakh_drop_cer_raw": None,
+            "kazakh_drop_cer_corrected": None,
+            "homoglyph_cer_raw": None,
+            "homoglyph_cer_corrected": None,
+        }
+
+    kazakh_drop_raw_cer = []
+    kazakh_drop_corrected_cer = []
+    homoglyph_raw_cer = []
+    homoglyph_corrected_cer = []
+
+    for index, item in enumerate(CORPUS):
+        reference = item["text"]
+        seed = 1000 + index
+
+        kazakh_drop_raw = corrupt(reference, seed=seed, homoglyph_rate=0.0)
+        kazakh_drop_corrected = correct_ocr_text(kazakh_drop_raw, language_hint=item["language_hint"])
+        kazakh_drop_raw_cer.append(character_error_rate(reference, kazakh_drop_raw))
+        kazakh_drop_corrected_cer.append(character_error_rate(reference, kazakh_drop_corrected))
+
+        homoglyph_raw = corrupt(reference, seed=seed, kazakh_drop_rate=0.0)
+        homoglyph_corrected = correct_ocr_text(homoglyph_raw, language_hint=item["language_hint"])
+        homoglyph_raw_cer.append(character_error_rate(reference, homoglyph_raw))
+        homoglyph_corrected_cer.append(character_error_rate(reference, homoglyph_corrected))
+
+    return {
+        "kazakh_drop_cer_raw": _mean(kazakh_drop_raw_cer),
+        "kazakh_drop_cer_corrected": _mean(kazakh_drop_corrected_cer),
+        "homoglyph_cer_raw": _mean(homoglyph_raw_cer),
+        "homoglyph_cer_corrected": _mean(homoglyph_corrected_cer),
+    }
+
+
+def _count_clean_input_no_ops() -> int:
+    """Rows where correction changes text that had no OCR noise at all.
+
+    The correction layer must never alter text that was already correct.
+    This must be 0.
+    """
+    return sum(
+        1
+        for item in CORPUS
+        if correct_ocr_text(item["text"], language_hint=item["language_hint"]) != item["text"]
+    )
 
 
 def _mean(values) -> float:
@@ -248,6 +309,18 @@ def print_report(report: dict) -> None:
     if report["cer_raw"]:
         reduction = 1 - report["cer_corrected"] / report["cer_raw"]
         print(f"CER reduction: {reduction * 100:.1f}%")
+
+    if report["kazakh_drop_cer_raw"] is not None:
+        print(
+            f"CER (Kazakh-letter-drop channel only)  raw {report['kazakh_drop_cer_raw']:.4f}"
+            f"  ->  corrected {report['kazakh_drop_cer_corrected']:.4f}"
+        )
+        print(
+            f"CER (homoglyph channel only)  raw {report['homoglyph_cer_raw']:.4f}"
+            f"  ->  corrected {report['homoglyph_cer_corrected']:.4f}"
+        )
+
+    print(f"\nClean-input no-op count: {report['clean_input_no_op_count']} (must be 0)")
 
     print("\nKazakh letter survival (present / expected):")
     for letter in KAZAKH_LETTERS_TRACKED:

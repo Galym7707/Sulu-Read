@@ -87,7 +87,6 @@ GROQ_VISION_FALLBACK_MODEL = os.getenv(
 GROQ_MAX_IMAGE_SIDE = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_SIDE", "1800"))
 GROQ_MAX_IMAGE_BYTES = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_BYTES", str(2_800_000)))
 
-KAZAKH_SPECIFIC_LETTERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
 CYRILLIC_LETTERS = set(
     "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
     "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
@@ -103,10 +102,8 @@ OCR_ALLOWLIST = (
     "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
     "0123456789"
     " .,:;!?()[]«»\"'-–—/%№§+=*"
+    "×÷°’…"
 )
-
-LETTER_CLASS = "A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі"
-STANDARD_SYLLABLE_DELIMITER = "-"
 
 SUPPORTED_IMAGE_EXTENSIONS = {
     ".bmp",

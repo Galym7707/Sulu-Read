@@ -257,3 +257,48 @@ photo upload
 - Real-photo eval set with human-typed ground truth.
 - A Kazakh frequency lexicon for word-level correction beyond harmony rules.
 - Per-word confidence surfacing to the Android reader for low-confidence highlighting.
+
+## Post-review revision (2026-07-26)
+
+A final whole-branch review reproduced concrete damage from the vowel-harmony repair
+described above: it rewrote already-correct text, both from live examples
+(`кітапхана` → `қітапхана`, `болатын` → `болатың`, a stray `ө` anywhere in a Russian
+sentence turning every `к`/`г` in it into `қ`/`ғ`, `С3Н8 газы` → `СзН8 ғазы`) and inside
+this spec's own eval corpus (2 of 40 clean ground-truth rows).
+
+Root cause: Kazakh vowel harmony is a *generation* constraint — it says which vowels
+and consonants a well-formed Kazakh word is built from — not a *recovery* constraint.
+An `а` in a scanned word means `қ` is permitted there; it never means a scanned `к` is
+wrong. Applying harmony post-hoc to a string, with no lexicon and no OCR confidence
+signal, guesses at words instead of verifying them. `LOANWORD_EXCEPTIONS` could not
+save this design: it matches bare stems, and Kazakh is agglutinative, so `карта` was
+protected while `картасы` was not.
+
+Removed as a result (see `backend/app/services/ocr_correction.py`):
+
+- The `TO_BACK`/`TO_FRONT` letter-rewrite tables and the `BACK_MARKERS`/`FRONT_MARKERS`
+  vowel-class counting that drove them. All four confusable pairs (`к/қ`, `г/ғ`, `а/ә`,
+  `о/ө`) plus `ұ/ү` are gone — the corrector no longer rewrites any of these letters.
+- `_fold_digits` / `DIGIT_TO_CYRILLIC`. It corrupted chemical formulas and page numbers
+  for a speculative benefit that was never measured.
+- The `тын` → `тың` suffix repair (it destroyed the extremely common `-атын`/`-йтын`
+  participle) and all three front suffix repairs `нин`/`дин`/`тин` → `нің`/`дің`/`тің`
+  (common Russian words such as `господин` and `гражданин` end in `дин`/`нин`, and the
+  front repair guessed two letters — the vowel and `ң` — at once).
+
+Kept unchanged: Tier 1 homoglyph folding, the word-initial `ң` → `н` fix, the closed
+`H_LOANWORD_REPAIRS` table, and the `LOANWORD_EXCEPTIONS`/`RUSSIAN_ONLY_SIGNALS` guards.
+The back-vowel genitive suffix repair survives in reduced form — only `нын` → `ның` and
+`дын` → `дың`, which are self-identifying strings needing no vowel-class computation.
+
+The language gate (`_is_kazakh_document`) was also tightened: an explicit
+`language_hint` of `ru` or `en` now forces the Kazakh repair path off, instead of
+document evidence being able to override it. The evidence heuristic (for a missing or
+unrecognized hint) now additionally requires at least 2 evidence words, not just the
+5% ratio, so a single stray Kazakh-looking letter in a short document cannot open the
+gate.
+
+A lexicon-gated version of harmony recovery — one that checks a candidate correction
+against a real word list before applying it — remains possible future work, listed
+above, but is a separate project with a real accuracy signal, not a tuning pass on the
+rules removed here.

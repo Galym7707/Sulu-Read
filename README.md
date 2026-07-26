@@ -67,7 +67,7 @@ SULU_READ_RUNTIME_SQLITE_FALLBACK=true
 SULU_READ_OCR_CORRECTION=true
 ```
 
-`SULU_READ_OCR_CORRECTION` controls the post-OCR correction layer that restores Kazakh-specific letters (`қ ғ ә ө`) and strips Latin/Cyrillic homoglyphs from `/v1/adapt-image` output. It is on by default; set it to `false` to return the raw engine text. `/health` reports the active state as `ocr_correction_enabled`.
+`SULU_READ_OCR_CORRECTION` controls the post-OCR correction layer applied to `/v1/adapt-image` output. It strips Latin/Cyrillic homoglyphs (e.g. a Latin `k` inside a Cyrillic word), fixes a word-initial `ң` misread, repairs the `нын`/`дын` → `ның`/`дың` genitive suffix, and restores a small closed set of `һ` loanwords (e.g. `гаухар` → `гауһар`). It does not attempt to restore Kazakh vowel-harmony letters (`қ ғ ә ө`) from context — an earlier version tried this and it rewrote already-correct words, since harmony constrains what a word may be generated with, not what a scanned word must be. It is on by default; set it to `false` to return the raw engine text. `/health` reports the active state as `ocr_correction_enabled`.
 
 To measure recognition quality after changing anything in the OCR path, run the synthetic evaluation harness (`python scripts/ocr_eval.py`). It reports CER, WER, and per-letter recovery for the Kazakh alphabet.
 

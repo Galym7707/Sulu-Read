@@ -44,52 +44,15 @@ LATIN_TO_CYRILLIC = {
 }
 CYRILLIC_TO_LATIN = {value: key for key, value in LATIN_TO_CYRILLIC.items()}
 
-DIGIT_TO_CYRILLIC = {
-    "0": "о",
-    "3": "з",
-    "6": "б",
-}
-
 RUSSIAN_ONLY_SIGNALS = set("ёщъьэцчЁЩЪЬЭЦЧ")
 
-BACK_MARKERS = set("аоұыАОҰЫқғҚҒ")
-FRONT_MARKERS = set("әөүеіӘӨҮЕІ")
-
-TO_BACK = {
-    "к": "қ",
-    "г": "ғ",
-    "ә": "а",
-    "ө": "о",
-    "ү": "ұ",
-    "К": "Қ",
-    "Г": "Ғ",
-    "Ә": "А",
-    "Ө": "О",
-    "Ү": "Ұ",
-}
-TO_FRONT = {
-    "қ": "к",
-    "ғ": "г",
-    "а": "ә",
-    "о": "ө",
-    "ұ": "ү",
-    "Қ": "К",
-    "Ғ": "Г",
-    "А": "Ә",
-    "О": "Ө",
-    "Ұ": "Ү",
-}
-
-# Genitive/possessive endings whose ң (and і) are routinely flattened by OCR.
-BACK_SUFFIX_REPAIRS = (
+# Genitive/possessive endings whose ң is routinely flattened by OCR. Back
+# vowel harmony only: these two endings are self-identifying (a scanned
+# "нын"/"дын" is unambiguously the "ның"/"дың" suffix), so no vowel-class
+# computation over the whole word is needed to apply them.
+SUFFIX_REPAIRS = (
     ("нын", "ның"),
     ("дын", "дың"),
-    ("тын", "тың"),
-)
-FRONT_SUFFIX_REPAIRS = (
-    ("нин", "нің"),
-    ("дин", "дің"),
-    ("тин", "тің"),
 )
 MIN_SUFFIX_REPAIR_LENGTH = 5
 
@@ -217,22 +180,27 @@ def correct_ocr_text(text: str, *, language_hint: str = "kk") -> str:
 
 def _correct_word(word: str, *, kazakh: bool = False) -> str:
     corrected = _fold_homoglyphs(word)
-    corrected = _fold_digits(corrected)
     if kazakh:
         corrected = _repair_kazakh(corrected)
     return corrected
 
 
 def _is_kazakh_document(text: str, language_hint: str) -> bool:
-    if (language_hint or "").strip().lower() == "kk":
+    hint = (language_hint or "").strip().lower()
+    if hint in ("ru", "en"):
+        return False
+    if hint == "kk":
         return True
 
+    # No hint, or an unrecognized one: fall back to document evidence. Require
+    # both a minimum count and a minimum ratio so a single stray Kazakh-looking
+    # letter in a short document cannot open the gate.
     words = WORD_PATTERN.findall(text)
     if not words:
         return False
 
     evidence = sum(1 for word in words if _has_kazakh_evidence(word))
-    return evidence / len(words) >= KK_EVIDENCE_MIN_RATIO
+    return evidence >= 2 and evidence / len(words) >= KK_EVIDENCE_MIN_RATIO
 
 
 def _has_kazakh_evidence(word: str) -> bool:
@@ -254,18 +222,7 @@ def _repair_kazakh(word: str) -> str:
         return repaired
 
     repaired = _fix_initial_eng(word)
-
-    back_count = sum(1 for character in repaired if character in BACK_MARKERS)
-    front_count = sum(1 for character in repaired if character in FRONT_MARKERS)
-    if back_count == front_count:
-        return repaired
-
-    if back_count > front_count:
-        repaired = "".join(TO_BACK.get(character, character) for character in repaired)
-        return _repair_suffix(repaired, BACK_SUFFIX_REPAIRS)
-
-    repaired = "".join(TO_FRONT.get(character, character) for character in repaired)
-    return _repair_suffix(repaired, FRONT_SUFFIX_REPAIRS)
+    return _repair_suffix(repaired)
 
 
 def _repair_h_loanword(word: str) -> str:
@@ -285,12 +242,12 @@ def _fix_initial_eng(word: str) -> str:
     return word
 
 
-def _repair_suffix(word: str, repairs: tuple[tuple[str, str], ...]) -> str:
+def _repair_suffix(word: str) -> str:
     if len(word) < MIN_SUFFIX_REPAIR_LENGTH:
         return word
 
     lowered = word.lower()
-    for wrong, right in repairs:
+    for wrong, right in SUFFIX_REPAIRS:
         if lowered.endswith(wrong):
             return word[: -len(wrong)] + right
     return word
@@ -307,17 +264,3 @@ def _fold_homoglyphs(word: str) -> str:
     if latin_count > cyrillic_count:
         return "".join(CYRILLIC_TO_LATIN.get(character, character) for character in word)
     return word
-
-
-def _fold_digits(word: str) -> str:
-    if not any(character in CYRILLIC_LETTERS for character in word):
-        return word
-
-    characters = list(word)
-    for index in range(1, len(characters) - 1):
-        character = characters[index]
-        if character not in DIGIT_TO_CYRILLIC:
-            continue
-        if characters[index - 1].isalpha() and characters[index + 1].isalpha():
-            characters[index] = DIGIT_TO_CYRILLIC[character]
-    return "".join(characters)
