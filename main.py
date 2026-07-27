@@ -23,6 +23,7 @@ from backend.app.database import check_database_ready, init_database, using_runt
 from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
 from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
+from backend.app.services.ocr_correction import correct_ocr_text
 
 try:
     import cv2
@@ -86,12 +87,6 @@ GROQ_VISION_FALLBACK_MODEL = os.getenv(
 GROQ_MAX_IMAGE_SIDE = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_SIDE", "1800"))
 GROQ_MAX_IMAGE_BYTES = int(os.getenv("SULU_READ_GROQ_MAX_IMAGE_BYTES", str(2_800_000)))
 
-RUSSIAN_VOWELS = set("аеёиоуыэюяАЕЁИОУЫЭЮЯ")
-KAZAKH_VOWELS = set("аәеёиоөұүыіуАӘЕЁИОӨҰҮЫІУ")
-ALL_CYRILLIC_VOWELS = RUSSIAN_VOWELS | KAZAKH_VOWELS
-KAZAKH_FRONT_VOWELS = set("әеөүіӘЕӨҮІ")
-KAZAKH_BACK_VOWELS = set("аоұыАОҰЫ")
-KAZAKH_SPECIFIC_LETTERS = set("әғқңөұүһіӘҒҚҢӨҰҮҺІ")
 CYRILLIC_LETTERS = set(
     "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
     "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
@@ -99,29 +94,15 @@ CYRILLIC_LETTERS = set(
 )
 LATIN_LETTERS = set("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
-LETTER_CLASS = "A-Za-zА-Яа-яЁёӘәҒғҚқҢңӨөҰұҮүҺһІі"
-STANDARD_SYLLABLE_DELIMITER = "-"
-SECONDARY_SYLLABLE_DIVIDERS = "·•∙⋅●"
-OCR_TEXT_REPLACEMENTS = (
-    ("$", "§"),
-    ("＄", "§"),
-    ("﹩", "§"),
-)
-KNOWN_PROPER_NOUN_ROOTS = (
-    "қазақстан",
-    "казахстан",
-)
-HYPHENATED_WORD_PATTERN = re.compile(
-    rf"[{LETTER_CLASS}]+(?:-[{LETTER_CLASS}]+)+",
-    re.UNICODE,
-)
-
-TOKEN_PATTERN = re.compile(
-    rf"[{LETTER_CLASS}]+(?:['’][{LETTER_CLASS}]+)?"
-    r"|[0-9]+"
-    r"|[^\w\s]+"
-    r"|\s+",
-    re.UNICODE,
+OCR_ALLOWLIST = (
+    "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
+    "АБВГДЕЁЖЗИЙКЛМНОПРСТУФХЦЧШЩЪЫЬЭЮЯ"
+    "әғқңөұүһіӘҒҚҢӨҰҮҺІ"
+    "abcdefghijklmnopqrstuvwxyz"
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+    "0123456789"
+    " .,:;!?()[]«»\"'-–—/%№§+=*"
+    "×÷°’…"
 )
 
 SUPPORTED_IMAGE_EXTENSIONS = {
@@ -309,6 +290,7 @@ async def health(request: Request) -> dict[str, Any]:
         "ocr_status": request.app.state.ocr_status,
         "ocr_languages": request.app.state.ocr_languages,
         "ocr_error": request.app.state.ocr_error,
+        "ocr_correction_enabled": ocr_correction_enabled(),
         "groq_vision_ready": has_groq_vision_key(),
         "groq_vision_models": (
             get_groq_vision_models(get_groq_api_key())[:4] if has_groq_vision_key() else []
@@ -385,6 +367,7 @@ async def adapt_image(
                     timeout=OCR_TIMEOUT_SECONDS,
                 )
 
+        extracted_text = apply_ocr_correction(extracted_text, language_hint)
         extracted_text = service_clean_ocr_text(extracted_text)
         if not extracted_text:
             return error_response(IMAGE_ERROR_MESSAGE)
@@ -421,6 +404,26 @@ def should_use_gpu() -> bool:
         "y",
         "on",
     }
+
+
+def ocr_correction_enabled() -> bool:
+    return os.getenv("SULU_READ_OCR_CORRECTION", "true").strip().lower() not in {
+        "0",
+        "false",
+        "no",
+        "n",
+        "off",
+    }
+
+
+def apply_ocr_correction(text: str, language_hint: str) -> str:
+    if not text or not ocr_correction_enabled():
+        return text
+    try:
+        return correct_ocr_text(text, language_hint=language_hint)
+    except Exception:
+        logger.exception("OCR correction failed; using uncorrected text")
+        return text
 
 
 def get_easyocr_languages() -> list[str]:
@@ -564,6 +567,7 @@ def read_text_from_image(reader: Any, image_path: str) -> str:
                     text_threshold=0.45,
                     low_text=0.25,
                     link_threshold=0.25,
+                    allowlist=OCR_ALLOWLIST,
                 )
             except TypeError:
                 ocr_result = reader.readtext(candidate_path, detail=1, paragraph=False)
@@ -868,9 +872,12 @@ def build_groq_ocr_prompt(language_hint: str) -> str:
         + hint_sentence +
         "Extract ONLY the text that is actually printed in the image, exactly as written. "
         "Kazakh uses these extra Cyrillic letters: Әә Ғғ Ққ Ңң Өө Ұұ Үү Һһ Іі — reproduce "
-        "them exactly and NEVER replace them with similar Russian letters (қ is not к, "
-        "ә is not а, ө is not о, ұ/ү is not у, і is not и, ғ is not г, ң is not н). "
-        "Never swap Latin letters for Cyrillic lookalikes or vice versa. "
+        "them exactly. These pairs are DIFFERENT letters and must never be substituted "
+        "for one another: қ≠к, ғ≠г, ә≠а, ө≠о, ұ≠у, ү≠у, і≠и, ң≠н, һ≠х. "
+        "When a Kazakh word contains қ or ғ its vowels are а, о, ұ, ы; when it contains "
+        "к or г its vowels are ә, ө, ү, е, і. Use this to disambiguate blurred letters. "
+        "A Cyrillic word must contain no Latin letters, and a Latin word no Cyrillic "
+        "letters — never mix lookalikes such as a/а, c/с, e/е, o/о, p/р, x/х, y/у. "
         "Keep the original letter case, punctuation, and line breaks where useful. "
         "Do not summarize, translate, explain, answer questions, or invent missing words. "
         "Ignore page shadows, fingers, table edges, UI elements, and neighboring pages. "
@@ -1113,185 +1120,9 @@ def build_adapted_response(source: str, text: str, title: str | None = None) -> 
     )
 
 
-def prepare_text_for_adaptation(source: str, text: str) -> str:
-    prepared_text = normalize_text(text)
-    if source == "image":
-        prepared_text = clean_ocr_text(prepared_text)
-        prepared_text = sentence_case_text(prepared_text.lower())
-
-    prepared_text = remove_existing_syllable_markup(prepared_text)
-    if source == "image":
-        prepared_text = restore_known_proper_nouns(prepared_text)
-
-    return normalize_text(prepared_text)
-
-
-def clean_ocr_text(raw_ocr_text: str) -> str:
-    cleaned_text = raw_ocr_text
-    for old_value, new_value in OCR_TEXT_REPLACEMENTS:
-        cleaned_text = cleaned_text.replace(old_value, new_value)
-
-    cleaned_text = re.sub(r"§\s+(\d)", r"§\1", cleaned_text)
-    cleaned_text = re.sub(r"(?<=\d)\s+([.,:;!?])", r"\1", cleaned_text)
-    return normalize_text(cleaned_text)
-
-
-def sentence_case_text(text: str) -> str:
-    cased_characters: list[str] = []
-    capitalize_next_letter = True
-
-    for character in text:
-        if character.isalpha():
-            if capitalize_next_letter:
-                cased_characters.append(character.upper())
-                capitalize_next_letter = False
-            else:
-                cased_characters.append(character)
-            continue
-
-        cased_characters.append(character)
-        if character in ".!?…\n":
-            capitalize_next_letter = True
-
-    return restore_known_proper_nouns("".join(cased_characters))
-
-
-def restore_known_proper_nouns(text: str) -> str:
-    word_pattern = re.compile(rf"[{LETTER_CLASS}]+", re.UNICODE)
-
-    def restore_word(match: re.Match[str]) -> str:
-        word = match.group(0)
-        lowered_word = word.lower()
-        if any(lowered_word.startswith(root) for root in KNOWN_PROPER_NOUN_ROOTS):
-            return word[:1].upper() + word[1:]
-        return word
-
-    return word_pattern.sub(restore_word, text)
-
-
-def remove_existing_syllable_markup(text: str) -> str:
-    cleaned_text = text
-    for divider in SECONDARY_SYLLABLE_DIVIDERS:
-        cleaned_text = cleaned_text.replace(divider, STANDARD_SYLLABLE_DELIMITER)
-
-    cleaned_text = re.sub(
-        rf"(?<=[{LETTER_CLASS}])\s*-\s*(?=[{LETTER_CLASS}])",
-        STANDARD_SYLLABLE_DELIMITER,
-        cleaned_text,
-    )
-    cleaned_text = re.sub(r"-{2,}", STANDARD_SYLLABLE_DELIMITER, cleaned_text)
-
-    def remove_syllable_hyphens(match: re.Match[str]) -> str:
-        hyphenated_word = match.group(0)
-        parts = hyphenated_word.split(STANDARD_SYLLABLE_DELIMITER)
-        if len(parts) >= 3 and all(1 <= len(part) <= 5 for part in parts):
-            return "".join(parts)
-        return hyphenated_word
-
-    return HYPHENATED_WORD_PATTERN.sub(remove_syllable_hyphens, cleaned_text)
-
-
 def normalize_text(text: str) -> str:
     text = text.replace("\r\n", "\n").replace("\r", "\n")
     text = re.sub(r"[ \t\f\v]+", " ", text)
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
-
-
-def adapt_text(text: str) -> str:
-    adapted_tokens: list[str] = []
-    for token in TOKEN_PATTERN.findall(text):
-        if is_adaptable_word(token):
-            adapted_tokens.append(STANDARD_SYLLABLE_DELIMITER.join(split_word_to_syllables(token)))
-        else:
-            adapted_tokens.append(token)
-    return "".join(adapted_tokens)
-
-
-def extract_adapted_words(text: str) -> list[AdaptedWord]:
-    adapted_words: list[AdaptedWord] = []
-    for token in TOKEN_PATTERN.findall(text):
-        if not is_adaptable_word(token):
-            continue
-
-        syllables = split_word_to_syllables(token)
-        language = detect_language_hint(token)
-        adapted_words.append(
-            AdaptedWord(
-                original=token,
-                adapted=STANDARD_SYLLABLE_DELIMITER.join(syllables),
-                syllables=syllables,
-                language_hint=language,
-                vowel_harmony=detect_kazakh_vowel_harmony(token) if language == "kk" else None,
-            )
-        )
-    return adapted_words
-
-
-def is_adaptable_word(token: str) -> bool:
-    return any(character in CYRILLIC_LETTERS for character in token)
-
-
-def detect_language_hint(word: str) -> str:
-    if any(character in KAZAKH_SPECIFIC_LETTERS for character in word):
-        return "kk"
-    if any(character in CYRILLIC_LETTERS for character in word):
-        return "ru"
-    return "unknown"
-
-
-def detect_kazakh_vowel_harmony(word: str) -> str:
-    has_front = any(character in KAZAKH_FRONT_VOWELS for character in word)
-    has_back = any(character in KAZAKH_BACK_VOWELS for character in word)
-
-    if has_front and has_back:
-        return "mixed"
-    if has_front:
-        return "front"
-    if has_back:
-        return "back"
-    return "neutral"
-
-
-def split_word_to_syllables(word: str) -> list[str]:
-    word = remove_existing_syllable_markup(word)
-    vowel_positions = [
-        index
-        for index, character in enumerate(word)
-        if character in ALL_CYRILLIC_VOWELS
-    ]
-
-    if len(vowel_positions) <= 1:
-        return [word]
-
-    split_indices: list[int] = []
-    for left_vowel, right_vowel in zip(vowel_positions, vowel_positions[1:]):
-        consonant_cluster_length = right_vowel - left_vowel - 1
-        split_index = choose_split_index(
-            left_vowel=left_vowel,
-            right_vowel=right_vowel,
-            consonant_cluster_length=consonant_cluster_length,
-        )
-        if 0 < split_index < len(word):
-            split_indices.append(split_index)
-
-    syllables: list[str] = []
-    start = 0
-    for split_index in sorted(set(split_indices)):
-        syllable = word[start:split_index]
-        if syllable:
-            syllables.append(syllable)
-        start = split_index
-
-    tail = word[start:]
-    if tail:
-        syllables.append(tail)
-
-    return syllables or [word]
-
-
-def choose_split_index(left_vowel: int, right_vowel: int, consonant_cluster_length: int) -> int:
-    if consonant_cluster_length <= 1:
-        return left_vowel + 1
-    return left_vowel + 2

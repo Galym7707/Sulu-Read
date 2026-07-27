@@ -64,6 +64,15 @@ GEMINI_MODEL=gemini-3.5-flash
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
 SULU_READ_RUNTIME_SQLITE_FALLBACK=true
+SULU_READ_OCR_CORRECTION=true
+```
+
+`SULU_READ_OCR_CORRECTION` controls the post-OCR correction layer applied to `/v1/adapt-image` output. It strips Latin/Cyrillic homoglyphs (e.g. a Latin `k` inside a Cyrillic word), fixes a word-initial `ң` misread, and restores a small closed set of `һ` loanwords (e.g. `гаухар` → `гауһар`). It does not attempt to restore Kazakh vowel-harmony letters (`қ ғ ә ө`) from context, and it no longer rewrites a scanned `нын`/`дын` ending into `ның`/`дың` — both were tried and both rewrote already-correct text, because a string pattern cannot tell a flattened suffix from a genuinely different, correctly-spelled word (`-ын`/`-ін` possessive-accusative, e.g. `телефонын`, is a productive ending, not a scanning error). It is on by default; set it to `false` to return the raw engine text. `/health` reports the active state as `ocr_correction_enabled`.
+
+To measure recognition quality after changing anything in the OCR path, run the synthetic evaluation harness (`python scripts/ocr_eval.py`). It reports CER, WER, and per-letter recovery for the Kazakh alphabet.
+
+```bash
+python scripts/ocr_eval.py
 ```
 
 The backend reads `SUPABASE_DIRECT_CONNECTION_STRING` with SQLAlchemy and uses `postgresql+psycopg`. Mixed-case local aliases such as `SUPABASE_direct_connection_string`, `SUPABASE_project_url`, and `SUPABASE_publishable_key` are also accepted for compatibility, but new environments should use the uppercase names above. The URL is normalized for `sslmode=require` and for passwords containing special characters. If `SUPABASE_DIRECT_CONNECTION_STRING` is missing, the app logs a warning and falls back to `sqlite:///./sulu_read_local.db`.

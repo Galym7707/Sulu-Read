@@ -21,3 +21,6 @@ __pycache__/
 .cxx
 local.properties
 icon-of-the-app.png
+
+.venv/
+scripts/ocr_eval_results/
