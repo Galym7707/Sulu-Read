@@ -1,15 +1,35 @@
 """Post-OCR correction for Kazakh and Russian textbook text.
 
-No network, no environment reads. The Kazakh-letter repair reads the bundled
-hunspell dictionaries from disk on first use (see ``hunspell_lexicon``),
-lazily and cached, so this module is no longer I/O-free. The caller decides
-whether to apply correction; this module only transforms strings.
+No network. The Kazakh-letter repair reads the bundled hunspell dictionaries
+from disk on first use (see ``hunspell_lexicon``), lazily and cached, so this
+module is no longer I/O-free. The caller decides whether to apply correction
+at all (``SULU_READ_OCR_CORRECTION``, read by ``main.py``); this module only
+transforms strings. The one exception is ``lexicon_repair_enabled`` below,
+which reads ``SULU_READ_OCR_LEXICON_REPAIR`` directly -- the lexicon repair
+defaults to off pending a real-photo evaluation, and gating it here (rather
+than threading a parameter through ``correct_ocr_text``) keeps that decision
+next to the code it governs and out of the public signature.
 """
 
 import itertools
+import os
 import re
 
 from .hunspell_lexicon import get_kazakh_lexicon, get_russian_lexicon
+
+# Off by default: the repair can still rewrite correct out-of-vocabulary
+# Kazakh words and Kazakh proper nouns on Russian pages (see the module
+# docstring and README). Read the same way main.ocr_correction_enabled()
+# reads SULU_READ_OCR_CORRECTION -- same accepted off-values -- just with
+# the opposite default.
+LEXICON_REPAIR_OFF_VALUES = {"0", "false", "no", "n", "off"}
+
+
+def lexicon_repair_enabled() -> bool:
+    return os.getenv("SULU_READ_OCR_LEXICON_REPAIR", "false").strip().lower() not in (
+        LEXICON_REPAIR_OFF_VALUES
+    )
+
 
 CYRILLIC_LETTERS = set(
     "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
@@ -172,6 +192,9 @@ def _fix_initial_eng(word: str) -> str:
 
 
 def _repair_with_lexicon(word: str) -> str:
+    if not lexicon_repair_enabled():
+        return word
+
     lexicon = get_kazakh_lexicon()
     if lexicon is None:
         return word
@@ -242,6 +265,15 @@ def _ambiguous_positions(word: str) -> list[int]:
         # exclusion the lexicon repair undoes that fix immediately after:
         # "неле" -> "ңеле".
         and not (character == "н" and index == 0)
+        # The same possessive н is also *medial* whenever a case suffix
+        # follows the 3rd-person possessive vowel (-ы/-і): "сөйлемінде",
+        # "досына", "Хатында", "қанатында", "кілтінде". Those forms are
+        # under-represented in the dictionary (same reason as the word-final
+        # case above), while the unrelated 2sg "-ың" + case form is
+        # generable, so "exactly one candidate" picks the wrong reading.
+        # Excluding н right after ы/і closes this without costing any
+        # corpus recovery (measured: 32/49 with and without it).
+        and not (character == "н" and index > 0 and word[index - 1] in "ыі")
     ]
 
 

@@ -2,6 +2,12 @@ from backend.app.services.ocr_correction import correct_ocr_text
 from backend.app.services import ocr_correction
 
 
+def _enable_lexicon_repair(monkeypatch):
+    # SULU_READ_OCR_LEXICON_REPAIR defaults to off; tests that exercise the
+    # repair (or its guards) must opt in explicitly.
+    monkeypatch.setenv("SULU_READ_OCR_LEXICON_REPAIR", "true")
+
+
 def test_latin_homoglyphs_folded_into_cyrillic_majority_word():
     # "мekтеп" carries Latin e/k inside a Cyrillic-majority word.
     assert correct_ocr_text("мekтеп") == "мектеп"
@@ -68,10 +74,11 @@ def test_back_vowel_word_is_not_kazakhized_by_harmony():
     assert correct_ocr_text("касса", language_hint="kk") == "касса"
 
 
-def test_front_vowel_word_is_not_kazakhized_by_harmony():
+def test_front_vowel_word_is_not_kazakhized_by_harmony(monkeypatch):
     # Restored via the lexicon (both "өлке" and "өлкелер" are real dictionary
     # words), not because "е" is a front vowel -- the harmony rule that used
     # to reason that way was deleted.
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("олке", language_hint="kk") == "өлке"
     assert correct_ocr_text("олкелер", language_hint="kk") == "өлкелер"
 
@@ -198,21 +205,24 @@ def test_russian_words_ending_in_din_nin_are_unchanged_in_kazakh_document():
 # --- Lexicon-gated letter repair ---
 
 
-def test_flattened_letters_are_restored_from_the_lexicon():
+def test_flattened_letters_are_restored_from_the_lexicon(monkeypatch):
     # "кала" is deliberately not used here: it is itself a real Russian word
     # ("кал", genitive), so the Russian guard (see the "Russian guard" tests
     # below) leaves it unchanged now. "кагаз" and "тагы" are not Russian
     # words, so they still demonstrate the lexicon restoring dropped letters.
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("кагаз", language_hint="kk") == "қағаз"
     assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
 
 
-def test_restoration_keeps_original_capitalization():
+def test_restoration_keeps_original_capitalization(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("Тагы", language_hint="kk") == "Тағы"
 
 
-def test_correct_words_are_never_rewritten():
+def test_correct_words_are_never_rewritten(monkeypatch):
     # Every one of these was damaged by the rule-based attempt this design replaces.
+    _enable_lexicon_repair(monkeypatch)
     unchanged = (
         "кітапхана",
         "болатын",
@@ -230,33 +240,53 @@ def test_correct_words_are_never_rewritten():
         assert correct_ocr_text(word, language_hint="kk") == word, word
 
 
-def test_short_words_are_left_alone():
+def test_short_words_are_left_alone(monkeypatch):
     # Without the length guard this becomes "қм".
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("км", language_hint="kk") == "км"
 
 
-def test_word_final_n_is_never_restored():
+def test_word_final_n_is_never_restored(monkeypatch):
     # -ын/-ін possessive-accusative forms are under-represented in the dictionary,
     # so a final н→ң finds a spurious unique match.
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("стадионын", language_hint="kk") == "стадионын"
     assert correct_ocr_text("жанын", language_hint="kk") == "жанын"
 
 
-def test_unknown_word_with_no_lexicon_candidate_is_left_alone():
+def test_medial_n_after_possessive_vowel_is_never_restored(monkeypatch):
+    # The word-final н guard above only covers the last character, but the
+    # same possessive н is *medial* whenever a case suffix follows the
+    # 3rd-person possessive vowel (-ы/-і): "сөйлемінде" ("in the sentence"),
+    # "досына", "Хатында", "қанатында", "кілтінде". Those forms are
+    # out-of-vocabulary while the unrelated 2sg "-ың" + case form is
+    # generable, so before this guard the lexicon repair picked the wrong
+    # reading ("сөйлеміңде" = "in your sentence").
+    _enable_lexicon_repair(monkeypatch)
+    words = ("сөйлемінде", "досына", "Хатында", "қанатында", "кілтінде")
+    for word in words:
+        assert correct_ocr_text(word, language_hint="kk") == word, word
+
+
+def test_unknown_word_with_no_lexicon_candidate_is_left_alone(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("абракадабра", language_hint="kk") == "абракадабра"
 
 
-def test_russian_document_is_not_repaired():
+def test_russian_document_is_not_repaired(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     source = "Книга лежит на столе. Город большой."
     assert correct_ocr_text(source, language_hint="ru") == source
 
 
-def test_lexicon_repair_is_idempotent():
+def test_lexicon_repair_is_idempotent(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     once = correct_ocr_text("кагаз тагы", language_hint="kk")
     assert correct_ocr_text(once, language_hint="kk") == once
 
 
 def test_repair_is_skipped_when_the_kazakh_lexicon_is_unavailable(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     monkeypatch.setattr(ocr_correction, "get_kazakh_lexicon", lambda: None)
     assert correct_ocr_text("кагаз", language_hint="kk") == "кагаз"
 
@@ -264,11 +294,12 @@ def test_repair_is_skipped_when_the_kazakh_lexicon_is_unavailable(monkeypatch):
 # --- Word-initial ң guard (Fix 4c) ---
 
 
-def test_word_initial_eng_is_not_reintroduced_by_the_lexicon_repair():
+def test_word_initial_eng_is_not_reintroduced_by_the_lexicon_repair(monkeypatch):
     # _fix_initial_eng turns a leading ң into н (word-initial ң is invalid
     # Kazakh). Without excluding index 0 from candidate generation, the
     # lexicon repair immediately undoes that: "неле" is not a Kazakh word,
     # but "ңеле" is, so it looked like a unique restoration.
+    _enable_lexicon_repair(monkeypatch)
     assert correct_ocr_text("ңеле", language_hint="kk") == "неле"
     assert correct_ocr_text("неле", language_hint="kk") == "неле"
 
@@ -282,7 +313,8 @@ def test_word_initial_eng_is_not_reintroduced_by_the_lexicon_repair():
 # stops that: a word already valid in Russian is never touched.
 
 
-def test_words_valid_in_russian_are_never_kazakhized():
+def test_words_valid_in_russian_are_never_kazakhized(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     words = (
         "доска",
         "кошка",
@@ -300,7 +332,8 @@ def test_words_valid_in_russian_are_never_kazakhized():
         assert correct_ocr_text(word, language_hint="kk") == word, word
 
 
-def test_russian_paragraph_is_unchanged_under_default_kazakh_hint():
+def test_russian_paragraph_is_unchanged_under_default_kazakh_hint(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
     source = (
         "Учитель написал задание на доске. Бумага и карандаш лежат на парте. "
         "Кошка спит на окне, а рядом висит шапка. В кармане у него лежал ключ."
@@ -312,5 +345,40 @@ def test_russian_guard_is_skipped_not_bypassed_when_unavailable(monkeypatch):
     # Missing Russian data must degrade to "no Russian guard", not "no
     # repairs at all" -- the Kazakh guard above is what actually matters for
     # safety, and it stays in force regardless.
+    _enable_lexicon_repair(monkeypatch)
     monkeypatch.setattr(ocr_correction, "get_russian_lexicon", lambda: None)
     assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
+
+
+# --- SULU_READ_OCR_LEXICON_REPAIR flag (Fix 2) ---
+
+
+def test_lexicon_repair_flag_defaults_off(monkeypatch):
+    monkeypatch.delenv("SULU_READ_OCR_LEXICON_REPAIR", raising=False)
+    assert ocr_correction.lexicon_repair_enabled() is False
+    assert correct_ocr_text("тагы", language_hint="kk") == "тагы"
+
+
+def test_lexicon_repair_off_by_default_never_loads_either_dictionary(monkeypatch):
+    monkeypatch.delenv("SULU_READ_OCR_LEXICON_REPAIR", raising=False)
+
+    def _fail():
+        raise AssertionError("dictionary must not load when the flag is off")
+
+    monkeypatch.setattr(ocr_correction, "get_kazakh_lexicon", _fail)
+    monkeypatch.setattr(ocr_correction, "get_russian_lexicon", _fail)
+    assert correct_ocr_text("тагы", language_hint="kk") == "тагы"
+
+
+def test_lexicon_repair_flag_on_restores_letters(monkeypatch):
+    _enable_lexicon_repair(monkeypatch)
+    assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
+
+
+def test_other_repairs_still_work_with_lexicon_repair_off(monkeypatch):
+    # Homoglyph folding, the word-initial ң fix, and the һ loanword table are
+    # unconditional -- only the lexicon-driven letter repair is gated.
+    monkeypatch.delenv("SULU_READ_OCR_LEXICON_REPAIR", raising=False)
+    assert correct_ocr_text("мekтеп") == "мектеп"
+    assert correct_ocr_text("ңан", language_hint="kk") == "нан"
+    assert correct_ocr_text("гаухар", language_hint="kk") == "гауһар"

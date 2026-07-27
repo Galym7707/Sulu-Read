@@ -10,6 +10,7 @@ Usage:
 
 import argparse
 import json
+import os
 import random
 import re
 import sys
@@ -18,6 +19,13 @@ from pathlib import Path
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
+
+# SULU_READ_OCR_LEXICON_REPAIR defaults to off in production (the repair can
+# still rewrite correct OOV Kazakh words and Kazakh proper nouns on Russian
+# pages). This harness exists to measure that repair, so it must turn the
+# flag on -- before the correction module is imported/called -- or the
+# recovery metric silently drops to zero and the gate becomes meaningless.
+os.environ.setdefault("SULU_READ_OCR_LEXICON_REPAIR", "true")
 
 from backend.app.services.ocr_correction import correct_ocr_text  # noqa: E402
 from scripts.ocr_eval_corpus import CORPUS  # noqa: E402

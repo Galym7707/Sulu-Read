@@ -14,6 +14,10 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from scripts.ocr_eval import evaluate
 
+# SULU_READ_OCR_LEXICON_REPAIR defaults to off in production; importing
+# scripts.ocr_eval (above) sets it before the correction module is touched,
+# so this gate actually exercises the lexicon repair. See scripts/ocr_eval.py.
+
 # Re-derived after the Kazakh-lexicon letter recovery landed (2026-07-27) and
 # a Critical review finding was fixed on top of it: /v1/adapt-image defaults
 # language_hint="kk", so Russian pages ran through the Kazakh repair path and
@@ -41,16 +45,16 @@ def test_corpus_is_actually_corrupted(report):
 
 
 def test_homoglyph_folding_reduces_character_error_rate(report):
-    # Despite the name of the fields involved (cer_raw/cer_corrected cover
-    # the whole corpus, both corruption channels combined), this gate is
-    # driven almost entirely by homoglyph folding, not Kazakh-letter repair:
-    # the isolated-channel measurement shows the Kazakh-letter-drop channel
-    # gets ZERO CER improvement from correction (raw == corrected), while
-    # the homoglyph channel goes from noisy to perfect. Homoglyph folding
-    # (Latin/Cyrillic lookalike repair, an exact bijection) is real,
-    # useful production behavior and is worth a regression gate on its
-    # own merits -- it must simply not be read as evidence about Kazakh
-    # letter correction, which this rule set barely touches anymore.
+    # cer_raw/cer_corrected cover the whole corpus, both corruption channels
+    # combined. Both channels contribute now: the isolated-channel
+    # measurement shows the Kazakh-letter-drop channel goes from raw 0.0522
+    # to corrected 0.0196 (this harness enables SULU_READ_OCR_LEXICON_REPAIR
+    # for its own run -- see scripts/ocr_eval.py -- so the lexicon repair is
+    # actually exercised here even though it defaults to off in production),
+    # while the homoglyph channel goes from noisy to perfect. Homoglyph
+    # folding (Latin/Cyrillic lookalike repair, an exact bijection) remains
+    # the larger contributor to this combined number, but Kazakh-letter
+    # repair is no longer a no-op on it.
     reduction = 1 - report["cer_corrected"] / report["cer_raw"]
     assert reduction >= MINIMUM_CER_REDUCTION, (
         f"CER reduction {reduction:.3f} is below the {MINIMUM_CER_REDUCTION} target "

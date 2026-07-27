@@ -177,3 +177,60 @@ thirteen false rewrites of correct Russian text eliminated. The eval corpus also
 three rows of ordinary Russian sentences under `language_hint="kk"` (`rk-01..rk-03`,
 including several of the damaged words) so the clean-input no-op gate — the single most
 important gate in this design — can no longer read 0 while this class of bug is live.
+
+## Post-review revision 2
+
+A second whole-branch review, reproducing every case by hand rather than trusting the
+eval corpus, found the repair still rewrites correct Kazakh:
+
+```
+сөйлемінде -> сөйлеміңде     ("in the sentence" -> "in your sentence")
+досына     -> досыңа
+Хатында    -> Хатыңда
+қанатында  -> қанатыңда
+кілтінде   -> кілтіңде
+билетінде  -> білетінде
+газымен    -> ғазымен
+Костанай   -> Қостанай       (correct in Kazakh, wrong on a Russian page)
+Аскар      -> Асқар
+```
+
+**Cause 1: possessive `н` is medial, not just final.** The word-final `н→ң` guard
+(above) only excludes the last character of a word. The same possessive `н` is also
+*medial* whenever a case suffix follows the 3rd-person possessive vowel (`-ы`/`-і`):
+`-ы` + `-нда`/`-на`/`-нан`/`-мен` and the `-і` equivalents. Those possessive+case forms
+(`сөйлемінде`, `досына`, `Хатында`, `қанатында`, `кілтінде`) are under-represented in the
+dictionary for the same reason the word-final case is, while the unrelated 2sg `-ың` +
+case form (`сөйлеміңде`, "in your sentence") is generable, so "exactly one candidate"
+picked the wrong reading. **Fix:** `_ambiguous_positions` in `ocr_correction.py` also
+excludes `н` when the character immediately before it is `ы` or `і`. Measured: fixes all
+five words above and costs nothing — corpus recovery stays at 32/49 with and without it.
+
+**Cause 2: the dictionary cannot cover agglutinative running text.** `билетінде` is an
+out-of-vocabulary stem restored to the wrong in-vocabulary reading (`білетінде`);
+`газымен`, `Костанай`, and `Аскар` are Kazakh words and proper nouns that happen to also
+be readable as damaged text once you allow letter substitutions, on pages the language
+hint or the Russian-dictionary guard does not protect. Roughly 31% of ordinary Kazakh
+words are OOV against the bundled dictionary, and no amount of guard-tightening within
+this design closes that gap — it needs either a bigger dictionary or a real accuracy
+measurement to bound the damage, neither of which exists yet.
+
+**Decision: ship the repair off by default.** `SULU_READ_OCR_LEXICON_REPAIR` (default
+`false`) now gates the lexicon-driven letter repair specifically; homoglyph folding, the
+word-initial `ң` fix, and the `һ` loanword table are unaffected and keep running whenever
+`SULU_READ_OCR_CORRECTION` is on. All the infrastructure lands — the guard fix, the flag,
+the eval wiring, the tests — but the repair itself stays dormant in production until a
+real-photo evaluation exists to bound cause 2 directly. `scripts/ocr_eval.py` sets the
+flag before importing the correction module so the synthetic gate still exercises the
+repair; that gate is not a substitute for the real-photo evaluation, only a regression
+guard on the code path while it waits for one.
+
+**Honest measurement caveat.** The 65.3% recovery figure (and the 32/49 in this round)
+comes from a corpus whose vocabulary is dictionary-covered by construction and whose
+corruption model is the corrector's own confusion table inverted — the noise model and
+the repair are, in effect, testing each other's assumptions rather than testing against
+independent reality. That figure is not a claim about accuracy on real scanned photos.
+Held-out prose that was not built to be dictionary-covered measures roughly 46%
+recovery and 7.7% wrong rewrites — a materially worse trade than the synthetic number
+suggests, and the direct reason this revision ships the repair off by default rather
+than raising the eval threshold and shipping it on.
