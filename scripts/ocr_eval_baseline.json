@@ -1,10 +1,10 @@
 {
   "engine": "synthetic-noise",
-  "snippets": 44,
-  "cer_raw": 0.07492553491083553,
-  "cer_corrected": 0.05576016207928442,
-  "wer_raw": 0.34053030303030296,
-  "wer_corrected": 0.2742424242424242,
+  "snippets": 47,
+  "cer_raw": 0.07078779928467646,
+  "cer_corrected": 0.019648947516662598,
+  "wer_raw": 0.32304964539007086,
+  "wer_corrected": 0.0872340425531915,
   "russian_cer_raw": 0.019812086610505583,
   "russian_cer_corrected": 0.0,
   "kazakh_letters_raw": {
@@ -44,40 +44,40 @@
   "kazakh_letters_corrected": {
     "қ": {
       "expected": 26,
-      "present": 11
+      "present": 22
     },
     "ң": {
       "expected": 12,
-      "present": 4
+      "present": 6
     },
     "і": {
       "expected": 29,
-      "present": 11
+      "present": 21
     },
     "ү": {
       "expected": 7,
-      "present": 4
+      "present": 6
     },
     "ғ": {
       "expected": 13,
-      "present": 5
+      "present": 11
     },
     "ұ": {
       "expected": 6,
-      "present": 1
+      "present": 4
     },
     "ә": {
       "expected": 5,
-      "present": 1
+      "present": 4
     },
     "ө": {
       "expected": 5,
-      "present": 3
+      "present": 5
     }
   },
-  "kazakh_drop_cer_raw": 0.05576016207928442,
-  "kazakh_drop_cer_corrected": 0.05576016207928442,
-  "homoglyph_cer_raw": 0.019165372831551106,
+  "kazakh_drop_cer_raw": 0.05220100279762797,
+  "kazakh_drop_cer_corrected": 0.019648947516662598,
+  "homoglyph_cer_raw": 0.018586796487048488,
   "homoglyph_cer_corrected": 0.0,
   "clean_input_no_op_count": 0
 }
