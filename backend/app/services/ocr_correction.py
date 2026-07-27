@@ -4,7 +4,10 @@ Pure functions only: no I/O, no network, no environment reads. The caller
 decides whether to apply correction; this module only transforms strings.
 """
 
+import itertools
 import re
+
+from .kazakh_lexicon import get_lexicon
 
 CYRILLIC_LETTERS = set(
     "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
@@ -73,6 +76,22 @@ H_LOANWORD_REPAIRS = {
 
 KK_EVIDENCE_MIN_RATIO = 0.05
 
+# OCR flattens Kazakh letters onto their Russian lookalikes; these are the
+# restorations to try. The dictionary decides which, if any, is correct.
+KAZAKH_RESTORATIONS = {
+    "к": "қ",
+    "г": "ғ",
+    "а": "ә",
+    "о": "ө",
+    "у": "ұү",
+    "и": "і",
+    "н": "ң",
+    "х": "һ",
+}
+MIN_LEXICON_REPAIR_LENGTH = 4
+MAX_AMBIGUOUS_POSITIONS = 6
+MAX_CANDIDATES = 256
+
 
 def correct_ocr_text(text: str, *, language_hint: str = "kk") -> str:
     """Return `text` with OCR letter confusions repaired.
@@ -126,7 +145,7 @@ def _repair_kazakh(word: str) -> str:
     if repaired != word:
         return repaired
 
-    return _fix_initial_eng(word)
+    return _repair_with_lexicon(_fix_initial_eng(word))
 
 
 def _repair_h_loanword(word: str) -> str:
@@ -144,6 +163,72 @@ def _fix_initial_eng(word: str) -> str:
     if word.startswith("Ң"):
         return "Н" + word[1:]
     return word
+
+
+def _repair_with_lexicon(word: str) -> str:
+    lexicon = get_lexicon()
+    if lexicon is None:
+        return word
+
+    lowered = word.lower()
+    if len(lowered) < MIN_LEXICON_REPAIR_LENGTH or not lowered.isalpha():
+        return word
+    if lexicon.contains(lowered):
+        return word
+
+    positions = _ambiguous_positions(lowered)
+    if not positions or len(positions) > MAX_AMBIGUOUS_POSITIONS:
+        return word
+
+    choices = [
+        [None] + [(index, letter) for letter in KAZAKH_RESTORATIONS[lowered[index]]]
+        for index in positions
+    ]
+
+    match: str | None = None
+    evaluated = 0
+    for combination in itertools.product(*choices):
+        evaluated += 1
+        if evaluated > MAX_CANDIDATES:
+            return word
+
+        characters = list(lowered)
+        for replacement in combination:
+            if replacement is not None:
+                characters[replacement[0]] = replacement[1]
+
+        candidate = "".join(characters)
+        if candidate == lowered or not lexicon.contains(candidate):
+            continue
+        if match is not None and candidate != match:
+            # Two readings are both real words; the dictionary cannot settle it.
+            return word
+        match = candidate
+
+    if match is None:
+        return word
+    return _apply_original_case(word, match)
+
+
+def _ambiguous_positions(word: str) -> list[int]:
+    last_index = len(word) - 1
+    return [
+        index
+        for index, character in enumerate(word)
+        if character in KAZAKH_RESTORATIONS
+        # A word-final н is usually the -ын/-ін possessive-accusative, whose forms
+        # are under-represented in the dictionary, so restoring ң there finds a
+        # spurious unique match and rewrites correct text.
+        and not (character == "н" and index == last_index)
+    ]
+
+
+def _apply_original_case(original: str, repaired: str) -> str:
+    if original.isupper():
+        return repaired.upper()
+    if original[:1].isupper():
+        return repaired[:1].upper() + repaired[1:]
+    return repaired
 
 
 def _fold_homoglyphs(word: str) -> str:

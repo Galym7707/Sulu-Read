@@ -58,8 +58,6 @@ def load_lexicon(dictionary_path: Path, affix_path: Path) -> KazakhLexicon | Non
         suffix_rules = _parse_affix_rules(affix_path)
     except OSError:
         return None
-    except Exception:
-        return None
 
     if not stems or not suffix_rules:
         return None

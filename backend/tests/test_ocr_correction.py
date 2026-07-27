@@ -1,4 +1,5 @@
 from backend.app.services.ocr_correction import correct_ocr_text
+from backend.app.services import ocr_correction
 
 
 def test_latin_homoglyphs_folded_into_cyrillic_majority_word():
@@ -54,21 +55,24 @@ def test_correction_is_idempotent():
     assert correct_ocr_text(once) == once
 
 
-def test_back_vowel_word_is_not_kazakhized():
-    # Vowel harmony was deleted: "а" being a back vowel never proves a
-    # scanned "к" is wrong, so "кала" is returned as scanned, not "қала".
-    assert correct_ocr_text("кала", language_hint="kk") == "кала"
+def test_back_vowel_word_is_not_kazakhized_by_harmony():
+    # Vowel harmony was deleted: "а" being a back vowel never proves a scanned
+    # "к" is wrong. "кала" -> "қала" still happens (see the lexicon-gated
+    # tests below), but only because "қала" is a real dictionary word and
+    # "кала" is not -- never because of vowel phonology.
+    assert correct_ocr_text("кала", language_hint="kk") == "қала"
 
 
-def test_back_vowel_ghayn_word_is_not_kazakhized():
-    assert correct_ocr_text("тагы", language_hint="kk") == "тагы"
+def test_back_vowel_ghayn_word_is_not_kazakhized_by_harmony():
+    assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
 
 
-def test_front_vowel_word_is_not_kazakhized():
-    assert correct_ocr_text("олке", language_hint="kk") == "олке"
-    # "олкелер" has two front markers (е, е); the deleted harmony rule used
-    # to turn its о into ө. It no longer does.
-    assert correct_ocr_text("олкелер", language_hint="kk") == "олкелер"
+def test_front_vowel_word_is_not_kazakhized_by_harmony():
+    # Restored via the lexicon (both "өлке" and "өлкелер" are real dictionary
+    # words), not because "е" is a front vowel -- the harmony rule that used
+    # to reason that way was deleted.
+    assert correct_ocr_text("олке", language_hint="kk") == "өлке"
+    assert correct_ocr_text("олкелер", language_hint="kk") == "өлкелер"
 
 
 def test_word_initial_eng_is_corrected():
@@ -188,3 +192,65 @@ def test_chemical_formula_is_unchanged():
 def test_russian_words_ending_in_din_nin_are_unchanged_in_kazakh_document():
     assert correct_ocr_text("господин", language_hint="kk") == "господин"
     assert correct_ocr_text("гражданин", language_hint="kk") == "гражданин"
+
+
+# --- Lexicon-gated letter repair ---
+
+
+def test_flattened_letters_are_restored_from_the_lexicon():
+    assert correct_ocr_text("кала", language_hint="kk") == "қала"
+    assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
+
+
+def test_restoration_keeps_original_capitalization():
+    assert correct_ocr_text("Кала", language_hint="kk") == "Қала"
+
+
+def test_correct_words_are_never_rewritten():
+    # Every one of these was damaged by the rule-based attempt this design replaces.
+    unchanged = (
+        "кітапхана",
+        "болатын",
+        "оқитын",
+        "телефонын",
+        "орнын",
+        "кітабын",
+        "заводын",
+        "картасы",
+        "музыкалық",
+        "Республикасы",
+        "Москва",
+    )
+    for word in unchanged:
+        assert correct_ocr_text(word, language_hint="kk") == word, word
+
+
+def test_short_words_are_left_alone():
+    # Without the length guard this becomes "қм".
+    assert correct_ocr_text("км", language_hint="kk") == "км"
+
+
+def test_word_final_n_is_never_restored():
+    # -ын/-ін possessive-accusative forms are under-represented in the dictionary,
+    # so a final н→ң finds a spurious unique match.
+    assert correct_ocr_text("стадионын", language_hint="kk") == "стадионын"
+    assert correct_ocr_text("жанын", language_hint="kk") == "жанын"
+
+
+def test_unknown_word_with_no_lexicon_candidate_is_left_alone():
+    assert correct_ocr_text("абракадабра", language_hint="kk") == "абракадабра"
+
+
+def test_russian_document_is_not_repaired():
+    source = "Книга лежит на столе. Город большой."
+    assert correct_ocr_text(source, language_hint="ru") == source
+
+
+def test_lexicon_repair_is_idempotent():
+    once = correct_ocr_text("кала тагы", language_hint="kk")
+    assert correct_ocr_text(once, language_hint="kk") == once
+
+
+def test_repair_is_skipped_when_the_lexicon_is_unavailable(monkeypatch):
+    monkeypatch.setattr(ocr_correction, "get_lexicon", lambda: None)
+    assert correct_ocr_text("кала", language_hint="kk") == "кала"
