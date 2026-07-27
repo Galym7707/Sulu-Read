@@ -145,3 +145,35 @@ page after the one-time load.
 - Recovering the genitive `-ның` (see the word-final `н` guard).
 - Replacing the Groq prompt hardening. The prompt remains the first line of defense;
   this layer is the safety net beneath it.
+
+## Post-review revision
+
+A review of the implementation found a **Critical**: `POST /v1/adapt-image` defaults
+`language_hint="kk"` (`main.py`), so a Russian page with no explicit hint runs through
+the Kazakh repair path described above, not the language gate. "Russian documents are
+handled by the language gate" (the Non-Goal above) assumed the gate was always closed
+for Russian text; it is not, by default. Real Russian words whose Kazakh-restored form
+is also a real Kazakh word satisfied the "exactly one candidate" rule and got rewritten:
+`доска`→`досқа`, `кошка`→`қошқа`, `шапка`→`шапқа`, `бумага`→`бумаға`, `карман`→`қарман`,
+plus `костер`, `каша`, `кожа`, `ласка`, `катер`, `козел`, and two more — 13 confirmed
+damaged words in total.
+
+**Fix.** Extend the same generosity-favors-no-op philosophy the design already uses for
+the Kazakh lexicon: vendor the Russian hunspell dictionary
+(`backend/app/data/ru_RU.dic`/`.aff`, from
+[wooorm/dictionaries](https://github.com/wooorm/dictionaries), BSD-3-Clause) and check it
+in `_repair_with_lexicon`, after the Kazakh-lexicon check and before candidate
+generation: **a word already valid in Russian is never treated as damaged Kazakh.**
+Missing Russian data degrades to "no Russian guard" rather than "no repairs at all" — the
+Kazakh guard, which is what actually matters for safety, stays in force either way.
+
+**Measured cost.** All 13 damaged words are real Russian dictionary entries, so the guard
+recognizes and blocks every one of them (verified directly, and via a Russian paragraph
+containing five of them returned byte-identical under `language_hint="kk"`). On the
+Kazakh-letter-drop channel of the eval corpus, word-level recovery (words the noise model
+actually corrupted, then correctly restored) moved from 33/49 (67.3%) without the guard to
+32/49 (65.3%) with it — **one previously-recovered word lost** to over-blocking, against
+thirteen false rewrites of correct Russian text eliminated. The eval corpus also gained
+three rows of ordinary Russian sentences under `language_hint="kk"` (`rk-01..rk-03`,
+including several of the damaged words) so the clean-input no-op gate — the single most
+important gate in this design — can no longer read 0 while this class of bug is live.
