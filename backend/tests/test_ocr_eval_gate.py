@@ -14,20 +14,20 @@ if str(REPOSITORY_ROOT) not in sys.path:
 
 from scripts.ocr_eval import evaluate
 
-# Re-derived after a second review round (2026-07-26) deleted the last
-# suffix-repair rules (нын/дын -> ның/дың): they collided with the
-# productive -ын/-ін possessive-accusative pattern (e.g. "телефонын",
-# "орнын") and rewrote correctly-spelled words into different, wrong ones.
-# The eval corpus also grew four snippets that exercise that exact pattern
-# (kk-21..kk-24), which is why this number moved from the prior ~29.5%.
+# Re-derived after the Kazakh-lexicon letter recovery landed (2026-07-27) and
+# a Critical review finding was fixed on top of it: /v1/adapt-image defaults
+# language_hint="kk", so Russian pages ran through the Kazakh repair path and
+# real Russian words with a Kazakh-shaped restoration got rewritten (e.g.
+# "доска" -> "досқа"). The fix added a Russian-dictionary guard (a word
+# already valid in Russian is never touched) and the eval corpus grew three
+# rows of ordinary Russian text under the "kk" hint (rk-01..rk-03) so the
+# clean-input no-op gate can catch a regression of that class.
 #
-# What remains in the Kazakh path (homoglyph folding, word-initial ң, the
-# closed h-loanword set) measures ~25.6% CER reduction on the corpus.
-# Almost all of that reduction is homoglyph folding, not Kazakh-letter
-# repair: see test_homoglyph_folding_reduces_character_error_rate below and
-# its docstring. The threshold is a round number just below the measured
-# value.
-MINIMUM_CER_REDUCTION = 0.20
+# With the lexicon repair now doing real Kazakh-letter recovery (not just
+# homoglyph folding and the word-initial ң fix, as when this threshold was
+# last 0.20), the measured CER reduction on the full corpus is ~72.2%. The
+# threshold is a round number safely below the measured value.
+MINIMUM_CER_REDUCTION = 0.60
 
 
 @pytest.fixture(scope="module")
