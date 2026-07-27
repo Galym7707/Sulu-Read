@@ -57,14 +57,15 @@ def test_correction_is_idempotent():
 
 def test_back_vowel_word_is_not_kazakhized_by_harmony():
     # Vowel harmony was deleted: "а" being a back vowel never proves a scanned
-    # "к" is wrong. "кала" -> "қала" still happens (see the lexicon-gated
-    # tests below), but only because "қала" is a real dictionary word and
-    # "кала" is not -- never because of vowel phonology.
-    assert correct_ocr_text("кала", language_hint="kk") == "қала"
-
-
-def test_back_vowel_ghayn_word_is_not_kazakhized_by_harmony():
-    assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
+    # "к" is wrong or right. "касса" has two back vowels around a "к" -- a
+    # harmony rule could be tempted to leave it alone "because" the vowels
+    # agree. It is in fact left alone, but only because "касса" is already a
+    # real word (a loanword present in both the Kazakh and Russian
+    # dictionaries), never because of vowel phonology. This is not a
+    # duplicate of the lexicon-gated tests below: those assert a *change*
+    # happens; this asserts a *plausible-looking* word is correctly left as
+    # a no-op, which a reintroduced harmony rule would not guarantee.
+    assert correct_ocr_text("касса", language_hint="kk") == "касса"
 
 
 def test_front_vowel_word_is_not_kazakhized_by_harmony():
@@ -198,12 +199,16 @@ def test_russian_words_ending_in_din_nin_are_unchanged_in_kazakh_document():
 
 
 def test_flattened_letters_are_restored_from_the_lexicon():
-    assert correct_ocr_text("кала", language_hint="kk") == "қала"
+    # "кала" is deliberately not used here: it is itself a real Russian word
+    # ("кал", genitive), so the Russian guard (see the "Russian guard" tests
+    # below) leaves it unchanged now. "кагаз" and "тагы" are not Russian
+    # words, so they still demonstrate the lexicon restoring dropped letters.
+    assert correct_ocr_text("кагаз", language_hint="kk") == "қағаз"
     assert correct_ocr_text("тагы", language_hint="kk") == "тағы"
 
 
 def test_restoration_keeps_original_capitalization():
-    assert correct_ocr_text("Кала", language_hint="kk") == "Қала"
+    assert correct_ocr_text("Тагы", language_hint="kk") == "Тағы"
 
 
 def test_correct_words_are_never_rewritten():
@@ -247,10 +252,65 @@ def test_russian_document_is_not_repaired():
 
 
 def test_lexicon_repair_is_idempotent():
-    once = correct_ocr_text("кала тагы", language_hint="kk")
+    once = correct_ocr_text("кагаз тагы", language_hint="kk")
     assert correct_ocr_text(once, language_hint="kk") == once
 
 
-def test_repair_is_skipped_when_the_lexicon_is_unavailable(monkeypatch):
-    monkeypatch.setattr(ocr_correction, "get_lexicon", lambda: None)
-    assert correct_ocr_text("кала", language_hint="kk") == "кала"
+def test_repair_is_skipped_when_the_kazakh_lexicon_is_unavailable(monkeypatch):
+    monkeypatch.setattr(ocr_correction, "get_kazakh_lexicon", lambda: None)
+    assert correct_ocr_text("кагаз", language_hint="kk") == "кагаз"
+
+
+# --- Word-initial ң guard (Fix 4c) ---
+
+
+def test_word_initial_eng_is_not_reintroduced_by_the_lexicon_repair():
+    # _fix_initial_eng turns a leading ң into н (word-initial ң is invalid
+    # Kazakh). Without excluding index 0 from candidate generation, the
+    # lexicon repair immediately undoes that: "неле" is not a Kazakh word,
+    # but "ңеле" is, so it looked like a unique restoration.
+    assert correct_ocr_text("ңеле", language_hint="kk") == "неле"
+    assert correct_ocr_text("неле", language_hint="kk") == "неле"
+
+
+# --- Russian guard (Fix 3) ---
+#
+# /v1/adapt-image defaults language_hint="kk" (main.py), so Russian pages run
+# through the Kazakh repair path. Each of these is a real Russian word whose
+# Kazakh-restored form is also a real Kazakh word, so the lexicon's "exactly
+# one candidate" rule alone would rewrite it. The Russian dictionary guard
+# stops that: a word already valid in Russian is never touched.
+
+
+def test_words_valid_in_russian_are_never_kazakhized():
+    words = (
+        "доска",
+        "кошка",
+        "шапка",
+        "бумага",
+        "карман",
+        "костер",
+        "каша",
+        "кожа",
+        "ласка",
+        "катер",
+        "козел",
+    )
+    for word in words:
+        assert correct_ocr_text(word, language_hint="kk") == word, word
+
+
+def test_russian_paragraph_is_unchanged_under_default_kazakh_hint():
+    source = (
+        "Учитель написал задание на доске. Бумага и карандаш лежат на парте. "
+        "Кошка спит на окне, а рядом висит шапка. В кармане у него лежал ключ."
+    )
+    assert correct_ocr_text(source, language_hint="kk") == source
+
+
+def test_russian_guard_is_skipped_not_bypassed_when_unavailable(monkeypatch):
+    # Missing Russian data must degrade to "no Russian guard", not "no
+    # repairs at all" -- the Kazakh guard above is what actually matters for
+    # safety, and it stays in force regardless.
+    monkeypatch.setattr(ocr_correction, "get_russian_lexicon", lambda: None)
+    assert correct_ocr_text("тагы", language_hint="kk") == "тағы"

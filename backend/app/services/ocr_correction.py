@@ -1,13 +1,15 @@
 """Post-OCR correction for Kazakh and Russian textbook text.
 
-Pure functions only: no I/O, no network, no environment reads. The caller
-decides whether to apply correction; this module only transforms strings.
+No network, no environment reads. The Kazakh-letter repair reads the bundled
+hunspell dictionaries from disk on first use (see ``hunspell_lexicon``),
+lazily and cached, so this module is no longer I/O-free. The caller decides
+whether to apply correction; this module only transforms strings.
 """
 
 import itertools
 import re
 
-from .kazakh_lexicon import get_lexicon
+from .hunspell_lexicon import get_kazakh_lexicon, get_russian_lexicon
 
 CYRILLIC_LETTERS = set(
     "абвгдеёжзийклмнопрстуфхцчшщъыьэюя"
@@ -96,7 +98,11 @@ MAX_CANDIDATES = 256
 def correct_ocr_text(text: str, *, language_hint: str = "kk") -> str:
     """Return `text` with OCR letter confusions repaired.
 
-    Never raises for string input. Unrecognized patterns pass through.
+    Unrecognized patterns pass through unchanged. This does not catch
+    exceptions raised while reading or parsing the bundled dictionaries: a
+    genuine parser bug propagates to the caller rather than vanishing
+    silently. ``main.apply_ocr_correction`` is the layer that catches and
+    logs around this call so a request never fails because of it.
     """
     if not text or not text.strip():
         return text
@@ -166,7 +172,7 @@ def _fix_initial_eng(word: str) -> str:
 
 
 def _repair_with_lexicon(word: str) -> str:
-    lexicon = get_lexicon()
+    lexicon = get_kazakh_lexicon()
     if lexicon is None:
         return word
 
@@ -174,6 +180,16 @@ def _repair_with_lexicon(word: str) -> str:
     if len(lowered) < MIN_LEXICON_REPAIR_LENGTH or not lowered.isalpha():
         return word
     if lexicon.contains(lowered):
+        return word
+
+    # A word already valid in Russian must never be treated as damaged
+    # Kazakh: the default language_hint is "kk", so Russian pages run through
+    # this path too, and a real Russian word can also be a real Kazakh word
+    # under exactly one restoration (e.g. "доска" -> "досқа"). Missing
+    # Russian data degrades to "no guard", not "no repairs" -- the Kazakh
+    # guard above already covers the safety-critical case.
+    russian_lexicon = get_russian_lexicon()
+    if russian_lexicon is not None and russian_lexicon.contains(lowered):
         return word
 
     positions = _ambiguous_positions(lowered)
@@ -220,6 +236,12 @@ def _ambiguous_positions(word: str) -> list[int]:
         # are under-represented in the dictionary, so restoring ң there finds a
         # spurious unique match and rewrites correct text.
         and not (character == "н" and index == last_index)
+        # A word-initial н is never a real word-initial ң (Kazakh forbids
+        # word-initial ң; that is exactly why _fix_initial_eng runs just
+        # before this and turns a scanned leading ң into н). Without this
+        # exclusion the lexicon repair undoes that fix immediately after:
+        # "неле" -> "ңеле".
+        and not (character == "н" and index == 0)
     ]
 
 
