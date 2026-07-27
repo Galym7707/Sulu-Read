@@ -10,13 +10,22 @@ Usage:
 
 import argparse
 import json
+import os
 import random
+import re
 import sys
 from pathlib import Path
 
 REPOSITORY_ROOT = Path(__file__).resolve().parents[1]
 if str(REPOSITORY_ROOT) not in sys.path:
     sys.path.insert(0, str(REPOSITORY_ROOT))
+
+# SULU_READ_OCR_LEXICON_REPAIR defaults to off in production (the repair can
+# still rewrite correct OOV Kazakh words and Kazakh proper nouns on Russian
+# pages). This harness exists to measure that repair, so it must turn the
+# flag on -- before the correction module is imported/called -- or the
+# recovery metric silently drops to zero and the gate becomes meaningless.
+os.environ.setdefault("SULU_READ_OCR_LEXICON_REPAIR", "true")
 
 from backend.app.services.ocr_correction import correct_ocr_text  # noqa: E402
 from scripts.ocr_eval_corpus import CORPUS  # noqa: E402
@@ -55,6 +64,7 @@ HOMOGLYPH_INJECTION.update(
 )
 
 KAZAKH_LETTERS_TRACKED = "әғқңөұүһі"
+WORD_PATTERN = re.compile(r"[^\W_]+", re.UNICODE)
 
 DEFAULT_KAZAKH_DROP_RATE = 0.6
 DEFAULT_HOMOGLYPH_RATE = 0.05
@@ -122,6 +132,26 @@ def kazakh_letter_recovery(reference: str, hypothesis: str) -> dict:
             "present": hypothesis.lower().count(letter),
         }
     return table
+
+
+def _count_word_recovery(reference: str, raw: str, corrected: str) -> tuple:
+    """Words this channel corrupted, and how many came back exactly right."""
+    reference_words = WORD_PATTERN.findall(reference)
+    raw_words = WORD_PATTERN.findall(raw)
+    corrected_words = WORD_PATTERN.findall(corrected)
+    if not (len(reference_words) == len(raw_words) == len(corrected_words)):
+        # Tokenization drifted; skip rather than mis-align the comparison.
+        return 0, 0
+
+    corrupted = 0
+    restored = 0
+    for expected, scanned, repaired in zip(reference_words, raw_words, corrected_words):
+        if scanned.lower() == expected.lower():
+            continue
+        corrupted += 1
+        if repaired.lower() == expected.lower():
+            restored += 1
+    return corrupted, restored
 
 
 def merge_recovery(total: dict, addition: dict) -> None:
@@ -198,12 +228,16 @@ def _evaluate_channels(engine: str) -> dict:
             "kazakh_drop_cer_corrected": None,
             "homoglyph_cer_raw": None,
             "homoglyph_cer_corrected": None,
+            "kazakh_words_corrupted": 0,
+            "kazakh_words_restored": 0,
         }
 
     kazakh_drop_raw_cer = []
     kazakh_drop_corrected_cer = []
     homoglyph_raw_cer = []
     homoglyph_corrected_cer = []
+    kazakh_words_corrupted = 0
+    kazakh_words_restored = 0
 
     for index, item in enumerate(CORPUS):
         reference = item["text"]
@@ -213,6 +247,13 @@ def _evaluate_channels(engine: str) -> dict:
         kazakh_drop_corrected = correct_ocr_text(kazakh_drop_raw, language_hint=item["language_hint"])
         kazakh_drop_raw_cer.append(character_error_rate(reference, kazakh_drop_raw))
         kazakh_drop_corrected_cer.append(character_error_rate(reference, kazakh_drop_corrected))
+
+        if item["language_hint"] == "kk":
+            corrupted, restored = _count_word_recovery(
+                reference, kazakh_drop_raw, kazakh_drop_corrected
+            )
+            kazakh_words_corrupted += corrupted
+            kazakh_words_restored += restored
 
         homoglyph_raw = corrupt(reference, seed=seed, kazakh_drop_rate=0.0)
         homoglyph_corrected = correct_ocr_text(homoglyph_raw, language_hint=item["language_hint"])
@@ -224,6 +265,8 @@ def _evaluate_channels(engine: str) -> dict:
         "kazakh_drop_cer_corrected": _mean(kazakh_drop_corrected_cer),
         "homoglyph_cer_raw": _mean(homoglyph_raw_cer),
         "homoglyph_cer_corrected": _mean(homoglyph_corrected_cer),
+        "kazakh_words_corrupted": kazakh_words_corrupted,
+        "kazakh_words_restored": kazakh_words_restored,
     }
 
 
@@ -318,6 +361,10 @@ def print_report(report: dict) -> None:
         print(
             f"CER (homoglyph channel only)  raw {report['homoglyph_cer_raw']:.4f}"
             f"  ->  corrected {report['homoglyph_cer_corrected']:.4f}"
+        )
+        print(
+            f"Kazakh words restored: {report['kazakh_words_restored']}"
+            f"/{report['kazakh_words_corrupted']}"
         )
 
     print(f"\nClean-input no-op count: {report['clean_input_no_op_count']} (must be 0)")

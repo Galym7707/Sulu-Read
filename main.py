@@ -23,7 +23,7 @@ from backend.app.database import check_database_ready, init_database, using_runt
 from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
 from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
-from backend.app.services.ocr_correction import correct_ocr_text
+from backend.app.services.ocr_correction import correct_ocr_text, lexicon_repair_enabled
 
 try:
     import cv2
@@ -291,6 +291,7 @@ async def health(request: Request) -> dict[str, Any]:
         "ocr_languages": request.app.state.ocr_languages,
         "ocr_error": request.app.state.ocr_error,
         "ocr_correction_enabled": ocr_correction_enabled(),
+        "ocr_lexicon_repair_enabled": lexicon_repair_enabled(),
         "groq_vision_ready": has_groq_vision_key(),
         "groq_vision_models": (
             get_groq_vision_models(get_groq_api_key())[:4] if has_groq_vision_key() else []

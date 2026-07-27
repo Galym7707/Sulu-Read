@@ -55,4 +55,15 @@ CORPUS = [
     {"id": "mx-08", "language_hint": "kk", "text": "Тест: A, B, C, D нұсқалары."},
     {"id": "mx-09", "language_hint": "kk", "text": "Жаттығу 15. Сөздерді буынға бөл."},
     {"id": "mx-10", "language_hint": "kk", "text": "Физика пәні бойынша сабақ кестесі."},
+    # Ordinary Russian sentences under the *default* language_hint="kk"
+    # (POST /v1/adapt-image defaults to "kk" -- see main.py). Without rows
+    # like these the clean-input no-op gate cannot see a Russian page
+    # scanned with no hint override, which is exactly the case a Critical
+    # review finding was found in: real Russian words such as "доска",
+    # "кошка", "шапка", "бумага", "карман" have a Kazakh-restored form that
+    # is also a real Kazakh word, so the lexicon repair rewrote them under
+    # the "kk" hint until the Russian-lexicon guard was added.
+    {"id": "rk-01", "language_hint": "kk", "text": "Учитель написал задание на доске."},
+    {"id": "rk-02", "language_hint": "kk", "text": "Бумага и карандаш лежат в кармане пальто."},
+    {"id": "rk-03", "language_hint": "kk", "text": "Кошка спит на стуле, а рядом висит шапка."},
 ]
