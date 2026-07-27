@@ -1,0 +1,15 @@
+Russian spelling dictionary for hunspell (ru_RU.dic, ru_RU.aff)
+=================================================================
+
+Source: https://github.com/wooorm/dictionaries (dictionaries/ru)
+
+Copyright (c) 1997-2008, Alexander I. Lebedev
+
+Upstream license: BSD-3-Clause (permissive).
+
+These files are third-party data, vendored byte-for-byte and never modified.
+The verbatim upstream license text is in
+backend/app/data/ru_RU.license.upstream.txt.
+
+Sulu-Read is MIT licensed; BSD-3-Clause requires only attribution, which this
+file and the README provide.
