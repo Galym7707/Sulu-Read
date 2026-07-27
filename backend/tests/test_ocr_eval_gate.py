@@ -70,3 +70,17 @@ def test_clean_input_is_never_altered(report):
     # The single most important gate on this branch: the correction layer
     # must never change text that already had no OCR noise in it.
     assert report["clean_input_no_op_count"] == 0
+
+
+MINIMUM_KAZAKH_WORD_RECOVERY = 0.35
+
+
+def test_kazakh_letters_are_actually_restored(report):
+    # The previous branch could not restore a single Kazakh letter; this asserts
+    # the lexicon layer does, on the letter-drop channel specifically.
+    recovery = report["kazakh_words_restored"] / max(1, report["kazakh_words_corrupted"])
+    assert recovery >= MINIMUM_KAZAKH_WORD_RECOVERY, (
+        f"Kazakh word recovery {recovery:.3f} is below the "
+        f"{MINIMUM_KAZAKH_WORD_RECOVERY} target "
+        f"({report['kazakh_words_restored']}/{report['kazakh_words_corrupted']} words)"
+    )

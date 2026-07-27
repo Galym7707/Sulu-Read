@@ -79,5 +79,7 @@
   "kazakh_drop_cer_corrected": 0.019648947516662598,
   "homoglyph_cer_raw": 0.018586796487048488,
   "homoglyph_cer_corrected": 0.0,
+  "kazakh_words_corrupted": 49,
+  "kazakh_words_restored": 32,
   "clean_input_no_op_count": 0
 }
