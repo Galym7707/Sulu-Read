@@ -1,0 +1,23 @@
+Kazakh spelling dictionary for hunspell (kk_KZ.dic, kk_KZ.aff)
+==============================================================
+
+Source: https://github.com/taem/hunspell-kk
+Derived from aspell-kk_KZ 0.60.
+
+Authors and contributors:
+  Alexey Lipchansky      - orthographical dictionary for Aspell
+  Akmaral Mussayeva      - affix file
+  Laszlo Nemeth          - affix file development
+  Rail Aliev             - affix file development
+  Kaldybai Bektaiuly     - dictionary appendixes used as the basis
+
+Upstream license, verbatim:
+  "GNU GPL version 2.0 or above, GNU LGPL version 2.1 or above and
+   Mozilla MPL version 1.1 or above."
+
+Sulu-Read elects the Mozilla Public License version 1.1 for these two files.
+The full MPL 1.1 text is available at https://www.mozilla.org/MPL/1.1/
+
+These files are third-party data, vendored byte-for-byte and never modified.
+The rest of this repository is MIT licensed; MPL 1.1 is file-level copyleft and
+applies only to the two dictionary files in this directory.

@@ -64,7 +64,28 @@ GEMINI_MODEL=gemini-3.5-flash
 GROQ_API_KEY=your_groq_api_key
 GROQ_MODEL=llama-3.3-70b-versatile
 SULU_READ_RUNTIME_SQLITE_FALLBACK=true
+SULU_READ_OCR_CORRECTION=true
+SULU_READ_OCR_LEXICON_REPAIR=false
 ```
+
+`SULU_READ_OCR_CORRECTION` controls the post-OCR correction layer applied to `/v1/adapt-image` output. It strips Latin/Cyrillic homoglyphs (e.g. a Latin `k` inside a Cyrillic word), fixes a word-initial `ң` misread, restores a small closed set of `һ` loanwords (e.g. `гаухар` → `гауһар`), and — when `SULU_READ_OCR_LEXICON_REPAIR` is also on (see below) and using the bundled Kazakh hunspell dictionary as the decision procedure — restores Kazakh letters OCR flattened onto their Russian lookalikes (`қ ғ ә ө ұ ү і ң һ`) when exactly one restoration is a real Kazakh word. A word already present in the bundled Russian dictionary (`ru_RU.dic`) is left alone by the lexicon repair, since `/v1/adapt-image` defaults to `language_hint="kk"` and would otherwise rewrite correct Russian text such as `доска` → `досқа`. This guard only covers words in that dictionary file, not "Russian" in general: Kazakh place names and personal names written in Russian spelling (`Костанай`, `Актобе`, `Аскар`) are not in it, and the lexicon repair can still rewrite one of those into its Kazakh form even on a Russian page (`Костанай` → `Қостанай`). It no longer rewrites a scanned `нын`/`дын` ending into `ның`/`дың` — that was tried and rewrote already-correct text, because a string pattern cannot tell a flattened suffix from a genuinely different, correctly-spelled word (`-ын`/`-ін` possessive-accusative, e.g. `телефонын`, is a productive ending, not a scanning error). `SULU_READ_OCR_CORRECTION` is on by default; set it to `false` to return the raw engine text. `/health` reports the active state as `ocr_correction_enabled`.
+
+`SULU_READ_OCR_LEXICON_REPAIR` controls the lexicon-driven Kazakh letter repair specifically (homoglyph folding, the word-initial `ң` fix, and the `һ` loanword table are unaffected and always run when `SULU_READ_OCR_CORRECTION` is on). It defaults to **off**. The repair recovers real damage — see the CER numbers above — but it can also rewrite two classes of correct text that the current synthetic eval corpus cannot catch: out-of-vocabulary Kazakh words whose stem the bundled dictionary doesn't cover in an agglutinative running-text context (roughly 31% of ordinary words are OOV), and Kazakh proper nouns on Russian-language pages, as described above. It ships off pending a real-photo evaluation that measures both failure modes directly; set it to `true` to enable it once that evaluation exists (or to test it locally).
+
+To measure recognition quality after changing anything in the OCR path, run the synthetic evaluation harness (`python scripts/ocr_eval.py`). It reports CER, WER, and per-letter recovery for the Kazakh alphabet.
+
+```bash
+python scripts/ocr_eval.py
+```
+
+### Third-Party Data
+
+`backend/app/data/` vendors two hunspell dictionaries, byte-for-byte and unmodified, used only by the OCR correction layer above:
+
+- `kk_KZ.dic` / `kk_KZ.aff` — Kazakh, from [taem/hunspell-kk](https://github.com/taem/hunspell-kk). Sulu-Read elects the Mozilla Public License version 1.1 for these two files (see `backend/app/data/LICENSE-kk_KZ.txt`).
+- `ru_RU.dic` / `ru_RU.aff` — Russian, from [wooorm/dictionaries](https://github.com/wooorm/dictionaries) (`dictionaries/ru`), © 1997-2008 Alexander I. Lebedev, **BSD-3-Clause** (see `backend/app/data/LICENSE-ru_RU.txt`).
+
+Both are MPL/BSD file-level; the rest of the repository stays MIT licensed.
 
 The backend reads `SUPABASE_DIRECT_CONNECTION_STRING` with SQLAlchemy and uses `postgresql+psycopg`. Mixed-case local aliases such as `SUPABASE_direct_connection_string`, `SUPABASE_project_url`, and `SUPABASE_publishable_key` are also accepted for compatibility, but new environments should use the uppercase names above. The URL is normalized for `sslmode=require` and for passwords containing special characters. If `SUPABASE_DIRECT_CONNECTION_STRING` is missing, the app logs a warning and falls back to `sqlite:///./sulu_read_local.db`.
 
