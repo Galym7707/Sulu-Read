@@ -5,6 +5,11 @@ Audience: whoever implements next. Every item is scoped, with the exact file to 
 
 Baseline: commit `d0d3696` on `main`.
 
+**Status.** §1, §2 and §4 are implemented on `focus-reader-a11y`. §4's sub-API-31 path is
+compile-verified only — no API 24–30 system image is installed on this machine, so the raster
+blur has never been run. It needs an emulator pass before release. §3 is a licensing decision
+and §5 needs provider accounts; both are untouched.
+
 ---
 
 ## 0. Two corrections to the review's premises
