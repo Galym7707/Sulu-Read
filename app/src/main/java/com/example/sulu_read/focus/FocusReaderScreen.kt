@@ -13,11 +13,18 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
@@ -56,6 +63,10 @@ private const val BLUR_RADIUS_DP = 6
 private const val LEGACY_BLUR_ALPHA = 0.30f
 private const val FOCUS_FONT_SIZE_SP = 22
 private const val FOCUS_LINE_HEIGHT_SP = 38
+
+// Material's minimum accessible touch target. The default button height falls under it once
+// padding is accounted for on small screens.
+private const val MIN_TOUCH_TARGET_DP = 56
 
 /**
  * Blur is only available from API 31. On older devices the surrounding words drop to a very
@@ -173,6 +184,19 @@ fun FocusReaderScreen(
                 micUnavailable = true
             }
         )
+    }
+
+    // Silence help. A reader who stares at a word without speaking is the one who most needs
+    // a nudge, and under the old rules got nothing until they guessed wrong out loud. Neither
+    // stage records a failure: onHelpRequested only raises the step.
+    LaunchedEffect(ladder.wordIndex, ladder.step) {
+        if (ladder.step != FocusStep.Focus) {
+            return@LaunchedEffect
+        }
+        delay(NUDGE_AFTER_MILLIS)
+        ladder = ladder.onHelpRequested(FocusStep.Sweep)
+        delay(OFFER_HELP_AFTER_MILLIS - NUDGE_AFTER_MILLIS)
+        ladder = ladder.onHelpRequested(FocusStep.Syllables)
     }
 
     // Sweep step: hide the word, then flash it sharp for the 200 ms the source specifies.
@@ -322,7 +346,9 @@ fun FocusReaderScreen(
                 if (micUnavailable || micDenied) {
                     Button(
                         onClick = { finishWord(wasCorrect = true) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
                         Text(text = stringResource(R.string.focus_i_read_it))
                     }
@@ -330,13 +356,15 @@ fun FocusReaderScreen(
                     Button(
                         onClick = { startListening() },
                         enabled = !isListening,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
                         Text(text = stringResource(R.string.focus_listen))
                     }
                 }
 
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = {
                         ladder = ladder.onHelpRequested(
                             when (ladder.step) {
@@ -346,8 +374,15 @@ fun FocusReaderScreen(
                             }
                         )
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Lightbulb,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(text = stringResource(R.string.focus_help))
                 }
             }

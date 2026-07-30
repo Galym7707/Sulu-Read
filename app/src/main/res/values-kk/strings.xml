@@ -174,7 +174,7 @@
     <string name="focus_listen">Сөзді дауыстап оқы</string>
     <string name="focus_listening">Тыңдап тұрмын…</string>
     <string name="focus_try_again">Тағы бір рет көрейік</string>
-    <string name="focus_help">Көмек</string>
+    <string name="focus_help">Көмектес</string>
     <string name="focus_i_read_it">Оқып шықтым</string>
     <string name="focus_mic_unavailable">Микрофон қолжетімсіз — сөзді оқыған соң түймені бас.</string>
     <string name="focus_mic_permission">Оқығаныңды қолданба естуі үшін микрофонға рұқсат бер.</string>

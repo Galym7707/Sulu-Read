@@ -175,7 +175,7 @@
     <string name="focus_listen">Read the word aloud</string>
     <string name="focus_listening">Listening…</string>
     <string name="focus_try_again">Let\'s try once more</string>
-    <string name="focus_help">Help</string>
+    <string name="focus_help">Show me</string>
     <string name="focus_i_read_it">I read it</string>
     <string name="focus_mic_unavailable">The microphone is not available, so tap when you have read the word.</string>
     <string name="focus_mic_permission">Allow the microphone so the app can hear you read.</string>
