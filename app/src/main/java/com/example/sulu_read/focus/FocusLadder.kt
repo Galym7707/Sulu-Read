@@ -7,6 +7,12 @@ enum class FocusStep { Focus, Sweep, Syllables, Letters, Meaning }
 /** The re-show flash of the Sweep step. 200 ms is the one timing the source states outright. */
 const val SWEEP_FLASH_MILLIS = 200L
 
+/** Silence on the current word before the word is re-shown crisply, unprompted. */
+const val NUDGE_AFTER_MILLIS = 5_000L
+
+/** Silence before syllables appear on their own. Still not counted as a failure. */
+const val OFFER_HELP_AFTER_MILLIS = 9_000L
+
 /** Share of clean reads at which the pace reaches full speed. Mirrors the source's 80% mark. */
 const val MASTERY_TARGET = 0.8f
 
@@ -18,6 +24,15 @@ private const val PAUSE_AFTER_DEEP_WORDS = 3
 // A word that needed the Letters step or deeper is "deep": worth practising later, and a
 // streak of them means today's confusion threshold is low, so offer a break.
 private val DEEP_STEPS = setOf(FocusStep.Letters, FocusStep.Meaning)
+
+// Sweep is deliberately absent: re-flashing a word the reader has just failed teaches them
+// nothing, so it is only ever offered before a failure, by the silence timer or the help
+// button. A miss buys support that carries information.
+private val ESCALATION_ORDER = listOf(
+    FocusStep.Syllables,
+    FocusStep.Letters,
+    FocusStep.Meaning
+)
 
 data class FocusLadderState(
     val wordIndex: Int = 0,
@@ -47,7 +62,7 @@ fun FocusLadderState.onCorrectRead(currentWord: String, wordCount: Int): FocusLa
 }
 
 fun FocusLadderState.onMisread(currentWord: String, wordCount: Int): FocusLadderState {
-    val nextStep = FocusStep.entries.getOrNull(step.ordinal + 1)
+    val nextStep = ESCALATION_ORDER.firstOrNull { it.ordinal > step.ordinal }
         ?: return advance(currentWord, wordCount)
     return copy(step = nextStep)
 }
@@ -57,6 +72,18 @@ fun FocusLadderState.onHelpRequested(minimumStep: FocusStep): FocusLadderState {
         return this
     }
     return copy(step = minimumStep)
+}
+
+/**
+ * Sweep is a momentary re-show, not a resting state: once the flash is over the word must go
+ * back to being sharp and highlighted, or the reader loses their place entirely. No-op if the
+ * reader climbed past Sweep while the flash was running.
+ */
+fun FocusLadderState.onNudgeFinished(): FocusLadderState {
+    if (step != FocusStep.Sweep) {
+        return this
+    }
+    return copy(step = FocusStep.Focus)
 }
 
 fun FocusLadderState.onPauseAcknowledged(): FocusLadderState {

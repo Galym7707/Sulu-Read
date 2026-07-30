@@ -2,24 +2,28 @@ package com.example.sulu_read.focus
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Build
 import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Lightbulb
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -30,7 +34,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -47,35 +50,12 @@ import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 
-private val FocusHighlight = Color(0xFFFFE0B2)
-private val FocusWordColor = Color(0xFF1A1A1A)
-private val BlurredWordColor = Color(0xFF9E9E9E)
 private val ScenePanelBackground = Color(0xFFFFFCF4)
 private val SyllablePalette = listOf(Color(0xFF1A237E), Color(0xFF8A5A00))
-private const val BLUR_RADIUS_DP = 6
-private const val LEGACY_BLUR_ALPHA = 0.30f
-private const val FOCUS_FONT_SIZE_SP = 22
-private const val FOCUS_LINE_HEIGHT_SP = 38
 
-/**
- * Blur is only available from API 31. On older devices the surrounding words drop to a very
- * low-contrast grey instead: still visible as paragraph shape, no longer readable.
- */
-private fun Modifier.focusBlur(): Modifier {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        blur(radius = BLUR_RADIUS_DP.dp)
-    } else {
-        this
-    }
-}
-
-private fun blurredTextColor(): Color {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        BlurredWordColor
-    } else {
-        BlurredWordColor.copy(alpha = LEGACY_BLUR_ALPHA)
-    }
-}
+// Material's minimum accessible touch target. The default button height falls under it once
+// padding is accounted for on small screens.
+private const val MIN_TOUCH_TARGET_DP = 56
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -95,7 +75,6 @@ fun FocusReaderScreen(
     var isListening by remember { mutableStateOf(false) }
     var showTryAgain by remember { mutableStateOf(false) }
     var isFlashing by remember { mutableStateOf(false) }
-    var sceneCheckIndex by remember(text) { mutableStateOf<Int?>(null) }
     var micDenied by remember { mutableStateOf(false) }
 
     val speechGate = remember(context) { SpeechGate(context) }
@@ -128,23 +107,13 @@ fun FocusReaderScreen(
     fun finishWord(wasCorrect: Boolean) {
         val word = currentWord ?: return
         isListening = false
-        val nextLadder = if (wasCorrect) {
+        ladder = if (wasCorrect) {
             showTryAgain = false
             ladder.onCorrectRead(word.spoken, words.size)
         } else {
             showTryAgain = true
             ladder.onMisread(word.spoken, words.size)
         }
-
-        // The word only changes when the ladder released the reader forward; that is also the
-        // moment a finished scene can ask whether an image formed.
-        if (nextLadder.wordIndex != ladder.wordIndex) {
-            val nextScene = words.getOrNull(nextLadder.wordIndex)?.sceneIndex
-            if (nextScene != word.sceneIndex) {
-                sceneCheckIndex = word.sceneIndex
-            }
-        }
-        ladder = nextLadder
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -186,7 +155,29 @@ fun FocusReaderScreen(
         )
     }
 
-    // Sweep step: hide the word, then flash it sharp for the 200 ms the source specifies.
+    // Silence help. A reader who stares at a word without speaking is the one who most needs
+    // a nudge, and under the old rules got nothing until they guessed wrong out loud. Neither
+    // stage records a failure: onHelpRequested only raises the step.
+    //
+    // Keyed on the word alone, deliberately. Keying on the step too would restart the timer
+    // every time this effect moved the step, and the reader would be flashed at forever
+    // instead of ever reaching the second stage.
+    LaunchedEffect(ladder.wordIndex) {
+        delay(NUDGE_AFTER_MILLIS)
+        if (ladder.step != FocusStep.Focus) {
+            return@LaunchedEffect
+        }
+        ladder = ladder.onHelpRequested(FocusStep.Sweep)
+
+        delay(OFFER_HELP_AFTER_MILLIS - NUDGE_AFTER_MILLIS)
+        if (ladder.step != FocusStep.Focus) {
+            return@LaunchedEffect
+        }
+        ladder = ladder.onHelpRequested(FocusStep.Syllables)
+    }
+
+    // Sweep step: hide the word, flash it sharp for the 200 ms the source specifies, then
+    // hand it back sharp and highlighted.
     LaunchedEffect(ladder.step, ladder.wordIndex) {
         if (ladder.step != FocusStep.Sweep) {
             isFlashing = false
@@ -197,6 +188,7 @@ fun FocusReaderScreen(
         isFlashing = true
         delay(SWEEP_FLASH_MILLIS)
         isFlashing = false
+        ladder = ladder.onNudgeFinished()
     }
 
     // Syllables, Letters and Meaning speak on entry, at the adaptive pace.
@@ -233,39 +225,11 @@ fun FocusReaderScreen(
             style = MaterialTheme.typography.bodyMedium
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.White)
-                .padding(18.dp)
-        ) {
-            // ponytail: one blur layer per word. Cheap to write, and the text is static so it
-            // draws once. If a very long page janks on first frame, blur the whole container
-            // and overlay the focus word instead of blurring every word individually.
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                words.forEachIndexed { index, word ->
-                    val isCurrent = index == ladder.wordIndex
-                    val isSharp = isCurrent && (ladder.step != FocusStep.Sweep || isFlashing)
-
-                    Text(
-                        text = word.display,
-                        fontFamily = SuluSerifFontFamily,
-                        fontSize = FOCUS_FONT_SIZE_SP.sp,
-                        lineHeight = FOCUS_LINE_HEIGHT_SP.sp,
-                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSharp) FocusWordColor else blurredTextColor(),
-                        modifier = if (isSharp) {
-                            Modifier
-                                .background(FocusHighlight, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 4.dp)
-                        } else {
-                            Modifier.focusBlur()
-                        }
-                    )
-                }
-            }
-        }
+        BlurredTextBlock(
+            words = words,
+            focusIndex = ladder.wordIndex,
+            isFocusSharp = ladder.step != FocusStep.Sweep || isFlashing
+        )
 
         if (currentWord == null) {
             Text(text = stringResource(R.string.focus_finished))
@@ -333,7 +297,9 @@ fun FocusReaderScreen(
                 if (micUnavailable || micDenied) {
                     Button(
                         onClick = { finishWord(wasCorrect = true) },
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
                         Text(text = stringResource(R.string.focus_i_read_it))
                     }
@@ -341,13 +307,15 @@ fun FocusReaderScreen(
                     Button(
                         onClick = { startListening() },
                         enabled = !isListening,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier
+                            .weight(1f)
+                            .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
                         Text(text = stringResource(R.string.focus_listen))
                     }
                 }
 
-                OutlinedButton(
+                FilledTonalButton(
                     onClick = {
                         ladder = ladder.onHelpRequested(
                             when (ladder.step) {
@@ -357,30 +325,18 @@ fun FocusReaderScreen(
                             }
                         )
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                 ) {
+                    Icon(
+                        imageVector = Icons.Default.Lightbulb,
+                        contentDescription = null
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
                     Text(text = stringResource(R.string.focus_help))
                 }
             }
-        }
-
-        val checkedScene = sceneCheckIndex
-        if (checkedScene != null) {
-            ScenePanel(
-                onSawIt = { sceneCheckIndex = null },
-                onUnclear = {
-                    sceneCheckIndex = null
-                    // No image means one word of the scene was not understood; the longest
-                    // word is the cheapest available guess at which one that was.
-                    val hardestWord = words
-                        .filter { it.sceneIndex == checkedScene }
-                        .maxByOrNull { it.spoken.length }
-                        ?.spoken
-                    if (hardestWord != null) {
-                        onRequestMeaningHint(hardestWord)
-                    }
-                }
-            )
         }
 
         if (ladder.suggestPause) {
@@ -442,31 +398,6 @@ private fun MeaningHint(aiHelpState: AiHelpState, onDismissHint: () -> Unit) {
             }
 
             AiHelpState.Idle -> Unit
-        }
-    }
-}
-
-@Composable
-private fun ScenePanel(onSawIt: () -> Unit, onUnclear: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(ScenePanelBackground)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.focus_scene_question),
-            style = MaterialTheme.typography.titleMedium
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onSawIt) {
-                Text(text = stringResource(R.string.focus_scene_saw_it))
-            }
-            OutlinedButton(onClick = onUnclear) {
-                Text(text = stringResource(R.string.focus_scene_unclear))
-            }
         }
     }
 }

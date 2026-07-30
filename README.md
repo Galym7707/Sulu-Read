@@ -56,8 +56,7 @@ of support — a 200 ms re-flash, coloured syllables, letter names, then a short
 hint — and the last layer always releases the reader forward rather than trapping them.
 Speech pacing starts slow and speeds up as the share of unaided reads approaches 80%.
 Words that needed deep help are collected and can be sent straight into the exercise
-generator. At the end of each sentence the reader is asked whether an image formed; if it
-did not, the mode offers a meaning hint for the hardest word of that sentence.
+generator. Reading is never interrupted by a quiz: help is offered, never demanded.
 
 The mode works without a microphone: if speech recognition is unavailable or the permission
 is declined, the gate becomes a self-check button.

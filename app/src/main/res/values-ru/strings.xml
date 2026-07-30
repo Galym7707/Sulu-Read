@@ -174,16 +174,13 @@
     <string name="focus_listen">Прочитай слово вслух</string>
     <string name="focus_listening">Слушаю…</string>
     <string name="focus_try_again">Попробуем ещё раз</string>
-    <string name="focus_help">Помощь</string>
+    <string name="focus_help">Подскажи</string>
     <string name="focus_i_read_it">Я прочитал</string>
     <string name="focus_mic_unavailable">Микрофон недоступен — нажимай кнопку, когда прочитаешь слово.</string>
     <string name="focus_mic_permission">Разреши микрофон, чтобы приложение слышало, как ты читаешь.</string>
     <string name="focus_step_syllables">Послушай слоги</string>
     <string name="focus_step_letters">По буквам</string>
     <string name="focus_step_meaning">Что значит слово</string>
-    <string name="focus_scene_question">Что ты увидел?</string>
-    <string name="focus_scene_saw_it">Увидел</string>
-    <string name="focus_scene_unclear">Не сложилось</string>
     <string name="focus_pause_title">Сделаем небольшую паузу</string>
     <string name="focus_pause_continue">Я готов</string>
     <string name="focus_progress">Прочитано без подсказки: %1$d%%</string>
