@@ -226,6 +226,15 @@ class SuluReadRepository(
             ?: throw IllegalStateException("AI returned an empty response.")
     }
 
+    suspend fun hintForWord(word: String, languageCode: String): String {
+        val response = aiRepository.hintForWordWithAi(word, languageCode)
+        if (!response.success) {
+            throw IllegalStateException(response.error ?: "AI help is unavailable.")
+        }
+        return response.result?.takeIf { it.isNotBlank() }
+            ?: throw IllegalStateException("AI returned an empty response.")
+    }
+
     suspend fun checkAnswerWithAi(
         question: String,
         correctAnswer: String,

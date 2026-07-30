@@ -27,6 +27,7 @@ fun ReaderScreen(
         onCreateTrainingFromText = onCreateTraining,
         aiHelpState = aiState,
         onExplainTextWithAi = { text -> aiViewModel.explainTextWithAi(text, languageCode) },
+        onRequestWordHint = { word -> aiViewModel.hintForWord(word, languageCode) },
         onDismissAiHelp = aiViewModel::clearAiHelp
     )
 }

@@ -47,6 +47,24 @@ The app does not diagnose dyslexia and does not claim treatment or cure. Screeni
 
 Morphology tasks use lightweight Kazakh suffix heuristics only. They are practice aids, not linguistic analysis guarantees.
 
+## Focus Reading Mode
+
+The reader screen has a word-by-word mode. The whole text is rendered in a bundled
+Times-metric serif and blurred except the current word, which is sharp and highlighted.
+The highlight advances when the reader says the word aloud; each miss peels off one layer
+of support — a 200 ms re-flash, coloured syllables, letter names, then a short AI meaning
+hint — and the last layer always releases the reader forward rather than trapping them.
+Speech pacing starts slow and speeds up as the share of unaided reads approaches 80%.
+Words that needed deep help are collected and can be sent straight into the exercise
+generator. At the end of each sentence the reader is asked whether an image formed; if it
+did not, the mode offers a meaning hint for the hardest word of that sentence.
+
+The mode works without a microphone: if speech recognition is unavailable or the permission
+is declined, the gate becomes a self-check button.
+
+Design notes and their sources: `docs/llm-wiki/wiki/concepts/focus-reading-method.md`.
+The bundled font and its licence: `docs/superpowers/notes/focus-font-license.md`.
+
 ## Environment
 
 Create `.env` locally. Do not commit it. `.env`, `*.db`, and logs are ignored by Git in this repository.

@@ -102,6 +102,7 @@ import com.example.sulu_read.data.UserPreferences
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.repository.SuluReadRepository
+import com.example.sulu_read.focus.FocusReaderScreen
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
 import com.example.sulu_read.ui.screens.AiHelpState
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -348,6 +349,7 @@ fun SuluReadRoute(
     onCreateTrainingFromText: (List<String>) -> Unit,
     aiHelpState: AiHelpState = AiHelpState.Idle,
     onExplainTextWithAi: (String) -> Unit = {},
+    onRequestWordHint: (String) -> Unit = {},
     onDismissAiHelp: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -642,6 +644,7 @@ fun SuluReadRoute(
                 languageCode = languageCode,
                 aiHelpState = aiHelpState,
                 onExplainTextWithAi = onExplainTextWithAi,
+                onRequestWordHint = onRequestWordHint,
                 onDismissAiHelp = onDismissAiHelp,
                 onCreateTrainingFromText = onCreateTrainingFromText,
                 onBackHome = {
@@ -796,6 +799,7 @@ private fun ReadingScreen(
     languageCode: String,
     aiHelpState: AiHelpState,
     onExplainTextWithAi: (String) -> Unit,
+    onRequestWordHint: (String) -> Unit,
     onDismissAiHelp: () -> Unit,
     onCreateTrainingFromText: (List<String>) -> Unit,
     onBackHome: () -> Unit
@@ -804,6 +808,7 @@ private fun ReadingScreen(
     val readerDisplayPreferences by repository.readerDisplayPreferences.collectAsStateWithLifecycle(
         initialValue = ReaderDisplayPreferences()
     )
+    var isFocusMode by rememberSaveable(state.adaptedText) { mutableStateOf(false) }
     val sourceText = when (state.source) {
         "image" -> stringResource(R.string.reading_source_image)
         "url" -> stringResource(R.string.reading_source_url)
@@ -853,21 +858,43 @@ private fun ReadingScreen(
             Text(text = stringResource(R.string.reader_create_training_from_text))
         }
 
-        PremiumReadingScreen(
-            text = state.adaptedText,
-            backendWords = state.words,
-            onSimplifyText = { source -> repository.simplify(source, languageCode) },
-            aiHelpState = aiHelpState,
-            onExplainTextWithAi = onExplainTextWithAi,
-            onDismissAiHelp = onDismissAiHelp,
-            languageCode = languageCode,
-            readerDisplayPreferences = readerDisplayPreferences,
-            onReaderDisplayPreferencesChange = { preferences ->
-                coroutineScope.launch {
-                    repository.saveReaderDisplayPreferences(preferences)
+        TextButton(onClick = { isFocusMode = !isFocusMode }) {
+            Text(
+                text = stringResource(
+                    if (isFocusMode) R.string.focus_mode_exit else R.string.focus_mode_enter
+                )
+            )
+        }
+
+        if (isFocusMode) {
+            // Focus mode is fed the original text, not the adapted one: scene splitting needs
+            // real punctuation, and the adapted text carries syllable hyphens instead.
+            FocusReaderScreen(
+                text = state.originalText.ifBlank { state.adaptedText },
+                backendWords = state.words,
+                languageCode = languageCode,
+                aiHelpState = aiHelpState,
+                onRequestMeaningHint = onRequestWordHint,
+                onDismissHint = onDismissAiHelp,
+                onCollectTriggerWords = onCreateTrainingFromText
+            )
+        } else {
+            PremiumReadingScreen(
+                text = state.adaptedText,
+                backendWords = state.words,
+                onSimplifyText = { source -> repository.simplify(source, languageCode) },
+                aiHelpState = aiHelpState,
+                onExplainTextWithAi = onExplainTextWithAi,
+                onDismissAiHelp = onDismissAiHelp,
+                languageCode = languageCode,
+                readerDisplayPreferences = readerDisplayPreferences,
+                onReaderDisplayPreferencesChange = { preferences ->
+                    coroutineScope.launch {
+                        repository.saveReaderDisplayPreferences(preferences)
+                    }
                 }
-            }
-        )
+            )
+        }
     }
 }
 
