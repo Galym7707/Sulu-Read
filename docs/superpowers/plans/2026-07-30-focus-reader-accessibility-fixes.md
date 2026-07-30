@@ -5,10 +5,12 @@ Audience: whoever implements next. Every item is scoped, with the exact file to 
 
 Baseline: commit `d0d3696` on `main`.
 
-**Status.** §1, §2 and §4 are implemented on `focus-reader-a11y`. §4's sub-API-31 path is
-compile-verified only — no API 24–30 system image is installed on this machine, so the raster
-blur has never been run. It needs an emulator pass before release. §3 is a licensing decision
+**Status.** §1, §2 and §4 are implemented and merged. §4's sub-API-31 raster blur was verified
+on an API 30 x86_64 emulator on 2026-07-30: text is genuinely unreadable, paragraph shape
+survives, the sharp focus word lands exactly over its blurred twin. §3 is a licensing decision
 and §5 needs provider accounts; both are untouched.
+
+That emulator run surfaced a defect worse than anything in the original review — see §6.
 
 ---
 
@@ -360,6 +362,36 @@ audio they usually do. If they do, batch is not an option here, so the on-device
 in step 1 stops being an optimisation and becomes the cost control.
 
 ---
+
+## 6. The reading card has no height limit (found on the emulator, not yet fixed)
+
+**Symptom.** `BlurredTextBlock` renders every word of the adapted text in one `FlowRow` with
+no maximum height, inside the reading screen's `verticalScroll` column. A Wikipedia article
+produces a card several thousand pixels tall. Everything the reader needs — the "read the
+word aloud" prompt, the syllable and letter hints, the listen button, the help button — sits
+*below* that card. On a phone screen the reader sees blurred text and nothing else, and would
+have to scroll past the entire article to discover that controls exist at all.
+
+This was invisible in unit tests and invisible in the earlier hand-check, because a short
+pasted paragraph fits on one screen. It only appears with a real document, which is the only
+kind this app is for.
+
+**Why it matters more than the items above.** Every fix in §1 makes help easier to reach.
+This defect makes help unreachable. It also breaks the core loop: the focus word can be
+scrolled off-screen entirely while the reader is being asked to say it.
+
+**Two candidate fixes — this is a design decision, not a mechanical one:**
+
+- **A. Cap the card and auto-follow the focus word.** `heightIn(max = ~320.dp)` on the block
+  plus an internal scroll that keeps the focus word centred as the index advances. Preserves
+  the "see the shape of the whole page" property the blur exists to provide. Costs an
+  auto-scroll animation, which must be instant rather than smooth — animated motion in the
+  reading area is a documented disorientation trigger.
+- **B. Move the controls above the card.** One-line change, zero new behaviour, but it puts
+  the buttons between the progress line and the text, which reads oddly and pushes the text
+  itself further down.
+
+Recommend A, with the scroll jump non-animated.
 
 ## Suggested order
 
