@@ -171,12 +171,17 @@ def remove_existing_syllable_markup(text: str) -> str:
     return HYPHENATED_WORD_PATTERN.sub(remove_syllable_hyphens, cleaned_text)
 
 
+def is_word_token(token: str) -> bool:
+    # Same rule adapt_text uses to decide what to syllabify. These two disagreed: this one
+    # dropped Latin words entirely, so an English page reported a word count of zero and
+    # callers that wanted Latin had to glob for it separately.
+    return any(character in CYRILLIC_LETTERS for character in token) or (
+        token.isascii() and token.isalpha()
+    )
+
+
 def split_text_to_words(text: str) -> list[str]:
-    return [
-        match.group(0)
-        for match in WORD_PATTERN.finditer(text)
-        if any(character in CYRILLIC_LETTERS for character in match.group(0))
-    ]
+    return [match.group(0) for match in WORD_PATTERN.finditer(text) if is_word_token(match.group(0))]
 
 
 def detect_language(word: str) -> str:

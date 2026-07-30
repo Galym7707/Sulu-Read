@@ -128,7 +128,6 @@ VISUAL_CONFUSIONS_LATIN = {
     "f": "t", "t": "f",
     "e": "c", "c": "e",
 }
-LATIN_WORD_PATTERN = re.compile(r"[A-Za-z]+")
 NUMERIC_TOKEN_PATTERN = re.compile(r"\d+(?:[.,]\d+)?")
 WORD_TOKEN_PATTERN = re.compile(r"[\w'-]+", re.UNICODE)
 ROMAN_NUMERAL_PATTERN = re.compile(
@@ -274,10 +273,9 @@ def select_candidate_words(source_words: list[str], difficulty_level: int, langu
 
 
 def split_source_words(text: str) -> list[str]:
-    cyrillic_words = split_text_to_words(text)
-    latin_words = LATIN_WORD_PATTERN.findall(text)
-    numeric_tokens = NUMERIC_TOKEN_PATTERN.findall(text)
-    return [*cyrillic_words, *latin_words, *numeric_tokens]
+    # split_text_to_words covers Latin as well as Cyrillic now, so the separate Latin pass
+    # this used to make would return the same words a second time.
+    return [*split_text_to_words(text), *NUMERIC_TOKEN_PATTERN.findall(text)]
 
 
 def practice_bank_for_language(language_hint: str) -> list[str]:
