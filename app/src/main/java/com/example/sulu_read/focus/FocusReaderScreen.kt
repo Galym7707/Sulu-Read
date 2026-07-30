@@ -2,13 +2,11 @@ package com.example.sulu_read.focus
 
 import android.Manifest
 import android.content.pm.PackageManager
-import android.os.Build
 import android.speech.tts.TextToSpeech
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -26,7 +24,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -37,7 +34,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
@@ -54,39 +50,12 @@ import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 
-private val FocusHighlight = Color(0xFFFFE0B2)
-private val FocusWordColor = Color(0xFF1A1A1A)
-private val BlurredWordColor = Color(0xFF9E9E9E)
 private val ScenePanelBackground = Color(0xFFFFFCF4)
 private val SyllablePalette = listOf(Color(0xFF1A237E), Color(0xFF8A5A00))
-private const val BLUR_RADIUS_DP = 6
-private const val LEGACY_BLUR_ALPHA = 0.30f
-private const val FOCUS_FONT_SIZE_SP = 22
-private const val FOCUS_LINE_HEIGHT_SP = 38
 
 // Material's minimum accessible touch target. The default button height falls under it once
 // padding is accounted for on small screens.
 private const val MIN_TOUCH_TARGET_DP = 56
-
-/**
- * Blur is only available from API 31. On older devices the surrounding words drop to a very
- * low-contrast grey instead: still visible as paragraph shape, no longer readable.
- */
-private fun Modifier.focusBlur(): Modifier {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        blur(radius = BLUR_RADIUS_DP.dp)
-    } else {
-        this
-    }
-}
-
-private fun blurredTextColor(): Color {
-    return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-        BlurredWordColor
-    } else {
-        BlurredWordColor.copy(alpha = LEGACY_BLUR_ALPHA)
-    }
-}
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -189,17 +158,26 @@ fun FocusReaderScreen(
     // Silence help. A reader who stares at a word without speaking is the one who most needs
     // a nudge, and under the old rules got nothing until they guessed wrong out loud. Neither
     // stage records a failure: onHelpRequested only raises the step.
-    LaunchedEffect(ladder.wordIndex, ladder.step) {
+    //
+    // Keyed on the word alone, deliberately. Keying on the step too would restart the timer
+    // every time this effect moved the step, and the reader would be flashed at forever
+    // instead of ever reaching the second stage.
+    LaunchedEffect(ladder.wordIndex) {
+        delay(NUDGE_AFTER_MILLIS)
         if (ladder.step != FocusStep.Focus) {
             return@LaunchedEffect
         }
-        delay(NUDGE_AFTER_MILLIS)
         ladder = ladder.onHelpRequested(FocusStep.Sweep)
+
         delay(OFFER_HELP_AFTER_MILLIS - NUDGE_AFTER_MILLIS)
+        if (ladder.step != FocusStep.Focus) {
+            return@LaunchedEffect
+        }
         ladder = ladder.onHelpRequested(FocusStep.Syllables)
     }
 
-    // Sweep step: hide the word, then flash it sharp for the 200 ms the source specifies.
+    // Sweep step: hide the word, flash it sharp for the 200 ms the source specifies, then
+    // hand it back sharp and highlighted.
     LaunchedEffect(ladder.step, ladder.wordIndex) {
         if (ladder.step != FocusStep.Sweep) {
             isFlashing = false
@@ -210,6 +188,7 @@ fun FocusReaderScreen(
         isFlashing = true
         delay(SWEEP_FLASH_MILLIS)
         isFlashing = false
+        ladder = ladder.onNudgeFinished()
     }
 
     // Syllables, Letters and Meaning speak on entry, at the adaptive pace.
@@ -246,39 +225,11 @@ fun FocusReaderScreen(
             style = MaterialTheme.typography.bodyMedium
         )
 
-        Box(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clip(RoundedCornerShape(18.dp))
-                .background(Color.White)
-                .padding(18.dp)
-        ) {
-            // ponytail: one blur layer per word. Cheap to write, and the text is static so it
-            // draws once. If a very long page janks on first frame, blur the whole container
-            // and overlay the focus word instead of blurring every word individually.
-            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                words.forEachIndexed { index, word ->
-                    val isCurrent = index == ladder.wordIndex
-                    val isSharp = isCurrent && (ladder.step != FocusStep.Sweep || isFlashing)
-
-                    Text(
-                        text = word.display,
-                        fontFamily = SuluSerifFontFamily,
-                        fontSize = FOCUS_FONT_SIZE_SP.sp,
-                        lineHeight = FOCUS_LINE_HEIGHT_SP.sp,
-                        fontWeight = if (isCurrent) FontWeight.Bold else FontWeight.Normal,
-                        color = if (isSharp) FocusWordColor else blurredTextColor(),
-                        modifier = if (isSharp) {
-                            Modifier
-                                .background(FocusHighlight, RoundedCornerShape(6.dp))
-                                .padding(horizontal = 4.dp)
-                        } else {
-                            Modifier.focusBlur()
-                        }
-                    )
-                }
-            }
-        }
+        BlurredTextBlock(
+            words = words,
+            focusIndex = ladder.wordIndex,
+            isFocusSharp = ladder.step != FocusStep.Sweep || isFlashing
+        )
 
         if (currentWord == null) {
             Text(text = stringResource(R.string.focus_finished))

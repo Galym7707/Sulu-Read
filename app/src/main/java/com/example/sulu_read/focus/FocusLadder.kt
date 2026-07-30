@@ -74,6 +74,18 @@ fun FocusLadderState.onHelpRequested(minimumStep: FocusStep): FocusLadderState {
     return copy(step = minimumStep)
 }
 
+/**
+ * Sweep is a momentary re-show, not a resting state: once the flash is over the word must go
+ * back to being sharp and highlighted, or the reader loses their place entirely. No-op if the
+ * reader climbed past Sweep while the flash was running.
+ */
+fun FocusLadderState.onNudgeFinished(): FocusLadderState {
+    if (step != FocusStep.Sweep) {
+        return this
+    }
+    return copy(step = FocusStep.Focus)
+}
+
 fun FocusLadderState.onPauseAcknowledged(): FocusLadderState {
     return copy(suggestPause = false, consecutiveDeepWords = 0)
 }

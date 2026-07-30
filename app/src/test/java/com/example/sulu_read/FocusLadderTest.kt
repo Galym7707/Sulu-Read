@@ -6,6 +6,7 @@ import com.example.sulu_read.focus.masteryShare
 import com.example.sulu_read.focus.onCorrectRead
 import com.example.sulu_read.focus.onHelpRequested
 import com.example.sulu_read.focus.onMisread
+import com.example.sulu_read.focus.onNudgeFinished
 import com.example.sulu_read.focus.onPauseAcknowledged
 import com.example.sulu_read.focus.ttsRate
 import org.junit.Assert.assertEquals
@@ -60,6 +61,18 @@ class FocusLadderTest {
         assertEquals(1, state.wordIndex)
         assertEquals(FocusStep.Focus, state.step)
         assertEquals(listOf("карандаш"), state.triggerWords)
+    }
+
+    @Test
+    fun flashReturnsTheWordToSharpRatherThanLeavingItBlurred() {
+        val nudged = FocusLadderState().onHelpRequested(FocusStep.Sweep)
+        assertEquals(FocusStep.Focus, nudged.onNudgeFinished().step)
+    }
+
+    @Test
+    fun flashCompletionDoesNotUndoHelpTheReaderAskedFor() {
+        val helped = FocusLadderState().onHelpRequested(FocusStep.Syllables)
+        assertEquals(FocusStep.Syllables, helped.onNudgeFinished().step)
     }
 
     @Test
