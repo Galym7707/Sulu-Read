@@ -363,7 +363,7 @@ in step 1 stops being an optimisation and becomes the cost control.
 
 ---
 
-## 6. The reading card has no height limit (found on the emulator, not yet fixed)
+## 6. The reading card has no height limit — FIXED (option A)
 
 **Symptom.** `BlurredTextBlock` renders every word of the adapted text in one `FlowRow` with
 no maximum height, inside the reading screen's `verticalScroll` column. A Wikipedia article
@@ -392,6 +392,19 @@ scrolled off-screen entirely while the reader is being asked to say it.
   itself further down.
 
 Recommend A, with the scroll jump non-animated.
+
+**Shipped: option A.** The card is capped at 320 dp with an internal scroll that parks the
+focus word a third of the way down, jumping rather than animating.
+
+One thing the fix exposed that is worth remembering: capping the card made the blur *worse*,
+not better. The raster covered the whole document, and the memory guard shrank it so far that
+letters became featureless smears. The blur is now applied to the viewport instead of the
+document — a raster the size of what is on screen, re-taken when the scroll offset changes.
+Small, fast, and the quality no longer depends on how long the article is. The general lesson:
+rasterise what is visible, not what exists.
+
+Verified on the API 30 emulator: card capped, controls on screen, auto-follow keeps the focus
+word in view after 30 advances, blur quality unchanged from the short-text case.
 
 ## Suggested order
 

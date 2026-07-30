@@ -34,3 +34,19 @@ const val DEFAULT_DOWNSAMPLE_FACTOR = 3
  * survive, and the detail is about to be destroyed anyway.
  */
 const val RASTER_SCALE_DIVISOR = 4
+
+/** Longest raster edge tolerated before shrinking further. 2048x2048 ARGB is ~16 MB. */
+private const val MAX_RASTER_EDGE = 2048
+
+/**
+ * Picks a divisor that keeps the raster inside [MAX_RASTER_EDGE]. A full textbook page is
+ * tall enough that [RASTER_SCALE_DIVISOR] alone still leaves a bitmap worth several hundred
+ * megabytes on the heap.
+ */
+fun rasterDivisorFor(width: Int, height: Int): Int {
+    var divisor = RASTER_SCALE_DIVISOR
+    while (width / divisor > MAX_RASTER_EDGE || height / divisor > MAX_RASTER_EDGE) {
+        divisor *= 2
+    }
+    return divisor
+}
