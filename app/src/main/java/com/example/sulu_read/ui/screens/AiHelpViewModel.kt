@@ -57,6 +57,18 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
         }
     }
 
+    fun hintForWord(word: String, languageCode: String) {
+        viewModelScope.launch {
+            _state.value = AiHelpState.Loading
+            _state.value = runCatching {
+                repository.hintForWord(word, languageCode)
+            }.fold(
+                onSuccess = { AiHelpState.Success(it) },
+                onFailure = { AiHelpState.Error(it.message ?: DEFAULT_AI_ERROR) }
+            )
+        }
+    }
+
     fun checkAnswerWithAi(
         question: String,
         correctAnswer: String,
