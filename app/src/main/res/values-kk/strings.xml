@@ -167,4 +167,27 @@
     <string name="error_progress_load">Прогресті жүктеу мүмкін болмады.</string>
     <string name="error_training_load">Жаттығуларды жүктеу мүмкін болмады. Қайта көріңіз.</string>
     <string name="training_attempt_save_error">Жауап сақталмады. Қайта көріңіз.</string>
+
+    <string name="focus_mode_title">Сөзбен оқу</string>
+    <string name="focus_mode_enter">Сөзбен оқу</string>
+    <string name="focus_mode_exit">Мәтіннің толық түріне қайту</string>
+    <string name="focus_listen">Сөзді дауыстап оқы</string>
+    <string name="focus_listening">Тыңдап тұрмын…</string>
+    <string name="focus_try_again">Тағы бір рет көрейік</string>
+    <string name="focus_help">Көмек</string>
+    <string name="focus_i_read_it">Оқып шықтым</string>
+    <string name="focus_mic_unavailable">Микрофон қолжетімсіз — сөзді оқыған соң түймені бас.</string>
+    <string name="focus_mic_permission">Оқығаныңды қолданба естуі үшін микрофонға рұқсат бер.</string>
+    <string name="focus_step_syllables">Буындарды тыңда</string>
+    <string name="focus_step_letters">Әріппен</string>
+    <string name="focus_step_meaning">Сөздің мағынасы</string>
+    <string name="focus_scene_question">Не көрдің?</string>
+    <string name="focus_scene_saw_it">Көрдім</string>
+    <string name="focus_scene_unclear">Түсінікті болмады</string>
+    <string name="focus_pause_title">Кішкене үзіліс жасайық</string>
+    <string name="focus_pause_continue">Дайынмын</string>
+    <string name="focus_progress">Көмексіз оқылды: %1$d%%</string>
+    <string name="focus_finished">Мәтін бітті.</string>
+    <string name="focus_practise_words">Қиын сөздерді жаттығу</string>
+    <string name="focus_hint_dismiss">Кеңесті жасыру</string>
 </resources>
