@@ -181,9 +181,6 @@
     <string name="focus_step_syllables">Буындарды тыңда</string>
     <string name="focus_step_letters">Әріппен</string>
     <string name="focus_step_meaning">Сөздің мағынасы</string>
-    <string name="focus_scene_question">Не көрдің?</string>
-    <string name="focus_scene_saw_it">Көрдім</string>
-    <string name="focus_scene_unclear">Түсінікті болмады</string>
     <string name="focus_pause_title">Кішкене үзіліс жасайық</string>
     <string name="focus_pause_continue">Дайынмын</string>
     <string name="focus_progress">Көмексіз оқылды: %1$d%%</string>

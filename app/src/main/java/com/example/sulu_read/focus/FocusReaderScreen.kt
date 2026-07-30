@@ -95,7 +95,6 @@ fun FocusReaderScreen(
     var isListening by remember { mutableStateOf(false) }
     var showTryAgain by remember { mutableStateOf(false) }
     var isFlashing by remember { mutableStateOf(false) }
-    var sceneCheckIndex by remember(text) { mutableStateOf<Int?>(null) }
     var micDenied by remember { mutableStateOf(false) }
 
     val speechGate = remember(context) { SpeechGate(context) }
@@ -128,23 +127,13 @@ fun FocusReaderScreen(
     fun finishWord(wasCorrect: Boolean) {
         val word = currentWord ?: return
         isListening = false
-        val nextLadder = if (wasCorrect) {
+        ladder = if (wasCorrect) {
             showTryAgain = false
             ladder.onCorrectRead(word.spoken, words.size)
         } else {
             showTryAgain = true
             ladder.onMisread(word.spoken, words.size)
         }
-
-        // The word only changes when the ladder released the reader forward; that is also the
-        // moment a finished scene can ask whether an image formed.
-        if (nextLadder.wordIndex != ladder.wordIndex) {
-            val nextScene = words.getOrNull(nextLadder.wordIndex)?.sceneIndex
-            if (nextScene != word.sceneIndex) {
-                sceneCheckIndex = word.sceneIndex
-            }
-        }
-        ladder = nextLadder
     }
 
     val micPermissionLauncher = rememberLauncherForActivityResult(
@@ -364,25 +353,6 @@ fun FocusReaderScreen(
             }
         }
 
-        val checkedScene = sceneCheckIndex
-        if (checkedScene != null) {
-            ScenePanel(
-                onSawIt = { sceneCheckIndex = null },
-                onUnclear = {
-                    sceneCheckIndex = null
-                    // No image means one word of the scene was not understood; the longest
-                    // word is the cheapest available guess at which one that was.
-                    val hardestWord = words
-                        .filter { it.sceneIndex == checkedScene }
-                        .maxByOrNull { it.spoken.length }
-                        ?.spoken
-                    if (hardestWord != null) {
-                        onRequestMeaningHint(hardestWord)
-                    }
-                }
-            )
-        }
-
         if (ladder.suggestPause) {
             PausePanel(onContinue = { ladder = ladder.onPauseAcknowledged() })
         }
@@ -442,31 +412,6 @@ private fun MeaningHint(aiHelpState: AiHelpState, onDismissHint: () -> Unit) {
             }
 
             AiHelpState.Idle -> Unit
-        }
-    }
-}
-
-@Composable
-private fun ScenePanel(onSawIt: () -> Unit, onUnclear: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(ScenePanelBackground)
-            .padding(14.dp),
-        verticalArrangement = Arrangement.spacedBy(10.dp)
-    ) {
-        Text(
-            text = stringResource(R.string.focus_scene_question),
-            style = MaterialTheme.typography.titleMedium
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-            Button(onClick = onSawIt) {
-                Text(text = stringResource(R.string.focus_scene_saw_it))
-            }
-            OutlinedButton(onClick = onUnclear) {
-                Text(text = stringResource(R.string.focus_scene_unclear))
-            }
         }
     }
 }

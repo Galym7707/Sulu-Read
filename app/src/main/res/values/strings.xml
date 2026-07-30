@@ -182,9 +182,6 @@
     <string name="focus_step_syllables">Listen to the syllables</string>
     <string name="focus_step_letters">Letter by letter</string>
     <string name="focus_step_meaning">What the word means</string>
-    <string name="focus_scene_question">What did you see?</string>
-    <string name="focus_scene_saw_it">I saw it</string>
-    <string name="focus_scene_unclear">It did not come together</string>
     <string name="focus_pause_title">Let\'s take a short break</string>
     <string name="focus_pause_continue">I am ready</string>
     <string name="focus_progress">Read without help: %1$d%%</string>

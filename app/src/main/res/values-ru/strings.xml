@@ -181,9 +181,6 @@
     <string name="focus_step_syllables">Послушай слоги</string>
     <string name="focus_step_letters">По буквам</string>
     <string name="focus_step_meaning">Что значит слово</string>
-    <string name="focus_scene_question">Что ты увидел?</string>
-    <string name="focus_scene_saw_it">Увидел</string>
-    <string name="focus_scene_unclear">Не сложилось</string>
     <string name="focus_pause_title">Сделаем небольшую паузу</string>
     <string name="focus_pause_continue">Я готов</string>
     <string name="focus_progress">Прочитано без подсказки: %1$d%%</string>
