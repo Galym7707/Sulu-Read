@@ -889,7 +889,7 @@ private fun AiHelpSheet(
 
                 is AiHelpState.Error -> {
                     Text(
-                        text = state.message.ifBlank { stringResource(R.string.reader_ai_error) },
+                        text = stringResource(state.messageResId),
                         style = MaterialTheme.typography.bodyLarge.copy(lineHeight = 30.sp),
                         color = MaterialTheme.colorScheme.error
                     )

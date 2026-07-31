@@ -10,7 +10,9 @@ import com.example.sulu_read.data.dto.SimplifyDto
 import com.example.sulu_read.data.dto.UserDto
 
 interface SuluReadApi {
-    suspend fun createUser(displayName: String = "Оқушы", age: Int? = null, languagePreference: String = "kk"): UserDto
+    // displayName has no default on purpose: the Kazakh one it used to carry silently named
+    // every English and Russian reader's profile "Оқушы". Callers pick it from the language.
+    suspend fun createUser(displayName: String, age: Int? = null, languagePreference: String = "kk"): UserDto
     suspend fun registerUser(username: String, password: String, displayName: String, age: Int? = null, languagePreference: String = "kk"): UserDto
     suspend fun loginUser(username: String, password: String): UserDto
     suspend fun getUser(userId: String): UserDto
@@ -39,6 +41,7 @@ interface SuluReadApi {
         wordsReadCorrectly: Int,
         errorsCount: Int,
         durationMs: Long,
+        languageHint: String,
         testType: String = "short_reading"
     ): ScreeningResultDto
     suspend fun getProgress(userId: String): ProgressDto

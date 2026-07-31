@@ -2,7 +2,7 @@ from datetime import datetime
 from typing import Any
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 ExerciseType = Literal[
@@ -35,18 +35,43 @@ class SkillProfileResponse(BaseModel):
     updated_at: datetime | None = None
 
 
+DEFAULT_DISPLAY_NAMES = {"kk": "Оқушы", "ru": "Ученик", "en": "Student"}
+
+
+def default_display_name_for(language_preference: str) -> str:
+    for code, name in DEFAULT_DISPLAY_NAMES.items():
+        if language_preference.startswith(code):
+            return name
+    return DEFAULT_DISPLAY_NAMES["kk"]
+
+
 class CreateUserRequest(BaseModel):
-    display_name: str = Field(default="Оқушы", min_length=1, max_length=120)
+    # None means "not supplied", so the language-aware default below can fill it in. A plain
+    # Field default could only ever be one language, which named every English and Russian
+    # reader's profile "Оқушы".
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
     age: int | None = Field(default=None, ge=3, le=18)
     language_preference: str = Field(default="kk-ru", max_length=20)
+
+    @model_validator(mode="after")
+    def fill_display_name(self) -> "CreateUserRequest":
+        if self.display_name is None:
+            self.display_name = default_display_name_for(self.language_preference)
+        return self
 
 
 class RegisterUserRequest(BaseModel):
     username: str = Field(min_length=3, max_length=80)
     password: str = Field(min_length=4, max_length=128)
-    display_name: str = Field(default="Оқушы", min_length=1, max_length=120)
+    display_name: str | None = Field(default=None, min_length=1, max_length=120)
     age: int | None = Field(default=None, ge=3, le=18)
     language_preference: str = Field(default="kk", max_length=20)
+
+    @model_validator(mode="after")
+    def fill_display_name(self) -> "RegisterUserRequest":
+        if self.display_name is None:
+            self.display_name = default_display_name_for(self.language_preference)
+        return self
 
 
 class LoginUserRequest(BaseModel):
@@ -114,6 +139,7 @@ class ReadingTestRequest(BaseModel):
     errors_count: int = Field(ge=0)
     duration_ms: int = Field(gt=0)
     test_type: str = Field(default="short_reading")
+    language_hint: str = Field(default="kk", max_length=20)
 
 
 class ReadingTestResponse(BaseModel):

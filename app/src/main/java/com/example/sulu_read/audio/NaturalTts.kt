@@ -1,6 +1,5 @@
 package com.example.sulu_read.audio
 
-import android.os.Build
 import android.os.Bundle
 import android.speech.tts.TextToSpeech
 import android.speech.tts.Voice
@@ -18,20 +17,27 @@ fun detectSpeechLanguageCode(text: String, fallbackCode: String): String {
     if (letters.isBlank()) {
         return normalizedFallback
     }
+    // A Kazakh-only letter is decisive: no Russian or English word contains one.
     if (letters.any { it in KazakhSpecificLetters }) {
         return AppLanguage.Kazakh.code
     }
-    if (letters.any { it.isLatinLetter() }) {
-        return AppLanguage.English.code
-    }
-    if (letters.any { it.isCyrillicLetter() }) {
-        return if (normalizedFallback == AppLanguage.Kazakh.code) {
+
+    // Scripts are weighed against each other rather than tested with `any`. Testing Latin first
+    // meant a single stray Latin character — a unit, an abbreviation, a brand name inside an
+    // otherwise Cyrillic sentence — handed the whole sentence to the English voice, which then
+    // read Russian aloud as if it were English.
+    val latinCount = letters.count { it.isLatinLetter() }
+    val cyrillicCount = letters.count { it.isCyrillicLetter() }
+    return when {
+        latinCount > cyrillicCount -> AppLanguage.English.code
+        cyrillicCount > latinCount -> if (normalizedFallback == AppLanguage.Kazakh.code) {
             AppLanguage.Kazakh.code
         } else {
             AppLanguage.Russian.code
         }
+        // Neither script present, or a genuine tie: the reader's own setting decides.
+        else -> normalizedFallback
     }
-    return normalizedFallback
 }
 
 fun TextToSpeech.applyNaturalVoice(languageCode: String): Boolean {
@@ -44,18 +50,13 @@ fun TextToSpeech.applyNaturalVoice(languageCode: String): Boolean {
 }
 
 fun TextToSpeech.speakCompat(text: String, queueMode: Int, utteranceId: String) {
-    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
-        speak(text, queueMode, Bundle(), utteranceId)
-    } else {
-        @Suppress("DEPRECATION")
-        speak(text, queueMode, null)
-    }
+    // minSdk is 24, so the pre-Lollipop branch this used to carry was unreachable — and it
+    // called the overload that takes no utterance id, which would have left the reader's
+    // "is the app speaking?" flag stuck on, because no progress callback can fire without one.
+    speak(text, queueMode, Bundle(), utteranceId)
 }
 
 private fun TextToSpeech.findBestVoice(locale: Locale): Voice? {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-        return null
-    }
     return runCatching {
         voices
             ?.asSequence()
@@ -87,8 +88,11 @@ private fun Voice.naturalVoiceScore(locale: Locale): Int {
         Voice.LATENCY_NORMAL -> 4
         else -> 0
     }
+    // A network voice is the one that goes silent on a school bus or in a village with no
+    // signal — exactly where this app is used. Rewarding it meant the best-scoring voice was
+    // routinely the one that could not speak at all offline.
     if (isNetworkConnectionRequired) {
-        score += 12
+        score -= 12
     }
     return score
 }

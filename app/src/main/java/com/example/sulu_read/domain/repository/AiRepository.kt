@@ -40,7 +40,7 @@ class AiRepository(
     suspend fun hintForWordWithAi(word: String, languageCode: String): AiGenerateResponseDto {
         return generateAiHelp(
             task = "A child with dyslexia is stuck on one word while reading aloud. " +
-                "Answer in at most two very short lines, in the student's language. " +
+                "Answer in at most two very short lines. " +
                 "Line 1: a concrete sensory clue to what the word means, the kind of thing " +
                 "you could picture or touch. Line 2: one everyday synonym. " +
                 "No definitions, no grammar terms, no encouragement, no extra words.",

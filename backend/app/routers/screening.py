@@ -21,6 +21,7 @@ def submit_reading_test(
         words_total=payload.words_total,
         words_read_correctly=payload.words_read_correctly,
         duration_ms=payload.duration_ms,
+        language_hint=payload.language_hint,
     )
     result = models.ScreeningResult(
         user_id=payload.user_id,

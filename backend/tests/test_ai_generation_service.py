@@ -117,3 +117,33 @@ def test_ai_router_returns_safe_error_if_both_providers_fail(monkeypatch):
         service.generate_ai_response(build_request())
 
     assert str(exc_info.value) == service.SAFE_AI_ERROR
+
+
+@pytest.mark.parametrize(
+    ("language", "expected"),
+    [("kk", "Kazakh"), ("ru", "Russian"), ("en", "English")],
+)
+def test_system_prompt_names_the_reply_language(language, expected):
+    # The reply language reached the model only as a bare "Language: kk" line in the user
+    # prompt, so answers came back in the language of the student's text instead.
+    prompt = service.build_system_prompt(language)
+
+    assert expected in prompt
+    assert "Write your entire reply in" in prompt
+
+
+def test_user_prompt_states_the_reply_language_by_name():
+    payload = AiGenerateRequest(
+        task="Explain this text",
+        text="Қысқа мәтін",
+        language="kk",
+        mode="explain",
+    )
+
+    assert "Reply language: Kazakh (қазақ тілі)" in service.build_user_prompt(payload)
+
+
+def test_system_prompt_overrides_the_language_of_the_source_text():
+    prompt = service.build_system_prompt("ru")
+
+    assert "overrides the language of the text" in prompt

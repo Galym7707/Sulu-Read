@@ -127,6 +127,7 @@ object ApiClient : SuluReadApi {
         wordsReadCorrectly: Int,
         errorsCount: Int,
         durationMs: Long,
+        languageHint: String,
         testType: String
     ): ScreeningResultDto {
         val payload = JSONObject()
@@ -136,6 +137,7 @@ object ApiClient : SuluReadApi {
             .put("errors_count", errorsCount)
             .put("duration_ms", durationMs)
             .put("test_type", testType)
+            .put("language_hint", languageHint)
         val json = postJson("/v1/screening/reading-test", payload)
         return ScreeningResultDto(
             wpm = json.optDouble("wpm"),

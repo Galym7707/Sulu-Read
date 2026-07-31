@@ -1,7 +1,9 @@
 package com.example.sulu_read.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.example.sulu_read.R
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -12,7 +14,13 @@ sealed interface AiHelpState {
     data object Idle : AiHelpState
     data object Loading : AiHelpState
     data class Success(val result: String) : AiHelpState
-    data class Error(val message: String) : AiHelpState
+
+    /**
+     * Carries a string resource, never provider text. The AI providers and the backend only ever
+     * report failures in English, so surfacing their message left an English sentence sitting in
+     * the middle of a Russian or Kazakh screen.
+     */
+    data class Error(@param:StringRes val messageResId: Int = R.string.reader_ai_error) : AiHelpState
 }
 
 class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() {
@@ -40,7 +48,7 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
                 )
             }.fold(
                 onSuccess = { AiHelpState.Success(it) },
-                onFailure = { AiHelpState.Error(it.message ?: DEFAULT_AI_ERROR) }
+                onFailure = { AiHelpState.Error() }
             )
         }
     }
@@ -52,7 +60,7 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
                 repository.explainTextWithAi(text, languageCode)
             }.fold(
                 onSuccess = { AiHelpState.Success(it) },
-                onFailure = { AiHelpState.Error(it.message ?: DEFAULT_AI_ERROR) }
+                onFailure = { AiHelpState.Error() }
             )
         }
     }
@@ -64,7 +72,7 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
                 repository.hintForWord(word, languageCode)
             }.fold(
                 onSuccess = { AiHelpState.Success(it) },
-                onFailure = { AiHelpState.Error(it.message ?: DEFAULT_AI_ERROR) }
+                onFailure = { AiHelpState.Error() }
             )
         }
     }
@@ -81,7 +89,7 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
                 repository.checkAnswerWithAi(question, correctAnswer, userAnswer, languageCode)
             }.fold(
                 onSuccess = { AiHelpState.Success(it) },
-                onFailure = { AiHelpState.Error(it.message ?: DEFAULT_AI_ERROR) }
+                onFailure = { AiHelpState.Error() }
             )
         }
     }
@@ -93,7 +101,7 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
                 repository.generateExerciseWithAi(text, languageCode, level)
             }.fold(
                 onSuccess = { AiHelpState.Success(it) },
-                onFailure = { AiHelpState.Error(it.message ?: DEFAULT_AI_ERROR) }
+                onFailure = { AiHelpState.Error() }
             )
         }
     }
@@ -102,5 +110,3 @@ class AiHelpViewModel(private val repository: SuluReadRepository) : ViewModel() 
         _state.value = AiHelpState.Idle
     }
 }
-
-private const val DEFAULT_AI_ERROR = "AI help is temporarily unavailable. Please try again later."

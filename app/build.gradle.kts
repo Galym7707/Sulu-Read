@@ -42,6 +42,16 @@ android {
         compose = true
         buildConfig = true
     }
+    bundle {
+        language {
+            // The app switches language in its own settings, so it cannot rely on the system
+            // language. With splitting left on, Play ships a device only the resources matching
+            // the phone's locale — a phone set to Russian would download no Kazakh or English
+            // strings at all, and the in-app switcher would fall back to the default values/
+            // (English) for two of the three languages it offers.
+            enableSplit = false
+        }
+    }
 }
 
 dependencies {

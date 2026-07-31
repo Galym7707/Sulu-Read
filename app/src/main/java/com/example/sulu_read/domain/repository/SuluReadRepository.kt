@@ -136,14 +136,17 @@ class SuluReadRepository(
         wordsTotal: Int,
         wordsReadCorrectly: Int,
         errorsCount: Int,
-        durationMs: Long
+        durationMs: Long,
+        languageCode: String? = null
     ): ScreeningResult {
+        val resolvedLanguageCode = languageCode ?: preferences.languageCode.first()
         val result = api.submitReadingTest(
             userId = userId,
             wordsTotal = wordsTotal,
             wordsReadCorrectly = wordsReadCorrectly,
             errorsCount = errorsCount,
-            durationMs = durationMs
+            durationMs = durationMs,
+            languageHint = AppLanguage.backendHintFor(resolvedLanguageCode)
         )
         return ScreeningResult(
             wpm = result.wpm,
@@ -210,29 +213,17 @@ class SuluReadRepository(
             mode = mode,
             extra = extra
         )
-        if (!response.success) {
-            throw IllegalStateException(response.error ?: "AI help is unavailable.")
-        }
-        return response.result?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("AI returned an empty response.")
+        return response.requireResult()
     }
 
     suspend fun explainTextWithAi(text: String, languageCode: String): String {
         val response = aiRepository.explainTextWithAi(text, languageCode)
-        if (!response.success) {
-            throw IllegalStateException(response.error ?: "AI help is unavailable.")
-        }
-        return response.result?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("AI returned an empty response.")
+        return response.requireResult()
     }
 
     suspend fun hintForWord(word: String, languageCode: String): String {
         val response = aiRepository.hintForWordWithAi(word, languageCode)
-        if (!response.success) {
-            throw IllegalStateException(response.error ?: "AI help is unavailable.")
-        }
-        return response.result?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("AI returned an empty response.")
+        return response.requireResult()
     }
 
     suspend fun checkAnswerWithAi(
@@ -242,20 +233,12 @@ class SuluReadRepository(
         languageCode: String
     ): String {
         val response = aiRepository.checkAnswerWithAi(question, correctAnswer, userAnswer, languageCode)
-        if (!response.success) {
-            throw IllegalStateException(response.error ?: "AI help is unavailable.")
-        }
-        return response.result?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("AI returned an empty response.")
+        return response.requireResult()
     }
 
     suspend fun generateExerciseWithAi(text: String, languageCode: String, level: String? = null): String {
         val response = aiRepository.generateExerciseWithAi(text, languageCode, level)
-        if (!response.success) {
-            throw IllegalStateException(response.error ?: "AI help is unavailable.")
-        }
-        return response.result?.takeIf { it.isNotBlank() }
-            ?: throw IllegalStateException("AI returned an empty response.")
+        return response.requireResult()
     }
 
     suspend fun saveLanguageCode(languageCode: String, userId: String? = null) {
@@ -273,7 +256,11 @@ class SuluReadRepository(
     }
 
     private suspend fun createAnonymousUser(): UserProfile {
-        val user = api.createUser(languagePreference = preferences.languageCode.first()).toDomain()
+        val languageCode = preferences.languageCode.first()
+        val user = api.createUser(
+            displayName = AppLanguage.defaultDisplayNameFor(languageCode),
+            languagePreference = languageCode
+        ).toDomain()
         preferences.saveUserId(user.userId)
         return user
     }
@@ -316,4 +303,17 @@ private fun ExerciseDto.toDomain(): Exercise {
 
 private fun normalizeAnswer(answer: String): String {
     return answer.trim().lowercase().replace(" ", "")
+}
+
+/**
+ * Unwraps an AI response, or throws. The thrown messages are diagnostics for logs only — the
+ * providers and the backend report failures in English, so [com.example.sulu_read.ui.screens.AiHelpState.Error]
+ * carries a string resource instead of anything reachable from here.
+ */
+private fun com.example.sulu_read.data.dto.AiGenerateResponseDto.requireResult(): String {
+    if (!success) {
+        throw IllegalStateException(error ?: "AI help is unavailable.")
+    }
+    return result?.takeIf { it.isNotBlank() }
+        ?: throw IllegalStateException("AI returned an empty response.")
 }

@@ -22,3 +22,30 @@ def test_screening_high_support_for_low_accuracy():
     )
 
     assert result["support_level"] == "high"
+
+
+def test_screening_disclaimer_follows_the_requested_language():
+    # The disclaimer was pinned to Kazakh for every caller, so a Russian- or English-speaking
+    # family read "this is not a medical diagnosis" in a language they may not know.
+    kazakh = calculate_reading_screening(
+        words_total=80, words_read_correctly=58, duration_ms=90_000, language_hint="kk"
+    )
+    russian = calculate_reading_screening(
+        words_total=80, words_read_correctly=58, duration_ms=90_000, language_hint="ru"
+    )
+    english = calculate_reading_screening(
+        words_total=80, words_read_correctly=58, duration_ms=90_000, language_hint="en"
+    )
+
+    assert "медициналық" in kazakh["disclaimer"]
+    assert "медицинский" in russian["disclaimer"]
+    assert "medical diagnosis" in english["disclaimer"]
+    assert len({kazakh["disclaimer"], russian["disclaimer"], english["disclaimer"]}) == 3
+
+
+def test_screening_disclaimer_defaults_to_kazakh_for_an_unknown_hint():
+    result = calculate_reading_screening(
+        words_total=80, words_read_correctly=58, duration_ms=90_000, language_hint="tr"
+    )
+
+    assert "медициналық" in result["disclaimer"]

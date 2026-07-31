@@ -64,8 +64,9 @@ def generate_ai_response(payload: AiGenerateRequest) -> AiProviderResult:
                 exc.retryable,
                 index + 1 < len(provider_order),
             )
-            if index == 0 and not exc.retryable:
-                continue
+            # Every failure falls through to the next provider, retryable or not: the most
+            # common "non-retryable" case in practice is a missing or rejected API key, which is
+            # exactly when the fallback provider is the one that can still answer.
 
     raise AiProviderError(
         provider=last_error.provider if last_error else "unknown",
@@ -102,7 +103,7 @@ def call_gemini(payload: AiGenerateRequest) -> AiProviderResult:
         },
         json_payload={
             "systemInstruction": {
-                "parts": [{"text": build_system_prompt()}],
+                "parts": [{"text": build_system_prompt(payload.language)}],
             },
             "contents": [
                 {
@@ -142,7 +143,7 @@ def call_groq(payload: AiGenerateRequest) -> AiProviderResult:
             "temperature": 0.2,
             "max_completion_tokens": 2048,
             "messages": [
-                {"role": "system", "content": build_system_prompt()},
+                {"role": "system", "content": build_system_prompt(payload.language)},
                 {"role": "user", "content": build_user_prompt(payload)},
             ],
         },
@@ -218,10 +219,27 @@ def extract_groq_text(payload: dict[str, Any]) -> str:
     return str(content).strip()
 
 
-def build_system_prompt() -> str:
+LANGUAGE_NAMES = {
+    "kk": "Kazakh (қазақ тілі)",
+    "ru": "Russian (русский язык)",
+    "en": "English",
+}
+
+
+def build_system_prompt(language: str) -> str:
+    # The reply language used to be advertised only as a bare "Language: kk" line buried in the
+    # user prompt, with the system prompt saying nothing beyond "Support Kazakh, Russian, and
+    # English". Models read that as a hint and answered in whatever language the student's text
+    # happened to be in — so a Kazakh child who had set the app to Kazakh got English back.
+    language_name = LANGUAGE_NAMES.get(language, LANGUAGE_NAMES["kk"])
     return (
         "You are Sulu-Read's educational AI helper for reading and language learning. "
-        "Support Kazakh, Russian, and English. Explain clearly and briefly. "
+        f"Write your entire reply in {language_name}. This is the language the student has "
+        "chosen in the app, and it overrides the language of the text you are given: even when "
+        "the reading passage, the word, or the student's answer is in another language, every "
+        f"word you write back must be in {language_name}. Quote the student's own words only "
+        "when you are pointing at them. "
+        "Explain clearly and briefly. "
         "For students, give guidance and examples instead of only final answers in learning modes. "
         "For check_answer mode, compare the student's answer with the expected answer and explain mistakes. "
         "For generate_task mode, create reading, morphology, or language exercises based on the level. "
@@ -232,7 +250,7 @@ def build_system_prompt() -> str:
 def build_user_prompt(payload: AiGenerateRequest) -> str:
     lines = [
         f"Mode: {payload.mode}",
-        f"Language: {payload.language}",
+        f"Reply language: {LANGUAGE_NAMES.get(payload.language, LANGUAGE_NAMES['kk'])}",
         f"Level: {payload.level or 'not specified'}",
         f"Task: {payload.task.strip()}",
         "Text:",

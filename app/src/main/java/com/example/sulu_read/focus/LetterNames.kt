@@ -18,10 +18,27 @@ private val KazakhOnlyLetterNames: Map<Char, String> = mapOf(
     'ұ' to "ұ", 'ү' to "ү", 'һ' to "һә", 'і' to "і"
 )
 
-fun letterNamesFor(word: String, languageCode: String): List<String> {
-    val names = if (languageCode == "kk") RussianLetterNames + KazakhOnlyLetterNames else RussianLetterNames
+// Without these the English UI had no letter names at all: every Latin character fell through
+// to the raw character, so the spell step handed the TTS engine "a", which an English voice
+// reads as the word "uh" rather than as the name of the letter.
+private val EnglishLetterNames: Map<Char, String> = mapOf(
+    'a' to "ay", 'b' to "bee", 'c' to "see", 'd' to "dee", 'e' to "ee", 'f' to "ef",
+    'g' to "gee", 'h' to "aitch", 'i' to "eye", 'j' to "jay", 'k' to "kay", 'l' to "el",
+    'm' to "em", 'n' to "en", 'o' to "oh", 'p' to "pee", 'q' to "cue", 'r' to "ar",
+    's' to "ess", 't' to "tee", 'u' to "you", 'v' to "vee", 'w' to "double-u", 'x' to "ex",
+    'y' to "why", 'z' to "zee"
+)
+
+// One table, looked up per character instead of per UI language. The three alphabets share no
+// keys, and it is the letter in front of the reader — not the menu they picked — that decides
+// how it is named. Selecting the table by UI language meant a Kazakh word inside a Russian
+// text spelled out as "қ" instead of "қа", and an English text spelled out as nothing at all.
+private val LetterNames: Map<Char, String> =
+    RussianLetterNames + KazakhOnlyLetterNames + EnglishLetterNames
+
+fun letterNamesFor(word: String): List<String> {
     return word
         .lowercase()
         .filter { it.isLetterOrDigit() }
-        .map { character -> names[character] ?: character.toString() }
+        .map { character -> LetterNames[character] ?: character.toString() }
 }

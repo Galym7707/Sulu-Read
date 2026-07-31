@@ -103,6 +103,7 @@ private object FailingAttemptApi : SuluReadApi {
         wordsReadCorrectly: Int,
         errorsCount: Int,
         durationMs: Long,
+        languageHint: String,
         testType: String
     ): ScreeningResultDto = error("unused")
 

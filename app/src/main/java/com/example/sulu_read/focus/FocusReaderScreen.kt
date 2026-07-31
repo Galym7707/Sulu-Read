@@ -237,7 +237,7 @@ fun FocusReaderScreen(
         when (ladder.step) {
             FocusStep.Syllables -> speak(word.syllables.joinToString(" , "))
             FocusStep.Letters -> {
-                speak(letterNamesFor(word.spoken, languageCode).joinToString(" , "))
+                speak(letterNamesFor(word.spoken).joinToString(" , "))
                 delay(SWEEP_FLASH_MILLIS * 4)
                 speak(word.spoken)
             }
@@ -306,7 +306,7 @@ fun FocusReaderScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = letterNamesFor(currentWord.spoken, languageCode)
+                        text = letterNamesFor(currentWord.spoken)
                             .joinToString(" · "),
                         style = MaterialTheme.typography.titleMedium
                     )
@@ -440,7 +440,7 @@ private fun MeaningHint(aiHelpState: AiHelpState, onDismissHint: () -> Unit) {
 
             is AiHelpState.Error -> {
                 Text(
-                    text = aiHelpState.message,
+                    text = stringResource(aiHelpState.messageResId),
                     style = MaterialTheme.typography.bodyMedium
                 )
                 TextButton(onClick = onDismissHint) {
