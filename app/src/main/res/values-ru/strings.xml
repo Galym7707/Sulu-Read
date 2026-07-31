@@ -172,6 +172,8 @@
     <string name="focus_mode_enter">Читать по словам</string>
     <string name="focus_mode_exit">Вернуться ко всему тексту</string>
     <string name="focus_listen">Прочитай слово вслух</string>
+    <string name="focus_listen_start">Слушать</string>
+    <string name="focus_listen_stop">Стоп</string>
     <string name="focus_listening">Слушаю…</string>
     <string name="focus_try_again">Попробуем ещё раз</string>
     <string name="focus_help">Подскажи</string>

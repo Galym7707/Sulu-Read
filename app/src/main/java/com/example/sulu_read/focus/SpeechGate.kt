@@ -23,19 +23,16 @@ class SpeechGate(private val context: Context) {
 
     private var recognizer: SpeechRecognizer? = null
 
-    val isAvailable: Boolean
-        get() = SpeechRecognizer.isRecognitionAvailable(context)
-
     fun listenOnce(
         languageCode: String,
         onResult: (List<String>) -> Unit,
         onUnavailable: () -> Unit
     ) {
-        if (!isAvailable) {
-            onUnavailable()
-            return
-        }
-
+        // Deliberately not gated on [isAvailable]. That check reports false on devices that
+        // recognise speech perfectly well — a Xiaomi running Android 14 with three
+        // RecognitionServices installed and Google TTS set as the system default still
+        // answers false — and a false negative costs the reader the entire voice gate.
+        // Try for real, and fall back only when an attempt actually fails.
         val activeRecognizer = recognizer
             ?: SpeechRecognizer.createSpeechRecognizer(context)?.also { recognizer = it }
             ?: run {
@@ -54,8 +51,12 @@ class SpeechGate(private val context: Context) {
 
             override fun onError(error: Int) {
                 when (error) {
+                    // Nothing was said. Not a failure, and not a wrong answer either.
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
                     SpeechRecognizer.ERROR_NO_MATCH -> onResult(emptyList())
+                    // Transient: the previous session had not finished releasing the mic.
+                    SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
+                    SpeechRecognizer.ERROR_CLIENT -> onResult(emptyList())
                     else -> onUnavailable()
                 }
             }
@@ -78,9 +79,11 @@ class SpeechGate(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, locale.toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, MAX_HYPOTHESES)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, false)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-                putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
-            }
+            // Deliberately NOT EXTRA_PREFER_OFFLINE. Asking for offline recognition does not
+            // fall back to the network when the language pack is missing — it fails outright
+            // with a language-unavailable error, and Kazakh in particular is rarely installed
+            // offline. Preferring offline would have quietly disabled the voice gate for the
+            // languages this app exists to serve.
         }
 
         runCatching { activeRecognizer.startListening(intent) }

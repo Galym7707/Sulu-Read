@@ -19,8 +19,11 @@ private val FoldedLetters: Map<Char, Char> = mapOf(
     'і' to 'ы'
 )
 
-private const val SHORT_WORD_MAX_LENGTH = 3
-private const val MEDIUM_WORD_MAX_LENGTH = 6
+// Short words live in dense neighbourhoods — book/look/took, дом/том, men/man — so a single
+// substitution there is far more likely to be a real misreading than recognizer noise, and
+// letting it pass would defeat the point of the gate. Longer words have room to absorb one.
+private const val SHORT_WORD_MAX_LENGTH = 4
+private const val MEDIUM_WORD_MAX_LENGTH = 7
 private const val MEDIUM_WORD_TOLERANCE = 1
 private const val LONG_WORD_TOLERANCE = 2
 

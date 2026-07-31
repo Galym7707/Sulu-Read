@@ -58,6 +58,27 @@ class FocusWordMatchTest {
     }
 
     @Test
+    fun acceptsEnglishWords() {
+        assertTrue(isSpokenWordAccepted("reading", listOf("reading")))
+        assertTrue(isSpokenWordAccepted("Dyslexia,", listOf("dyslexia")))
+        // One substitution inside a medium English word is recognizer noise, not a misreading.
+        assertTrue(isSpokenWordAccepted("school", listOf("schoal")))
+    }
+
+    @Test
+    fun rejectsWrongEnglishWords() {
+        assertFalse(isSpokenWordAccepted("book", listOf("look")))
+        assertFalse(isSpokenWordAccepted("reading", listOf("writing")))
+    }
+
+    @Test
+    fun cyrillicFoldingDoesNotLeakIntoEnglish() {
+        // The RU/KK folding map must not make unrelated Latin words equal.
+        assertFalse(isSpokenWordAccepted("cat", listOf("cut")))
+        assertFalse(isSpokenWordAccepted("men", listOf("man")))
+    }
+
+    @Test
     fun rejectsEmptyInput() {
         assertFalse(isSpokenWordAccepted("книга", emptyList()))
         assertFalse(isSpokenWordAccepted("книга", listOf("", "   ")))

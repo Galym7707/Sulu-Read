@@ -2,7 +2,10 @@ package com.example.sulu_read.focus
 
 import android.Manifest
 import android.content.pm.PackageManager
+import android.os.Handler
+import android.os.Looper
 import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -57,6 +60,10 @@ private val SyllablePalette = listOf(Color(0xFF1A237E), Color(0xFF8A5A00))
 // padding is accounted for on small screens.
 private const val MIN_TOUCH_TARGET_DP = 56
 
+// Breath between one recognition ending and the next beginning. Also stops a device that
+// returns "heard nothing" instantly from spinning the recognizer in a tight loop.
+private const val LISTEN_RESTART_DELAY_MILLIS = 250L
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FocusReaderScreen(
@@ -72,20 +79,43 @@ fun FocusReaderScreen(
     val context = LocalContext.current
     val words = remember(text, backendWords) { buildFocusWords(text, backendWords) }
     var ladder by remember(text) { mutableStateOf(FocusLadderState()) }
-    var isListening by remember { mutableStateOf(false) }
+    // The reader starts the session once; the microphone then stays with them word after
+    // word. Stopping after every word would make them tap the phone more often than they read.
+    var isSessionActive by remember(text) { mutableStateOf(false) }
+    var isSpeaking by remember { mutableStateOf(false) }
+    var listenAttempt by remember { mutableStateOf(0) }
     var showTryAgain by remember { mutableStateOf(false) }
     var isFlashing by remember { mutableStateOf(false) }
     var micDenied by remember { mutableStateOf(false) }
 
     val speechGate = remember(context) { SpeechGate(context) }
-    var micUnavailable by remember(context) { mutableStateOf(!speechGate.isAvailable) }
+    // Starts optimistic. SpeechRecognizer.isRecognitionAvailable() returns false on devices
+    // that recognise speech fine, so the self-check fallback is offered only once a real
+    // attempt has failed, not on a pre-flight guess.
+    var micUnavailable by remember(context) { mutableStateOf(false) }
     DisposableEffect(speechGate) {
         onDispose { speechGate.release() }
     }
 
+    val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
     DisposableEffect(context) {
         val engine = TextToSpeech(context) {}
+        // Utterance callbacks arrive off the main thread, so hop back before touching state.
+        engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
+            override fun onStart(utteranceId: String?) {
+                mainHandler.post { isSpeaking = true }
+            }
+
+            override fun onDone(utteranceId: String?) {
+                mainHandler.post { isSpeaking = false }
+            }
+
+            @Deprecated("Required by UtteranceProgressListener")
+            override fun onError(utteranceId: String?) {
+                mainHandler.post { isSpeaking = false }
+            }
+        })
         textToSpeech = engine
         onDispose {
             engine.stop()
@@ -101,12 +131,14 @@ fun FocusReaderScreen(
         val speechLanguage = detectSpeechLanguageCode(value, languageCode)
         engine.applyNaturalVoice(speechLanguage)
         engine.setSpeechRate(ladder.ttsRate())
+        // Closed here rather than in onStart: the recognizer must not be armed during the
+        // gap before the engine actually begins, or the app hears its own voice.
+        isSpeaking = true
         engine.speakCompat(value, TextToSpeech.QUEUE_FLUSH, "focus-${value.hashCode()}")
     }
 
     fun finishWord(wasCorrect: Boolean) {
         val word = currentWord ?: return
-        isListening = false
         ladder = if (wasCorrect) {
             showTryAgain = false
             ladder.onCorrectRead(word.spoken, words.size)
@@ -120,9 +152,7 @@ fun FocusReaderScreen(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         micDenied = !granted
-        if (granted) {
-            isListening = true
-        }
+        isSessionActive = granted
     }
 
     fun startListening() {
@@ -135,21 +165,31 @@ fun FocusReaderScreen(
             micPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
             return
         }
-        isListening = true
+        isSessionActive = true
     }
 
-    LaunchedEffect(isListening, ladder.wordIndex, ladder.step) {
+    // Re-arms itself on every word change, so a correct read moves the highlight AND starts
+    // listening for the next word with no tap in between. The language is resolved per word,
+    // so a Kazakh word inside a Russian text is still recognised as Kazakh.
+    LaunchedEffect(isSessionActive, isSpeaking, ladder.wordIndex, ladder.step, listenAttempt) {
         val word = currentWord ?: return@LaunchedEffect
-        if (!isListening) {
+        if (!isSessionActive || isSpeaking) {
             return@LaunchedEffect
         }
+        delay(LISTEN_RESTART_DELAY_MILLIS)
         speechGate.listenOnce(
             languageCode = detectSpeechLanguageCode(word.spoken, languageCode),
             onResult = { hypotheses ->
-                finishWord(isSpokenWordAccepted(word.spoken, hypotheses))
+                when {
+                    // Nothing was said. Silence is not a wrong answer — re-arm and let the
+                    // nudge timers decide when this reader needs help.
+                    hypotheses.isEmpty() -> listenAttempt += 1
+                    isSpokenWordAccepted(word.spoken, hypotheses) -> finishWord(wasCorrect = true)
+                    else -> finishWord(wasCorrect = false)
+                }
             },
             onUnavailable = {
-                isListening = false
+                isSessionActive = false
                 micUnavailable = true
             }
         )
@@ -245,7 +285,7 @@ fun FocusReaderScreen(
             Text(
                 text = when {
                     showTryAgain -> stringResource(R.string.focus_try_again)
-                    isListening -> stringResource(R.string.focus_listening)
+                    isSessionActive && !isSpeaking -> stringResource(R.string.focus_listening)
                     else -> stringResource(R.string.focus_listen)
                 },
                 style = MaterialTheme.typography.bodyLarge
@@ -305,13 +345,24 @@ fun FocusReaderScreen(
                     }
                 } else {
                     Button(
-                        onClick = { startListening() },
-                        enabled = !isListening,
+                        onClick = {
+                            if (isSessionActive) {
+                                isSessionActive = false
+                                speechGate.cancel()
+                            } else {
+                                startListening()
+                            }
+                        },
                         modifier = Modifier
                             .weight(1f)
                             .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
-                        Text(text = stringResource(R.string.focus_listen))
+                        Text(
+                            text = stringResource(
+                                if (isSessionActive) R.string.focus_listen_stop
+                                else R.string.focus_listen_start
+                            )
+                        )
                     }
                 }
 

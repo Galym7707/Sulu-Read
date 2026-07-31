@@ -173,6 +173,8 @@
     <string name="focus_mode_enter">Read word by word</string>
     <string name="focus_mode_exit">Back to the whole text</string>
     <string name="focus_listen">Read the word aloud</string>
+    <string name="focus_listen_start">Listen</string>
+    <string name="focus_listen_stop">Stop</string>
     <string name="focus_listening">Listening…</string>
     <string name="focus_try_again">Let\'s try once more</string>
     <string name="focus_help">Show me</string>
