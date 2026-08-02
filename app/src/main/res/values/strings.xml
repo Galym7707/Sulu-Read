@@ -178,4 +178,17 @@
     <string name="focus_finished">The text is finished.</string>
     <string name="focus_practise_words">Practise the difficult words</string>
     <string name="focus_hint_dismiss">Hide the hint</string>
+    <string name="document_sheet_file_title">Book file</string>
+    <string name="document_sheet_file_subtitle">PDF, DOCX, EPUB, FB2 or TXT, split into pages</string>
+    <string name="document_status_file_ready">Book file ready</string>
+    <string name="document_status_source_file">File</string>
+    <string name="file_not_selected">No file was selected</string>
+    <string name="file_prepare_error">This file could not be opened</string>
+    <string name="file_adaptation_failed">This book could not be read</string>
+    <string name="book_reader_title">Book</string>
+    <string name="book_page_of">Page %1$d of %2$d</string>
+    <string name="book_previous_page">Back</string>
+    <string name="book_next_page">Next</string>
+    <string name="book_page_from_scan">This page was read from a scan, so a word may be wrong.</string>
+    <string name="book_truncated_notice">This book is long. The first %1$d pages were opened.</string>
 </resources>

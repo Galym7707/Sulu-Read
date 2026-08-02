@@ -43,6 +43,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.CheckCircle
@@ -127,6 +128,18 @@ private const val CONNECT_TIMEOUT_MS = 20_000
 private const val READ_TIMEOUT_MS = 270_000
 private const val ADAPTATION_TIMEOUT_MS = 300_000L
 private const val MAX_UPLOAD_IMAGE_SIDE = 1800
+
+// Kept broad on purpose. Providers disagree about the type of an .epub or .fb2 - some report
+// application/octet-stream - so the picker offers anything plausible and the backend decides by
+// extension. A reader who cannot see their book in the picker has no way round it.
+private val BOOK_MIME_TYPES = arrayOf(
+    "application/pdf",
+    "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/epub+zip",
+    "text/plain",
+    "text/html",
+    "application/octet-stream"
+)
 private const val UPLOAD_JPEG_QUALITY = 86
 
 private val WarmCream = Color(0xFFFFFDF6)
@@ -220,8 +233,16 @@ private val SuluReadShapes = Shapes(
 
 private enum class DocumentSource {
     Camera,
-    Gallery
+    Gallery,
+    File
 }
+
+/** One page of an uploaded book, as the backend divided it. */
+data class BookPage(
+    val pageNumber: Int,
+    val text: String,
+    val wordCount: Int
+)
 
 private sealed interface AppState {
     data object Home : AppState
@@ -235,11 +256,21 @@ private sealed interface AppState {
         val title: String?,
         val words: List<ReaderWord>
     ) : AppState
+
+    data class ReadingBook(
+        val pages: List<BookPage>,
+        val title: String?,
+        // The file had more pages than the backend was allowed to return. Shown rather than
+        // swallowed: a book that stops early with no explanation reads as a broken app.
+        val truncated: Boolean,
+        val ocrPageNumbers: List<Int>
+    ) : AppState
 }
 
 private sealed interface PendingAdaptationRequest {
     data class Image(val uri: Uri) : PendingAdaptationRequest
     data class Url(val url: String) : PendingAdaptationRequest
+    data class Book(val uri: Uri) : PendingAdaptationRequest
 }
 
 private sealed interface ApiResult {
@@ -250,6 +281,13 @@ private sealed interface ApiResult {
         val wordCount: Int,
         val title: String?,
         val words: List<ReaderWord>
+    ) : ApiResult
+
+    data class Book(
+        val pages: List<BookPage>,
+        val title: String?,
+        val truncated: Boolean,
+        val ocrPageNumbers: List<Int>
     ) : ApiResult
 
     data class Error(val message: String) : ApiResult
@@ -397,6 +435,12 @@ fun SuluReadRoute(
                         url = request.url,
                         languageHint = AppLanguage.backendHintFor(languageCode)
                     )
+
+                    is PendingAdaptationRequest.Book -> SuluReadApiClient.adaptFile(
+                        context = context,
+                        uri = request.uri,
+                        languageHint = AppLanguage.backendHintFor(languageCode)
+                    )
                 }
             } ?: ApiResult.Error(context.getString(R.string.api_adaptation_timeout))
 
@@ -418,6 +462,16 @@ fun SuluReadRoute(
                     )
                 }
 
+                is ApiResult.Book -> {
+                    pendingRequest = null
+                    appState = AppState.ReadingBook(
+                        pages = result.pages,
+                        title = result.title,
+                        truncated = result.truncated,
+                        ocrPageNumbers = result.ocrPageNumbers
+                    )
+                }
+
                 is ApiResult.Error -> {
                     errorMessage = result.message
                     appState = AppState.Home
@@ -432,6 +486,9 @@ fun SuluReadRoute(
         documentStatus = when (source) {
             DocumentSource.Camera -> context.getString(R.string.document_status_camera_ready)
             DocumentSource.Gallery -> context.getString(R.string.document_status_gallery_ready)
+            // Book files never reach here: they go straight to runAdaptation from the picker,
+            // because they must not be re-encoded as an image.
+            DocumentSource.File -> context.getString(R.string.document_status_file_ready)
         }
         runAdaptation(PendingAdaptationRequest.Image(uri))
     }
@@ -469,6 +526,19 @@ fun SuluReadRoute(
             processImage(uri, DocumentSource.Gallery)
         } else {
             showHomeMessage(context.getString(R.string.photo_not_selected))
+        }
+    }
+
+    val bookPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            selectedDocumentUri = uri
+            selectedDocumentSource = DocumentSource.File
+            documentStatus = context.getString(R.string.document_status_file_ready)
+            runAdaptation(PendingAdaptationRequest.Book(uri))
+        } else {
+            showHomeMessage(context.getString(R.string.file_not_selected))
         }
     }
 
@@ -635,6 +705,28 @@ fun SuluReadRoute(
             )
         }
 
+        is AppState.ReadingBook -> {
+            BookReadingScreen(
+                modifier = modifier,
+                state = currentState,
+                repository = repository,
+                languageCode = languageCode,
+                aiHelpState = aiHelpState,
+                onExplainTextWithAi = onExplainTextWithAi,
+                onRequestWordHint = onRequestWordHint,
+                onDismissAiHelp = onDismissAiHelp,
+                onCreateTrainingFromText = onCreateTrainingFromText,
+                onBackHome = {
+                    selectedDocumentUri = null
+                    selectedDocumentSource = null
+                    documentStatus = null
+                    pendingRequest = null
+                    errorMessage = null
+                    appState = AppState.Home
+                }
+            )
+        }
+
         is AppState.Reading -> {
             ReadingScreen(
                 modifier = modifier,
@@ -662,7 +754,11 @@ fun SuluReadRoute(
         DocumentSourceSheet(
             onDismissRequest = { showDocumentSheet = false },
             onCameraClick = ::requestCamera,
-            onGalleryClick = ::requestMedia
+            onGalleryClick = ::requestMedia,
+            onFileClick = {
+                showDocumentSheet = false
+                bookPickerLauncher.launch(BOOK_MIME_TYPES)
+            }
         )
     }
 
@@ -790,6 +886,130 @@ private fun LoadingScreen(
     }
 }
 
+/**
+ * An uploaded book, one page at a time.
+ *
+ * The page is the unit the reader moves through, so it is deliberately not one long scroll: a
+ * child who loses their place in a 200-page document has no way back to it, whereas a page
+ * number is somewhere to return to. Each page is handed to the ordinary reader, so the focus
+ * mode, the AI help and the training builder all work on a book exactly as on a photo.
+ */
+@Composable
+private fun BookReadingScreen(
+    modifier: Modifier = Modifier,
+    state: AppState.ReadingBook,
+    repository: SuluReadRepository,
+    languageCode: String,
+    aiHelpState: AiHelpState,
+    onExplainTextWithAi: (String) -> Unit,
+    onRequestWordHint: (String) -> Unit,
+    onDismissAiHelp: () -> Unit,
+    onCreateTrainingFromText: (List<String>) -> Unit,
+    onBackHome: () -> Unit
+) {
+    var pageIndex by rememberSaveable(state.pages.size) { mutableIntStateOf(0) }
+    val page = state.pages.getOrNull(pageIndex) ?: return
+    val isOcrPage = page.pageNumber in state.ocrPageNumbers
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(horizontal = 20.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = state.title ?: stringResource(R.string.book_reader_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextPrimary,
+                    maxLines = 2
+                )
+                Text(
+                    text = stringResource(
+                        R.string.book_page_of,
+                        page.pageNumber,
+                        state.pages.size
+                    ),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            TextButton(onClick = onBackHome) {
+                Text(text = stringResource(R.string.reader_back_home))
+            }
+        }
+
+        if (isOcrPage) {
+            Text(
+                text = stringResource(R.string.book_page_from_scan),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
+        }
+        if (state.truncated) {
+            Text(
+                text = stringResource(R.string.book_truncated_notice, state.pages.size),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
+        }
+
+        Box(modifier = Modifier.weight(1f)) {
+            ReadingScreen(
+                state = AppState.Reading(
+                    adaptedText = page.text,
+                    originalText = page.text,
+                    source = "file",
+                    wordCount = page.wordCount,
+                    title = null,
+                    words = emptyList()
+                ),
+                repository = repository,
+                languageCode = languageCode,
+                aiHelpState = aiHelpState,
+                onExplainTextWithAi = onExplainTextWithAi,
+                onRequestWordHint = onRequestWordHint,
+                onDismissAiHelp = onDismissAiHelp,
+                onCreateTrainingFromText = onCreateTrainingFromText,
+                onBackHome = onBackHome,
+                showHeader = false
+            )
+        }
+
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Button(
+                onClick = { pageIndex = max(0, pageIndex - 1) },
+                enabled = pageIndex > 0,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 56.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(text = stringResource(R.string.book_previous_page))
+            }
+            Button(
+                onClick = { pageIndex = minOf(state.pages.lastIndex, pageIndex + 1) },
+                enabled = pageIndex < state.pages.lastIndex,
+                modifier = Modifier
+                    .weight(1f)
+                    .heightIn(min = 56.dp),
+                shape = RoundedCornerShape(14.dp)
+            ) {
+                Text(text = stringResource(R.string.book_next_page))
+            }
+        }
+    }
+}
+
 @Composable
 private fun ReadingScreen(
     modifier: Modifier = Modifier,
@@ -801,7 +1021,10 @@ private fun ReadingScreen(
     onRequestWordHint: (String) -> Unit,
     onDismissAiHelp: () -> Unit,
     onCreateTrainingFromText: (List<String>) -> Unit,
-    onBackHome: () -> Unit
+    onBackHome: () -> Unit,
+    // A page of a book already has its own title and page counter above it, so the reader's own
+    // header would be a second one saying almost the same thing.
+    showHeader: Boolean = true
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isFocusMode by rememberSaveable(state.adaptedText) { mutableStateOf(false) }
@@ -818,31 +1041,33 @@ private fun ReadingScreen(
             .padding(horizontal = 20.dp, vertical = 22.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
+        if (showHeader) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.SpaceBetween
             ) {
-                Text(
-                    text = state.title ?: stringResource(R.string.reader_adapted_text_title),
-                    style = MaterialTheme.typography.titleLarge,
-                    color = TextPrimary
-                )
-                Text(
-                    text = stringResource(R.string.reader_source_summary, sourceText, state.wordCount),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted
-                )
-            }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = state.title ?: stringResource(R.string.reader_adapted_text_title),
+                        style = MaterialTheme.typography.titleLarge,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = stringResource(R.string.reader_source_summary, sourceText, state.wordCount),
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextMuted
+                    )
+                }
 
-            Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(12.dp))
 
-            TextButton(onClick = onBackHome) {
-                Text(text = stringResource(R.string.reader_back_home))
+                TextButton(onClick = onBackHome) {
+                    Text(text = stringResource(R.string.reader_back_home))
+                }
             }
         }
 
@@ -1060,6 +1285,7 @@ private fun DocumentStatusCard(
     val sourceText = when (selectedDocumentSource) {
         DocumentSource.Camera -> stringResource(R.string.document_status_source_camera)
         DocumentSource.Gallery -> stringResource(R.string.document_status_source_gallery)
+        DocumentSource.File -> stringResource(R.string.document_status_source_file)
         null -> stringResource(R.string.document_status_no_photo)
     }
 
@@ -1113,7 +1339,8 @@ private fun DocumentStatusCard(
 private fun DocumentSourceSheet(
     onDismissRequest: () -> Unit,
     onCameraClick: () -> Unit,
-    onGalleryClick: () -> Unit
+    onGalleryClick: () -> Unit,
+    onFileClick: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -1148,6 +1375,12 @@ private fun DocumentSourceSheet(
                 title = stringResource(R.string.document_sheet_gallery_title),
                 subtitle = stringResource(R.string.document_sheet_gallery_subtitle),
                 onClick = onGalleryClick
+            )
+            DocumentSourceAction(
+                icon = Icons.AutoMirrored.Filled.MenuBook,
+                title = stringResource(R.string.document_sheet_file_title),
+                subtitle = stringResource(R.string.document_sheet_file_subtitle),
+                onClick = onFileClick
             )
         }
     }
@@ -1376,6 +1609,97 @@ private object SuluReadApiClient {
         }
 
         ApiResult.Error(connectionErrorMessage(context))
+    }
+
+    /**
+     * Uploads a book file untouched.
+     *
+     * Deliberately not routed through [prepareImageUpload]: that re-encodes and downscales, which
+     * is right for a photo and would corrupt a PDF. The bytes go up exactly as they are on disk.
+     */
+    suspend fun adaptFile(context: Context, uri: Uri, languageHint: String): ApiResult =
+        withContext(Dispatchers.IO) {
+            val fileName = runCatching { resolveFileName(context, uri) }.getOrElse { "book" }
+            val bytes = runCatching {
+                context.contentResolver.openInputStream(uri)?.use { it.readBytes() }
+            }.getOrNull()
+
+            if (bytes == null || bytes.isEmpty()) {
+                return@withContext ApiResult.Error(context.getString(R.string.file_prepare_error))
+            }
+
+            for (baseUrl in ApiClient.backendBaseUrls) {
+                val result = runCatching {
+                    val boundary = "SuluReadBoundary-${UUID.randomUUID()}"
+                    val connection = openPostConnection("$baseUrl/v1/adapt-file").apply {
+                        setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
+                        setRequestProperty("Accept", "application/json")
+                    }
+
+                    try {
+                        BufferedOutputStream(connection.outputStream).use { output ->
+                            output.writeUtf8("--$boundary\r\n")
+                            output.writeUtf8(
+                                "Content-Disposition: form-data; name=\"file\"; filename=\"$fileName\"\r\n"
+                            )
+                            output.writeUtf8("Content-Type: application/octet-stream\r\n\r\n")
+                            output.write(bytes)
+                            output.writeUtf8("\r\n")
+                            output.writeUtf8("--$boundary\r\n")
+                            output.writeUtf8("Content-Disposition: form-data; name=\"language_hint\"\r\n\r\n")
+                            output.writeUtf8(languageHint)
+                            output.writeUtf8("\r\n--$boundary--\r\n")
+                            output.flush()
+                        }
+
+                        parseBookResponse(context, connection.responseCode, readResponseBody(connection))
+                    } finally {
+                        connection.disconnect()
+                    }
+                }.getOrNull()
+
+                if (result != null) {
+                    return@withContext result
+                }
+            }
+
+            ApiResult.Error(connectionErrorMessage(context))
+        }
+
+    private fun parseBookResponse(context: Context, httpCode: Int, body: String): ApiResult {
+        val json = runCatching { JSONObject(body) }.getOrNull()
+            ?: return ApiResult.Error(connectionErrorMessage(context))
+
+        if (json.optString("status") == "success") {
+            val pagesJson = json.optJSONArray("pages")
+            val pages = (0 until (pagesJson?.length() ?: 0)).mapNotNull { index ->
+                val page = pagesJson?.optJSONObject(index) ?: return@mapNotNull null
+                val text = page.optString("original_text").ifBlank { return@mapNotNull null }
+                BookPage(
+                    pageNumber = page.optInt("page_number", index + 1),
+                    text = text,
+                    wordCount = page.optInt("word_count", 0)
+                )
+            }
+            if (pages.isNotEmpty()) {
+                val ocrJson = json.optJSONArray("ocr_page_numbers")
+                return ApiResult.Book(
+                    pages = pages,
+                    title = json.optString("title").ifBlank { null },
+                    truncated = json.optBoolean("truncated", false),
+                    ocrPageNumbers = (0 until (ocrJson?.length() ?: 0)).map { ocrJson!!.optInt(it) }
+                )
+            }
+        }
+
+        val serverMessage = json.optString("message").ifBlank {
+            if (httpCode in 200..299) {
+                context.getString(R.string.file_adaptation_failed)
+            } else {
+                connectionErrorMessage(context)
+            }
+        }
+        return ApiResult.Error(serverMessage)
     }
 
     private fun prepareImageUpload(context: Context, uri: Uri): PreparedImageUpload {

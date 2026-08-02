@@ -177,4 +177,17 @@
     <string name="focus_finished">Текст закончился.</string>
     <string name="focus_practise_words">Потренировать трудные слова</string>
     <string name="focus_hint_dismiss">Скрыть подсказку</string>
+    <string name="document_sheet_file_title">Файл книги</string>
+    <string name="document_sheet_file_subtitle">PDF, DOCX, EPUB, FB2 или TXT, поделим на страницы</string>
+    <string name="document_status_file_ready">Файл книги готов</string>
+    <string name="document_status_source_file">Файл</string>
+    <string name="file_not_selected">Файл не выбран</string>
+    <string name="file_prepare_error">Не удалось открыть этот файл</string>
+    <string name="file_adaptation_failed">Не удалось прочитать эту книгу</string>
+    <string name="book_reader_title">Книга</string>
+    <string name="book_page_of">Страница %1$d из %2$d</string>
+    <string name="book_previous_page">Назад</string>
+    <string name="book_next_page">Дальше</string>
+    <string name="book_page_from_scan">Эта страница распознана со скана, поэтому слово может быть неточным.</string>
+    <string name="book_truncated_notice">Книга длинная. Открыли первые %1$d страниц.</string>
 </resources>

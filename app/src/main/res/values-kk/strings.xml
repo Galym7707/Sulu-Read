@@ -177,4 +177,17 @@
     <string name="focus_finished">Мәтін бітті.</string>
     <string name="focus_practise_words">Қиын сөздерді жаттығу</string>
     <string name="focus_hint_dismiss">Кеңесті жасыру</string>
+    <string name="document_sheet_file_title">Кітап файлы</string>
+    <string name="document_sheet_file_subtitle">PDF, DOCX, EPUB, FB2 немесе TXT, беттерге бөлеміз</string>
+    <string name="document_status_file_ready">Кітап файлы дайын</string>
+    <string name="document_status_source_file">Файл</string>
+    <string name="file_not_selected">Файл таңдалмады</string>
+    <string name="file_prepare_error">Бұл файлды ашу мүмкін болмады</string>
+    <string name="file_adaptation_failed">Бұл кітапты оқу мүмкін болмады</string>
+    <string name="book_reader_title">Кітап</string>
+    <string name="book_page_of">%2$d беттің %1$d-беті</string>
+    <string name="book_previous_page">Артқа</string>
+    <string name="book_next_page">Әрі қарай</string>
+    <string name="book_page_from_scan">Бұл бет скеннен оқылды, сондықтан сөз дәл болмауы мүмкін.</string>
+    <string name="book_truncated_notice">Кітап ұзын. Алғашқы %1$d бет ашылды.</string>
 </resources>

@@ -22,6 +22,14 @@ from pydantic import BaseModel, Field
 from backend.app.database import check_database_ready, init_database, using_runtime_sqlite_fallback
 from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
+from backend.app.services.document_extraction import (
+    extension_of,
+    extract_pdf_pages,
+    is_sparse_text_layer,
+    is_supported_document,
+    pages_from_document,
+    render_pdf_page_to_png,
+)
 from backend.app.services.text_preparation import clean_ocr_text as service_clean_ocr_text
 from backend.app.services.ocr_correction import correct_ocr_text, lexicon_repair_enabled
 
@@ -65,11 +73,59 @@ logging.basicConfig(
 )
 logger = logging.getLogger("sulu_read_backend")
 
-URL_ERROR_MESSAGE = "Не удалось прочитать ссылку. Попробуйте скопировать текст вручную."
-IMAGE_ERROR_MESSAGE = "Текст на фото слишком размытый. Пожалуйста, сделайте снимок при хорошем освещении."
-GENERIC_ERROR_MESSAGE = "Не удалось обработать запрос. Пожалуйста, попробуйте еще раз."
+# The client displays whatever "message" comes back, verbatim. These used to be Russian
+# constants, so an English or Kazakh reader was shown a Russian error, which is why every
+# failure path now has to be told which language the reader chose.
+ERROR_MESSAGES: dict[str, dict[str, str]] = {
+    "url": {
+        "kk": "Сілтемені оқу мүмкін болмады. Мәтінді қолмен көшіріп көріңіз.",
+        "ru": "Не удалось прочитать ссылку. Попробуйте скопировать текст вручную.",
+        "en": "Could not read that link. Try copying the text in by hand.",
+    },
+    "image": {
+        "kk": "Суреттегі мәтін тым бұлыңғыр. Жарық жерде қайта түсіріңіз.",
+        "ru": "Текст на фото слишком размытый. Пожалуйста, сделайте снимок при хорошем освещении.",
+        "en": "The text in this photo is too blurry. Try again in better light.",
+    },
+    "file": {
+        "kk": "Бұл файлды оқу мүмкін болмады. PDF, DOCX, EPUB, FB2, TXT қолдау көрсетіледі.",
+        "ru": "Не удалось прочитать этот файл. Поддерживаются PDF, DOCX, EPUB, FB2, TXT.",
+        "en": "Could not read that file. PDF, DOCX, EPUB, FB2 and TXT are supported.",
+    },
+    "generic": {
+        "kk": "Сұрауды өңдеу мүмкін болмады. Қайталап көріңіз.",
+        "ru": "Не удалось обработать запрос. Пожалуйста, попробуйте еще раз.",
+        "en": "Could not handle that request. Please try again.",
+    },
+}
+
+
+def validation_language_hint(request: Request) -> str:
+    """Best guess at the reader's language when the request body did not parse.
+
+    The hint normally arrives in the body, which is exactly what failed, so the query string is
+    the only place left to look. Falls back to the app's own default rather than to Russian.
+    """
+    return request.query_params.get("language_hint", "kk")
+
+
+def error_message_for(kind: str, language_hint: str = "kk") -> str:
+    messages = ERROR_MESSAGES[kind]
+    if language_hint.startswith("en"):
+        return messages["en"]
+    if language_hint.startswith("ru"):
+        return messages["ru"]
+    return messages["kk"]
+
+
+GENERIC_ERROR_MESSAGE = ERROR_MESSAGES["generic"]["kk"]
 
 MAX_IMAGE_BYTES = int(os.getenv("SULU_READ_MAX_IMAGE_BYTES", str(15 * 1024 * 1024)))
+MAX_DOCUMENT_BYTES = int(os.getenv("SULU_READ_MAX_DOCUMENT_BYTES", str(40 * 1024 * 1024)))
+MAX_DOCUMENT_PAGES = int(os.getenv("SULU_READ_MAX_DOCUMENT_PAGES", "300"))
+# Scanned pages are OCR'd one at a time and each costs seconds, so this is far below the page
+# cap. Whatever it drops is reported as truncated rather than silently missing.
+MAX_OCR_PAGES_PER_DOCUMENT = int(os.getenv("SULU_READ_MAX_OCR_PAGES", "15"))
 MAX_TEXT_CHARS = int(os.getenv("SULU_READ_MAX_TEXT_CHARS", "50000"))
 URL_EXTRACTION_TIMEOUT_SECONDS = float(os.getenv("SULU_READ_URL_TIMEOUT_SECONDS", "20"))
 OCR_TIMEOUT_SECONDS = float(os.getenv("SULU_READ_OCR_TIMEOUT_SECONDS", "120"))
@@ -126,8 +182,6 @@ class UrlRequest(BaseModel):
 
 class AdaptedWord(BaseModel):
     original: str
-    adapted: str
-    syllables: list[str]
     language_hint: str
     vowel_harmony: str | None = None
 
@@ -142,6 +196,27 @@ class AdaptedTextResponse(BaseModel):
     truncated: bool
     words: list[AdaptedWord]
     title: str | None = None
+
+
+class BookPage(BaseModel):
+    page_number: int
+    original_text: str
+    adapted_text: str
+    word_count: int
+
+
+class AdaptedBookResponse(BaseModel):
+    status: str
+    source: str
+    title: str | None = None
+    page_count: int
+    pages: list[BookPage]
+    # True when the book had more pages than the request was allowed to return. The client shows
+    # this, because a book that silently stops at page 30 reads as a broken app.
+    truncated: bool
+    # Pages that had no text layer and were read by OCR instead. Those are the pages where a
+    # wrong word is most likely, and the reader deserves to know which ones they are.
+    ocr_page_numbers: list[int] = []
 
 
 class ErrorResponse(BaseModel):
@@ -237,9 +312,11 @@ app.include_router(ai.router)
 async def validation_exception_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
     logger.warning("Validation failed for %s: %s", request.url.path, exc)
     if request.url.path == "/v1/adapt-url":
-        return error_response(URL_ERROR_MESSAGE)
+        return error_response(error_message_for("url", validation_language_hint(request)))
     if request.url.path == "/v1/adapt-image":
-        return error_response(IMAGE_ERROR_MESSAGE)
+        return error_response(error_message_for("image", validation_language_hint(request)))
+    if request.url.path == "/v1/adapt-file":
+        return error_response(error_message_for("file", validation_language_hint(request)))
     if request.url.path == "/ai/generate":
         return JSONResponse(
             status_code=200,
@@ -304,14 +381,14 @@ async def adapt_url(payload: UrlRequest) -> JSONResponse | AdaptedTextResponse:
     try:
         url = payload.url.strip()
         if not is_valid_http_url(url):
-            return error_response(URL_ERROR_MESSAGE)
+            return error_response(error_message_for("url", payload.language_hint))
 
         title, extracted_text = await asyncio.wait_for(
             asyncio.to_thread(extract_text_from_url, url),
             timeout=URL_EXTRACTION_TIMEOUT_SECONDS,
         )
         if not extracted_text:
-            return error_response(URL_ERROR_MESSAGE)
+            return error_response(error_message_for("url", payload.language_hint))
 
         return build_adapted_response(
             source="url",
@@ -320,7 +397,7 @@ async def adapt_url(payload: UrlRequest) -> JSONResponse | AdaptedTextResponse:
         )
     except Exception:
         logger.exception("URL adaptation failed")
-        return error_response(URL_ERROR_MESSAGE)
+        return error_response(error_message_for("url", payload.language_hint))
 
 
 @app.post("/v1/adapt-image", response_model=AdaptedTextResponse | ErrorResponse)
@@ -332,11 +409,11 @@ async def adapt_image(
     temp_path: str | None = None
     try:
         if not is_supported_image(file):
-            return error_response(IMAGE_ERROR_MESSAGE)
+            return error_response(error_message_for("image", language_hint))
 
         image_bytes = await file.read(MAX_IMAGE_BYTES + 1)
         if not image_bytes or len(image_bytes) > MAX_IMAGE_BYTES:
-            return error_response(IMAGE_ERROR_MESSAGE)
+            return error_response(error_message_for("image", language_hint))
 
         extracted_text = ""
         temp_path = write_temp_image(image_bytes, file.filename)
@@ -371,7 +448,7 @@ async def adapt_image(
         extracted_text = apply_ocr_correction(extracted_text, language_hint)
         extracted_text = service_clean_ocr_text(extracted_text)
         if not extracted_text:
-            return error_response(IMAGE_ERROR_MESSAGE)
+            return error_response(error_message_for("image", language_hint))
 
         return build_adapted_response(
             source="image",
@@ -380,11 +457,146 @@ async def adapt_image(
         )
     except Exception:
         logger.exception("Image adaptation failed")
-        return error_response(IMAGE_ERROR_MESSAGE)
+        return error_response(error_message_for("image", language_hint))
     finally:
         await close_upload_file(file)
         if temp_path:
             remove_temp_file(temp_path)
+
+
+@app.post("/v1/adapt-file", response_model=AdaptedBookResponse | ErrorResponse)
+async def adapt_file(
+    request: Request,
+    file: Annotated[UploadFile, File(description="Book file: pdf, docx, epub, fb2, txt, html")],
+    language_hint: Annotated[str, Form()] = "kk",
+) -> JSONResponse | AdaptedBookResponse:
+    try:
+        if not is_supported_document(file.filename):
+            return error_response(error_message_for("file", language_hint))
+
+        data = await file.read(MAX_DOCUMENT_BYTES + 1)
+        if not data or len(data) > MAX_DOCUMENT_BYTES:
+            return error_response(error_message_for("file", language_hint))
+
+        if extension_of(file.filename) == ".pdf":
+            page_texts, ocr_page_numbers, truncated = await extract_pdf_with_ocr_fallback(
+                request=request,
+                data=data,
+                language_hint=language_hint,
+            )
+        else:
+            extracted, _ = await asyncio.to_thread(pages_from_document, file.filename, data)
+            truncated = len(extracted) > MAX_DOCUMENT_PAGES
+            page_texts = extracted[:MAX_DOCUMENT_PAGES]
+            ocr_page_numbers = []
+
+        page_texts = [text for text in page_texts if text.strip()]
+        if not page_texts:
+            return error_response(error_message_for("file", language_hint))
+
+        pages: list[BookPage] = []
+        for index, text in enumerate(page_texts, start=1):
+            payload = build_adaptation_payload(
+                source="file",
+                text=text,
+                title=None,
+                max_text_chars=MAX_TEXT_CHARS,
+            )
+            pages.append(
+                BookPage(
+                    page_number=index,
+                    original_text=payload["original_text"],
+                    adapted_text=payload["adapted_text"],
+                    word_count=payload["word_count"],
+                )
+            )
+
+        return AdaptedBookResponse(
+            status="success",
+            source="file",
+            title=file.filename,
+            page_count=len(pages),
+            pages=pages,
+            truncated=truncated,
+            ocr_page_numbers=ocr_page_numbers,
+        )
+    except Exception:
+        logger.exception("File adaptation failed")
+        return error_response(error_message_for("file", language_hint))
+    finally:
+        await close_upload_file(file)
+
+
+async def extract_pdf_with_ocr_fallback(
+    request: Request,
+    data: bytes,
+    language_hint: str,
+) -> tuple[list[str], list[int], bool]:
+    """PDF page texts, reading scanned pages with the same OCR the camera path uses.
+
+    OCR is capped well below the page cap on purpose. A scanned page costs seconds, so a
+    200-page scan would otherwise hold the request open long past any client timeout; the
+    reader gets the pages that could be read and is told the rest were dropped.
+    """
+    all_pages = await asyncio.to_thread(extract_pdf_pages, data)
+    truncated = len(all_pages) > MAX_DOCUMENT_PAGES
+    page_texts = all_pages[:MAX_DOCUMENT_PAGES]
+
+    ocr_page_numbers: list[int] = []
+    ocr_budget = MAX_OCR_PAGES_PER_DOCUMENT
+
+    for index, text in enumerate(page_texts):
+        if not is_sparse_text_layer(text):
+            continue
+        if ocr_budget <= 0:
+            # Only a page with nothing at all to show counts as dropped. A sparse page that
+            # kept its own short line is still readable.
+            if not text.strip():
+                truncated = True
+            continue
+
+        ocr_budget -= 1
+        page_png = await asyncio.to_thread(render_pdf_page_to_png, data, index)
+        recognised = await recognise_page_image(request, page_png, language_hint)
+        # The text layer wins unless OCR genuinely found more. A page holding one real short
+        # line must not have that line replaced by an OCR guess at the same line.
+        if len(recognised.strip()) > len(text.strip()):
+            page_texts[index] = recognised
+            ocr_page_numbers.append(index + 1)
+
+    return page_texts, ocr_page_numbers, truncated
+
+
+async def recognise_page_image(request: Request, page_png: bytes, language_hint: str) -> str:
+    """Runs one rendered page through the camera OCR path, Groq first then EasyOCR."""
+    extracted_text = ""
+    if has_groq_vision_key():
+        try:
+            extracted_text = await asyncio.wait_for(
+                asyncio.to_thread(read_text_with_groq_vision, page_png, "page.png", language_hint),
+                timeout=GROQ_TIMEOUT_SECONDS + 30,
+            )
+        except asyncio.TimeoutError:
+            logger.warning("Groq Vision timed out on a PDF page; falling back to EasyOCR")
+            extracted_text = ""
+
+    if not extracted_text and request.app.state.ocr_reader is not None:
+        temp_path = write_temp_image(page_png, "page.png")
+        try:
+            async with request.app.state.ocr_lock:
+                extracted_text = await asyncio.wait_for(
+                    asyncio.to_thread(
+                        read_text_from_image,
+                        request.app.state.ocr_reader,
+                        temp_path,
+                    ),
+                    timeout=OCR_TIMEOUT_SECONDS,
+                )
+        finally:
+            remove_temp_file(temp_path)
+
+    extracted_text = apply_ocr_correction(extracted_text, language_hint)
+    return service_clean_ocr_text(extracted_text)
 
 
 def error_response(message: str, status_code: int = 200) -> JSONResponse:
