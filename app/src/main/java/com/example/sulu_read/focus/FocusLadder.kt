@@ -2,7 +2,7 @@ package com.example.sulu_read.focus
 
 import kotlin.math.min
 
-enum class FocusStep { Focus, Sweep, Syllables, Letters, Meaning }
+enum class FocusStep { Focus, Sweep, Letters, Meaning }
 
 /** The re-show flash of the Sweep step. 200 ms is the one timing the source states outright. */
 const val SWEEP_FLASH_MILLIS = 200L
@@ -10,7 +10,7 @@ const val SWEEP_FLASH_MILLIS = 200L
 /** Silence on the current word before the word is re-shown crisply, unprompted. */
 const val NUDGE_AFTER_MILLIS = 5_000L
 
-/** Silence before syllables appear on their own. Still not counted as a failure. */
+/** Silence before the letters of the word are read out on their own. Not a failure. */
 const val OFFER_HELP_AFTER_MILLIS = 9_000L
 
 /** Share of clean reads at which the pace reaches full speed. Mirrors the source's 80% mark. */
@@ -29,7 +29,6 @@ private val DEEP_STEPS = setOf(FocusStep.Letters, FocusStep.Meaning)
 // nothing, so it is only ever offered before a failure, by the silence timer or the help
 // button. A miss buys support that carries information.
 private val ESCALATION_ORDER = listOf(
-    FocusStep.Syllables,
     FocusStep.Letters,
     FocusStep.Meaning
 )
@@ -76,8 +75,8 @@ fun FocusLadderState.onHelpRequested(minimumStep: FocusStep): FocusLadderState {
 
 /**
  * Sweep is a momentary re-show, not a resting state: once the flash is over the word must go
- * back to being sharp and highlighted, or the reader loses their place entirely. No-op if the
- * reader climbed past Sweep while the flash was running.
+ * back to being enlarged and highlighted, or the reader loses their place entirely. No-op if
+ * the reader climbed past Sweep while the flash was running.
  */
 fun FocusLadderState.onNudgeFinished(): FocusLadderState {
     if (step != FocusStep.Sweep) {

@@ -1,11 +1,8 @@
 package com.example.sulu_read.focus
 
-import com.example.sulu_read.SyllableWord
-
 data class FocusWord(
     val display: String,
     val spoken: String,
-    val syllables: List<String>,
     val sceneIndex: Int
 )
 
@@ -16,11 +13,7 @@ private const val COMMA_CHARACTERS = ","
 // two-word scenes with nothing to picture, so a comma only ends a scene once it has body.
 private const val MIN_WORDS_BEFORE_COMMA_BREAK = 6
 
-fun buildFocusWords(text: String, backendWords: List<SyllableWord>): List<FocusWord> {
-    val syllablesByWord = backendWords.associate { word ->
-        word.original.lowercase() to word.syllables
-    }
-
+fun buildFocusWords(text: String): List<FocusWord> {
     val focusWords = mutableListOf<FocusWord>()
     var sceneIndex = 0
     var wordsInScene = 0
@@ -35,7 +28,6 @@ fun buildFocusWords(text: String, backendWords: List<SyllableWord>): List<FocusW
         focusWords += FocusWord(
             display = display,
             spoken = spoken,
-            syllables = syllablesByWord[spoken.lowercase()] ?: listOf(spoken),
             sceneIndex = sceneIndex
         )
         wordsInScene += 1

@@ -46,7 +46,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import com.example.sulu_read.R
-import com.example.sulu_read.SyllableWord
+import com.example.sulu_read.ReaderWord
 import com.example.sulu_read.audio.applyNaturalVoice
 import com.example.sulu_read.audio.detectSpeechLanguageCode
 import com.example.sulu_read.audio.speakCompat
@@ -54,7 +54,6 @@ import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 
 private val ScenePanelBackground = Color(0xFFFFFCF4)
-private val SyllablePalette = listOf(Color(0xFF1A237E), Color(0xFF8A5A00))
 
 // Material's minimum accessible touch target. The default button height falls under it once
 // padding is accounted for on small screens.
@@ -68,7 +67,6 @@ private const val LISTEN_RESTART_DELAY_MILLIS = 250L
 @Composable
 fun FocusReaderScreen(
     text: String,
-    backendWords: List<SyllableWord>,
     languageCode: String,
     aiHelpState: AiHelpState,
     onRequestMeaningHint: (String) -> Unit,
@@ -77,7 +75,7 @@ fun FocusReaderScreen(
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
-    val words = remember(text, backendWords) { buildFocusWords(text, backendWords) }
+    val words = remember(text) { buildFocusWords(text) }
     var ladder by remember(text) { mutableStateOf(FocusLadderState()) }
     // The reader starts the session once; the microphone then stays with them word after
     // word. Stopping after every word would make them tap the phone more often than they read.
@@ -177,9 +175,17 @@ fun FocusReaderScreen(
             return@LaunchedEffect
         }
         delay(LISTEN_RESTART_DELAY_MILLIS)
+        // Guards the word against being finished twice. A partial result can be accepted at the
+        // same moment the engine delivers its final one, and without this the second delivery
+        // would advance the reader past the following word without them ever reading it.
+        var settled = false
         speechGate.listenOnce(
             languageCode = detectSpeechLanguageCode(word.spoken, languageCode),
             onResult = { hypotheses ->
+                if (settled) {
+                    return@listenOnce
+                }
+                settled = true
                 when {
                     // Nothing was said. Silence is not a wrong answer — re-arm and let the
                     // nudge timers decide when this reader needs help.
@@ -191,6 +197,16 @@ fun FocusReaderScreen(
             onUnavailable = {
                 isSessionActive = false
                 micUnavailable = true
+            },
+            // Only ever accepts. A partial hypothesis that does not match yet is not a
+            // misreading — the reader may be mid-word — so a wrong answer still has to wait
+            // for the engine to finish.
+            onPartial = { hypotheses ->
+                if (!settled && isSpokenWordAccepted(word.spoken, hypotheses)) {
+                    settled = true
+                    speechGate.cancel()
+                    finishWord(wasCorrect = true)
+                }
             }
         )
     }
@@ -213,11 +229,12 @@ fun FocusReaderScreen(
         if (ladder.step != FocusStep.Focus) {
             return@LaunchedEffect
         }
-        ladder = ladder.onHelpRequested(FocusStep.Syllables)
+        ladder = ladder.onHelpRequested(FocusStep.Letters)
     }
 
-    // Sweep step: hide the word, flash it sharp for the 200 ms the source specifies, then
-    // hand it back sharp and highlighted.
+    // Sweep step: drop the word back to the size of its neighbours, then flash it emphasised
+    // for the 200 ms the source specifies, then leave it emphasised. The pulse is what draws
+    // the eye back to a reader who has lost their place.
     LaunchedEffect(ladder.step, ladder.wordIndex) {
         if (ladder.step != FocusStep.Sweep) {
             isFlashing = false
@@ -231,11 +248,10 @@ fun FocusReaderScreen(
         ladder = ladder.onNudgeFinished()
     }
 
-    // Syllables, Letters and Meaning speak on entry, at the adaptive pace.
+    // Letters and Meaning speak on entry, at the adaptive pace.
     LaunchedEffect(ladder.step, ladder.wordIndex) {
         val word = currentWord ?: return@LaunchedEffect
         when (ladder.step) {
-            FocusStep.Syllables -> speak(word.syllables.joinToString(" , "))
             FocusStep.Letters -> {
                 speak(letterNamesFor(word.spoken).joinToString(" , "))
                 delay(SWEEP_FLASH_MILLIS * 4)
@@ -265,10 +281,10 @@ fun FocusReaderScreen(
             style = MaterialTheme.typography.bodyMedium
         )
 
-        BlurredTextBlock(
+        FocusTextBlock(
             words = words,
             focusIndex = ladder.wordIndex,
-            isFocusSharp = ladder.step != FocusStep.Sweep || isFlashing
+            isFocusEmphasised = ladder.step != FocusStep.Sweep || isFlashing
         )
 
         if (currentWord == null) {
@@ -292,14 +308,6 @@ fun FocusReaderScreen(
             )
 
             when (ladder.step) {
-                FocusStep.Syllables -> {
-                    Text(
-                        text = stringResource(R.string.focus_step_syllables),
-                        style = MaterialTheme.typography.bodyMedium
-                    )
-                    SyllableHint(currentWord.syllables)
-                }
-
                 FocusStep.Letters -> {
                     Text(
                         text = stringResource(R.string.focus_step_letters),
@@ -370,8 +378,7 @@ fun FocusReaderScreen(
                     onClick = {
                         ladder = ladder.onHelpRequested(
                             when (ladder.step) {
-                                FocusStep.Focus, FocusStep.Sweep -> FocusStep.Syllables
-                                FocusStep.Syllables -> FocusStep.Letters
+                                FocusStep.Focus, FocusStep.Sweep -> FocusStep.Letters
                                 FocusStep.Letters, FocusStep.Meaning -> FocusStep.Meaning
                             }
                         )
@@ -392,22 +399,6 @@ fun FocusReaderScreen(
 
         if (ladder.suggestPause) {
             PausePanel(onContinue = { ladder = ladder.onPauseAcknowledged() })
-        }
-    }
-}
-
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SyllableHint(syllables: List<String>) {
-    FlowRow(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        syllables.forEachIndexed { index, syllable ->
-            Text(
-                text = syllable,
-                fontFamily = SuluSerifFontFamily,
-                fontSize = FOCUS_FONT_SIZE_SP.sp,
-                fontWeight = FontWeight.Bold,
-                color = SyllablePalette[index % SyllablePalette.size]
-            )
         }
     }
 }

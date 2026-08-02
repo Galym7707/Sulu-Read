@@ -22,7 +22,7 @@ from pydantic import BaseModel, Field
 from backend.app.database import check_database_ready, init_database, using_runtime_sqlite_fallback
 from backend.app.routers import ai, exercises, progress, screening, simplify, users
 from backend.app.services.adaptation_service import build_adaptation_payload
-from backend.app.services.syllabification import clean_ocr_text as service_clean_ocr_text
+from backend.app.services.text_preparation import clean_ocr_text as service_clean_ocr_text
 from backend.app.services.ocr_correction import correct_ocr_text, lexicon_repair_enabled
 
 try:

@@ -7,9 +7,6 @@ from pydantic import BaseModel, Field, model_validator
 
 ExerciseType = Literal[
     "mixed",
-    "syllable_order",
-    "missing_syllable",
-    "word_to_syllables",
     "auditory_match",
     "word_recognition",
     "root_suffix_identification",
@@ -106,7 +103,6 @@ class ExerciseResponse(BaseModel):
     sub_exercise: str | None = None
     prompt: str
     target_word: str
-    syllables: list[str]
     options: list[str]
     correct_answer: str
     difficulty_level: int
@@ -199,8 +195,6 @@ class SimplifyResponse(BaseModel):
 
 class WordFeature(BaseModel):
     original: str
-    adapted: str
-    syllables: list[str]
     language_hint: str
     vowel_harmony: str | None = None
 

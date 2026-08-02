@@ -79,6 +79,52 @@ class FocusWordMatchTest {
     }
 
     @Test
+    fun acceptsWordSpokenInsideAPhrase() {
+        // Engines return filler and hesitation alongside the word, and a reader who pauses
+        // before speaking must not be marked wrong for it.
+        assertTrue(isSpokenWordAccepted("книга", listOf("это книга")))
+        assertTrue(isSpokenWordAccepted("reading", listOf("um reading")))
+    }
+
+    @Test
+    fun acceptsFinalDevoicing() {
+        // Russian and Kazakh devoice word-final obstruents, so the recognizer's choice between
+        // the pair says nothing about whether the reading was correct.
+        assertTrue(isSpokenWordAccepted("дуб", listOf("дуп")))
+        assertTrue(isSpokenWordAccepted("сад", listOf("сат")))
+    }
+
+    @Test
+    fun devoicingAppliesOnlyAtTheEndOfAWord() {
+        // The same swap at the front separates real words, so it must still cost.
+        assertFalse(isSpokenWordAccepted("дом", listOf("том")))
+        assertFalse(isSpokenWordAccepted("год", listOf("кот")))
+    }
+
+    @Test
+    fun acceptsAccentedEnglishSpellings() {
+        assertTrue(isSpokenWordAccepted("think", listOf("tink")))
+        assertTrue(isSpokenWordAccepted("water", listOf("vater")))
+        assertTrue(isSpokenWordAccepted("phone", listOf("fone")))
+    }
+
+    @Test
+    fun softCStaysDistinctFromHardC() {
+        // "c" is mapped by what follows it; a blanket c -> k would stop "city" matching itself
+        // and would merge words that a reader has to tell apart.
+        assertTrue(isSpokenWordAccepted("city", listOf("sity")))
+        assertFalse(isSpokenWordAccepted("cat", listOf("sat")))
+    }
+
+    @Test
+    fun phoneticFoldingStillRejectsDifferentWords() {
+        assertFalse(isSpokenWordAccepted("book", listOf("look")))
+        assertFalse(isSpokenWordAccepted("cat", listOf("cut")))
+        assertFalse(isSpokenWordAccepted("men", listOf("man")))
+        assertFalse(isSpokenWordAccepted("книга", listOf("тетрадь")))
+    }
+
+    @Test
     fun rejectsEmptyInput() {
         assertFalse(isSpokenWordAccepted("книга", emptyList()))
         assertFalse(isSpokenWordAccepted("книга", listOf("", "   ")))

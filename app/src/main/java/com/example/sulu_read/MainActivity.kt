@@ -100,7 +100,6 @@ import com.example.sulu_read.data.PendingAttemptStore
 import com.example.sulu_read.data.PendingAttemptSyncScheduler
 import com.example.sulu_read.data.UserPreferences
 import com.example.sulu_read.domain.model.AppLanguage
-import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.focus.FocusReaderScreen
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
@@ -234,7 +233,7 @@ private sealed interface AppState {
         val source: String,
         val wordCount: Int,
         val title: String?,
-        val words: List<SyllableWord>
+        val words: List<ReaderWord>
     ) : AppState
 }
 
@@ -250,7 +249,7 @@ private sealed interface ApiResult {
         val source: String,
         val wordCount: Int,
         val title: String?,
-        val words: List<SyllableWord>
+        val words: List<ReaderWord>
     ) : ApiResult
 
     data class Error(val message: String) : ApiResult
@@ -805,9 +804,6 @@ private fun ReadingScreen(
     onBackHome: () -> Unit
 ) {
     val coroutineScope = rememberCoroutineScope()
-    val readerDisplayPreferences by repository.readerDisplayPreferences.collectAsStateWithLifecycle(
-        initialValue = ReaderDisplayPreferences()
-    )
     var isFocusMode by rememberSaveable(state.adaptedText) { mutableStateOf(false) }
     val sourceText = when (state.source) {
         "image" -> stringResource(R.string.reading_source_image)
@@ -868,10 +864,9 @@ private fun ReadingScreen(
 
         if (isFocusMode) {
             // Focus mode is fed the original text, not the adapted one: scene splitting needs
-            // real punctuation, and the adapted text carries syllable hyphens instead.
+            // real punctuation, and only the original is guaranteed to carry it.
             FocusReaderScreen(
                 text = state.originalText.ifBlank { state.adaptedText },
-                backendWords = state.words,
                 languageCode = languageCode,
                 aiHelpState = aiHelpState,
                 onRequestMeaningHint = onRequestWordHint,
@@ -886,13 +881,7 @@ private fun ReadingScreen(
                 aiHelpState = aiHelpState,
                 onExplainTextWithAi = onExplainTextWithAi,
                 onDismissAiHelp = onDismissAiHelp,
-                languageCode = languageCode,
-                readerDisplayPreferences = readerDisplayPreferences,
-                onReaderDisplayPreferencesChange = { preferences ->
-                    coroutineScope.launch {
-                        repository.saveReaderDisplayPreferences(preferences)
-                    }
-                }
+                languageCode = languageCode
             )
         }
     }
@@ -1481,7 +1470,7 @@ private object SuluReadApiClient {
                 source = json.optString("source", "material"),
                 wordCount = json.optInt("word_count", 0),
                 title = json.optString("title").ifBlank { null },
-                words = parseBackendSyllableWords(json)
+                words = parseBackendReaderWords(json)
             )
         }
 
@@ -1508,25 +1497,14 @@ private object SuluReadApiClient {
         }
     }
 
-    private fun parseBackendSyllableWords(json: JSONObject): List<SyllableWord> {
+    private fun parseBackendReaderWords(json: JSONObject): List<ReaderWord> {
         val wordsJson = json.optJSONArray("words") ?: return emptyList()
         return (0 until wordsJson.length()).mapNotNull { index ->
             val item = wordsJson.optJSONObject(index) ?: return@mapNotNull null
             val original = item.optString("original").ifBlank { return@mapNotNull null }
-            val syllablesJson = item.optJSONArray("syllables")
-            val syllables = if (syllablesJson != null) {
-                (0 until syllablesJson.length()).mapNotNull { syllableIndex ->
-                    syllablesJson.optString(syllableIndex).takeIf { it.isNotBlank() }
-                }
-            } else {
-                item.optString("adapted")
-                    .split("-")
-                    .filter { it.isNotBlank() }
-            }
 
-            SyllableWord(
+            ReaderWord(
                 original = original,
-                syllables = syllables.ifEmpty { listOf(original) },
                 languageHint = item.optString("language_hint").ifBlank { null }
             )
         }

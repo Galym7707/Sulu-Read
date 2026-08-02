@@ -2,11 +2,10 @@ import random
 import re
 from uuid import uuid4
 
-from .syllabification import (
+from .text_preparation import (
     ENGLISH_VOWELS,
     KAZAKH_VOWELS,
     RUSSIAN_VOWELS,
-    STANDARD_SYLLABLE_DELIMITER,
     detect_language,
     prepare_word_features,
     split_text_to_words,
@@ -86,18 +85,9 @@ ENGLISH_PRACTICE_WORD_BANK = [
 MORPHOLOGY_EXERCISE_TYPES = ("root_suffix_identification", "word_segmentation")
 EXERCISE_TYPES = (
     "auditory_match",
-    "missing_syllable",
-    "syllable_order",
-    "word_to_syllables",
     "word_recognition",
     *MORPHOLOGY_EXERCISE_TYPES,
 )
-# Frequent syllables per language used only as a last-resort distractor pool.
-SYLLABLE_DISTRACTORS_BY_LANGUAGE = {
-    "kk": ["ба", "ла", "ма", "ры", "ға", "де", "не", "қа", "тан", "дар", "мыз", "лер"],
-    "ru": ["по", "ра", "ло", "ни", "ка", "те", "ва", "ми", "со", "ре", "ду", "ста"],
-    "en": ["ing", "er", "le", "re", "an", "ish", "ton", "ent", "ly", "ted"],
-}
 # Letters that children with dyslexia most often confuse visually
 # (mirrored, rotated, or graphically similar shapes).
 VISUAL_CONFUSIONS_CYRILLIC = {
@@ -227,7 +217,7 @@ def generate_exercises(
             and selected_type in MORPHOLOGY_EXERCISE_TYPES
             and not pool
         ):
-            selected_type = "syllable_order"
+            selected_type = "word_recognition"
             pool = exercise_candidate_pool(
                 candidates,
                 selected_type,
@@ -265,7 +255,7 @@ def select_candidate_words(source_words: list[str], difficulty_level: int, langu
             if not is_language_match(normalized, language_hint):
                 continue
             features = prepare_word_features(normalized)
-            if not is_word_allowed_for_difficulty(features.syllables, difficulty_level):
+            if not is_word_allowed_for_difficulty(features.original, difficulty_level):
                 continue
             seen.add(lowered)
             candidates.append(normalized)
@@ -323,17 +313,23 @@ def is_language_match(word: str, language_hint: str) -> bool:
     return detect_language(word) in {"kk", "ru"}
 
 
-def is_word_allowed_for_difficulty(syllables: list[str], difficulty_level: int) -> bool:
-    syllable_count = len(syllables)
+def is_word_allowed_for_difficulty(word: str, difficulty_level: int) -> bool:
+    """Grades a word by how long it is.
+
+    This used to count syllables, which is no longer computed anywhere. Letter count is the
+    closest stand-in that needs no linguistic model, and the bands below are the old syllable
+    bands scaled by roughly three letters per syllable.
+    """
+    letter_count = sum(1 for character in word if character.isalpha())
     if difficulty_level <= 1:
-        return 1 <= syllable_count <= 2
+        return 1 <= letter_count <= 6
     if difficulty_level == 2:
-        return 2 <= syllable_count <= 3
+        return 4 <= letter_count <= 9
     if difficulty_level == 3:
-        return 3 <= syllable_count <= 4
+        return 7 <= letter_count <= 12
     if difficulty_level == 4:
-        return 4 <= syllable_count <= 5
-    return syllable_count >= 4
+        return 10 <= letter_count <= 15
+    return letter_count >= 12
 
 
 def choose_exercise_type(exercise_type: str, index: int) -> str:
@@ -377,28 +373,11 @@ def exercise_candidate_pool(
 def is_valid_word_for_exercise_type(word: str, exercise_type: str, difficulty_level: int) -> bool:
     if not is_valid_source_token(word):
         return False
-    if exercise_type == "syllable_order":
-        return is_valid_syllable_order_word(word)
     if exercise_type in MORPHOLOGY_EXERCISE_TYPES:
         return bool(split_root_suffixes(word)[1])
     if exercise_type == "word_recognition" and len(word) < 4:
         return False
-    features = prepare_word_features(word)
-    return is_word_allowed_for_difficulty(features.syllables, difficulty_level)
-
-
-def is_valid_syllable_order_word(word: str) -> bool:
-    syllables = meaningful_syllables(prepare_word_features(word).syllables)
-    return len(syllables) >= 2 and len({syllable.lower() for syllable in syllables}) > 1
-
-
-def meaningful_syllables(syllables: list[str]) -> list[str]:
-    return [
-        syllable.strip()
-        for syllable in syllables
-        if syllable.strip() and any(character.isalpha() for character in syllable)
-    ]
-
+    return is_word_allowed_for_difficulty(word, difficulty_level)
 
 def build_exercise(
     word: str,
@@ -408,13 +387,7 @@ def build_exercise(
     language_hint: str,
 ) -> dict:
     features = prepare_word_features(word)
-    syllables = features.syllables
-    correct_answer = features.adapted
 
-    if exercise_type == "missing_syllable":
-        return build_missing_syllable(features, difficulty_level, rng, language_hint)
-    if exercise_type == "word_to_syllables":
-        return build_word_to_syllables(features, difficulty_level, rng, language_hint)
     if exercise_type == "auditory_match":
         return build_auditory_match(features, difficulty_level, rng, language_hint)
     if exercise_type == "word_recognition":
@@ -424,19 +397,9 @@ def build_exercise(
     if exercise_type == "word_segmentation":
         return build_word_segmentation(features, difficulty_level, rng, language_hint)
 
-    options = syllables[:]
-    rng.shuffle(options)
-    return {
-        "exercise_id": str(uuid4()),
-        "type": "syllable_order",
-        "prompt": prompt_for("syllable_order", language_hint),
-        "target_word": word,
-        "syllables": syllables,
-        "options": options,
-        "correct_answer": correct_answer,
-        "difficulty_level": difficulty_level,
-        "language_hint": normalize_language_hint(language_hint),
-    }
+    # Unknown type. Word recognition is the safe default: it asks only that the reader tell a
+    # correctly spelled word from near-misses, which every word in the pool can support.
+    return build_word_recognition(features, difficulty_level, rng, language_hint)
 
 
 def split_root_suffixes(word: str) -> tuple[str, list[str]]:
@@ -459,7 +422,7 @@ def split_root_suffixes(word: str) -> tuple[str, list[str]]:
         stem = stem[: -len(suffix)]
 
     if not stem:
-        stem = prepare_word_features(normalized).syllables[0]
+        stem = normalized
 
     return stem, list(reversed(suffixes_reversed))
 
@@ -475,11 +438,6 @@ def format_morphology_answer(root: str, suffixes: list[str]) -> str:
 def prompt_for(exercise_type: str, language_hint: str, target: str | None = None) -> str:
     language = normalize_language_hint(language_hint)
     prompts = {
-        "syllable_order": {
-            "en": "Put the syllables in order",
-            "ru": "Расставь слоги по порядку",
-            "kk": "Буындарды дұрыс ретпен орналастыр",
-        },
         "root_suffix_identification": {
             "en": f"{target}: choose the root and suffixes",
             "ru": f"{target}: выбери корень и суффиксы",
@@ -489,11 +447,6 @@ def prompt_for(exercise_type: str, language_hint: str, target: str | None = None
             "en": f"{target}: choose the base word",
             "ru": f"{target}: выбери основу",
             "kk": f"{target}: негізді таңда",
-        },
-        "word_to_syllables": {
-            "en": f"{target}: choose the correct syllable split",
-            "ru": f"{target}: выбери правильное деление на слоги",
-            "kk": f"{target}: дұрыс буындауды таңда",
         },
         "auditory_match": {
             "en": "Listen and choose the word",
@@ -506,7 +459,7 @@ def prompt_for(exercise_type: str, language_hint: str, target: str | None = None
             "kk": "Дұрыс жазылған сөзді тап",
         },
     }
-    return prompts.get(exercise_type, prompts["syllable_order"])[language]
+    return prompts.get(exercise_type, prompts["word_recognition"])[language]
 
 
 def build_root_suffix_identification(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
@@ -518,7 +471,7 @@ def build_root_suffix_identification(features, difficulty_level: int, rng: rando
         options.add(format_morphology_answer(root, list(reversed(suffixes))))
         if len(suffixes) > 1:
             options.add(format_morphology_answer(root + suffixes[0], suffixes[1:]))
-    options.add(format_morphology_answer(features.syllables[0], suffixes))
+    options.add(format_morphology_answer(features.original, suffixes))
 
     option_list = list(options)
     rng.shuffle(option_list)
@@ -528,7 +481,6 @@ def build_root_suffix_identification(features, difficulty_level: int, rng: rando
         "sub_exercise": "morphology",
         "prompt": prompt_for("root_suffix_identification", language_hint, features.original),
         "target_word": features.original,
-        "syllables": [root, *suffixes],
         "options": option_list[: max(3, min(4, difficulty_level + 1))],
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
@@ -557,60 +509,11 @@ def build_word_segmentation(features, difficulty_level: int, rng: random.Random,
         "sub_exercise": "morphology",
         "prompt": prompt_for("word_segmentation", language_hint, suffix_bundle),
         "target_word": suffix_bundle,
-        "syllables": suffixes,
         "options": option_list[: max(3, min(4, difficulty_level + 1))],
         "correct_answer": correct_answer,
         "difficulty_level": difficulty_level,
         "language_hint": normalize_language_hint(language_hint),
     }
-
-
-def build_missing_syllable(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
-    syllables = features.syllables
-    missing_index = len(syllables) // 2 if len(syllables) > 1 else 0
-    prompt_syllables = syllables[:]
-    prompt_syllables[missing_index] = "__"
-    correct_answer = syllables[missing_index]
-    options = build_syllable_distractors(features, correct_answer, difficulty_level, rng, language_hint)
-    return {
-        "exercise_id": str(uuid4()),
-        "type": "missing_syllable",
-        "prompt": STANDARD_SYLLABLE_DELIMITER.join(prompt_syllables),
-        "target_word": features.original,
-        "syllables": syllables,
-        "options": options,
-        "correct_answer": correct_answer,
-        "difficulty_level": difficulty_level,
-        "language_hint": normalize_language_hint(language_hint),
-    }
-
-
-def build_word_to_syllables(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
-    correct_answer = features.adapted
-    options = {correct_answer}
-    joined = "".join(features.syllables)
-    if len(features.syllables) > 2:
-        options.add(STANDARD_SYLLABLE_DELIMITER.join([features.syllables[0], "".join(features.syllables[1:])]))
-        options.add(STANDARD_SYLLABLE_DELIMITER.join(["".join(features.syllables[:2]), *features.syllables[2:]]))
-    options.add(joined)
-    for wrong_option in make_wrong_syllabification_options(joined, correct_answer):
-        options.add(wrong_option)
-        if len(options) >= 4:
-            break
-    option_list = list(options)
-    rng.shuffle(option_list)
-    return {
-        "exercise_id": str(uuid4()),
-        "type": "word_to_syllables",
-        "prompt": prompt_for("word_to_syllables", language_hint, features.original),
-        "target_word": features.original,
-        "syllables": features.syllables,
-        "options": option_list[:4],
-        "correct_answer": correct_answer,
-        "difficulty_level": difficulty_level,
-        "language_hint": normalize_language_hint(language_hint),
-    }
-
 
 def build_auditory_match(features, difficulty_level: int, rng: random.Random, language_hint: str) -> dict:
     word = features.original
@@ -632,7 +535,6 @@ def build_auditory_match(features, difficulty_level: int, rng: random.Random, la
         "type": "auditory_match",
         "prompt": prompt_for("auditory_match", language_hint),
         "target_word": word,
-        "syllables": features.syllables,
         "options": options,
         "correct_answer": word,
         "difficulty_level": difficulty_level,
@@ -650,7 +552,6 @@ def build_word_recognition(features, difficulty_level: int, rng: random.Random, 
         "type": "word_recognition",
         "prompt": prompt_for("word_recognition", language_hint),
         "target_word": word,
-        "syllables": features.syllables,
         "options": options,
         "correct_answer": word,
         "difficulty_level": difficulty_level,
@@ -731,96 +632,3 @@ def make_near_word_distractors(word: str, rng: random.Random, limit: int = 3) ->
         if len(unique) >= limit:
             break
     return unique
-
-
-def build_syllable_distractors(
-    features,
-    correct_answer: str,
-    difficulty_level: int,
-    rng: random.Random,
-    language_hint: str,
-) -> list[str]:
-    """Distractors for the missing syllable: other syllables of the same word,
-    vowel-swapped variants, and visually confusable variants — all in the word's
-    own language instead of a fixed foreign-syllable list."""
-    options = {correct_answer}
-    target_count = min(4, max(3, difficulty_level))
-
-    # 1. Other syllables of the same word (forces attention to position).
-    other_syllables = [
-        syllable for syllable in features.syllables
-        if syllable.lower() != correct_answer.lower()
-    ]
-    rng.shuffle(other_syllables)
-    for syllable in other_syllables[:1]:
-        options.add(syllable)
-
-    # 2. Vowel-swapped variants of the correct syllable (а↔о, е↔и ...).
-    vowels = sorted(vowel_set_for(features.original))
-    positions = list(range(len(correct_answer)))
-    rng.shuffle(positions)
-    for index in positions:
-        if len(options) >= target_count:
-            break
-        character = correct_answer[index]
-        if character.lower() not in vowels:
-            continue
-        replacements = [vowel for vowel in vowels if vowel != character.lower()]
-        rng.shuffle(replacements)
-        for replacement in replacements[:2]:
-            variant = correct_answer[:index] + match_case(character, replacement) + correct_answer[index + 1:]
-            if variant.lower() != correct_answer.lower():
-                options.add(variant)
-            if len(options) >= target_count:
-                break
-
-    # 3. Visually confusable consonant variant.
-    if len(options) < target_count:
-        confusions = confusion_map_for(features.original)
-        for index, character in enumerate(correct_answer):
-            replacement = confusions.get(character.lower())
-            if replacement is None:
-                continue
-            options.add(correct_answer[:index] + match_case(character, replacement) + correct_answer[index + 1:])
-            if len(options) >= target_count:
-                break
-
-    # 4. Last resort: frequent syllables of the same language.
-    if len(options) < target_count:
-        fallback = SYLLABLE_DISTRACTORS_BY_LANGUAGE[normalize_language_hint(language_hint)][:]
-        rng.shuffle(fallback)
-        for distractor in fallback:
-            if distractor.lower() != correct_answer.lower():
-                options.add(distractor)
-            if len(options) >= target_count:
-                break
-
-    option_list = dedupe_preserving_case(list(options))
-    rng.shuffle(option_list)
-    return option_list
-
-
-def make_wrong_syllabification_options(word: str, correct_answer: str) -> list[str]:
-    if len(word) <= 1:
-        return [word]
-
-    candidates: list[str] = []
-    for split_at in range(1, len(word)):
-        candidates.append(word[:split_at] + STANDARD_SYLLABLE_DELIMITER + word[split_at:])
-
-    for first_split in range(1, max(1, len(word) - 1)):
-        for second_split in range(first_split + 1, len(word)):
-            candidates.append(
-                STANDARD_SYLLABLE_DELIMITER.join(
-                    [word[:first_split], word[first_split:second_split], word[second_split:]]
-                )
-            )
-
-    unique_candidates: list[str] = []
-    seen: set[str] = {correct_answer}
-    for candidate in candidates:
-        if candidate in seen:
-            continue
-        seen.add(candidate)
-        unique_candidates.append(candidate)
-    return unique_candidates

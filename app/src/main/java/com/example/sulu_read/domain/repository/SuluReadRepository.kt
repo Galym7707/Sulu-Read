@@ -11,7 +11,6 @@ import com.example.sulu_read.domain.model.DailyWpm
 import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.domain.model.ExerciseAttemptResult
 import com.example.sulu_read.domain.model.ProgressSummary
-import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.model.ScreeningResult
 import com.example.sulu_read.domain.model.ScreeningSummary
 import com.example.sulu_read.domain.model.SkillProfile
@@ -29,7 +28,6 @@ class SuluReadRepository(
     private val aiRepository = AiRepository(api)
 
     val appLanguageCode: Flow<String> = preferences.languageCode
-    val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = preferences.readerDisplayPreferences
     val pendingAttemptCount: Flow<Int> = pendingAttemptQueue.pendingCount
 
     suspend fun ensureUser(): UserProfile {
@@ -251,10 +249,6 @@ class SuluReadRepository(
         }
     }
 
-    suspend fun saveReaderDisplayPreferences(readerPreferences: ReaderDisplayPreferences) {
-        preferences.saveReaderDisplayPreferences(readerPreferences)
-    }
-
     private suspend fun createAnonymousUser(): UserProfile {
         val languageCode = preferences.languageCode.first()
         val user = api.createUser(
@@ -293,7 +287,6 @@ private fun ExerciseDto.toDomain(): Exercise {
         subExercise = subExercise,
         prompt = prompt,
         targetWord = targetWord,
-        syllables = syllables,
         options = options,
         correctAnswer = correctAnswer,
         difficultyLevel = difficultyLevel,

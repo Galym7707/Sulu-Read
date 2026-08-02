@@ -88,7 +88,6 @@ import com.example.sulu_read.audio.applyNaturalVoice
 import com.example.sulu_read.audio.detectSpeechLanguageCode
 import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.domain.model.AppLanguage
-import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -97,9 +96,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.roundToInt
 
-data class SyllableWord(
+data class ReaderWord(
     val original: String,
-    val syllables: List<String>,
     val languageHint: String? = null
 )
 
@@ -109,7 +107,6 @@ private const val NO_PLAYING_WORD = -1
 
 private val DeepBlueBlack = Color(0xFF1A237E)
 private val DarkSlateGray = Color(0xFF37474F)
-private val SyllableAlternateColor = Color(0xFF8A5A00)
 private val PlaybackHighlight = Color(0xFFFFF9C4)
 private val RulerHighlight = Color(0xFFFFD166).copy(alpha = 0.26f)
 private val RulerEdge = Color(0xFF8A6D1D).copy(alpha = 0.42f)
@@ -126,10 +123,7 @@ private class ReadingScreenState(
     simplifiedTextSnippet: String? = null,
     isSimplifyingText: Boolean = false,
     simplificationError: String? = null,
-    simplificationSource: String? = null,
-    showSyllableBreaks: Boolean = true,
-    colorSyllables: Boolean = true,
-    useOriginalWords: Boolean = false
+    simplificationSource: String? = null
 ) {
     var letterSpacing by mutableFloatStateOf(letterSpacing)
     var lineHeight by mutableFloatStateOf(lineHeight)
@@ -140,9 +134,6 @@ private class ReadingScreenState(
     var isSimplifyingText by mutableStateOf(isSimplifyingText)
     var simplificationError by mutableStateOf(simplificationError)
     var simplificationSource by mutableStateOf(simplificationSource)
-    var showSyllableBreaks by mutableStateOf(showSyllableBreaks)
-    var colorSyllables by mutableStateOf(colorSyllables)
-    var useOriginalWords by mutableStateOf(useOriginalWords)
 }
 
 private val ReadingScreenStateSaver: Saver<ReadingScreenState, Any> = listSaver(
@@ -153,10 +144,7 @@ private val ReadingScreenStateSaver: Saver<ReadingScreenState, Any> = listSaver(
             state.isReadingRulerEnabled,
             state.rulerYOffset,
             state.currentPlayingWordIndex,
-            state.simplifiedTextSnippet,
-            state.showSyllableBreaks,
-            state.colorSyllables,
-            state.useOriginalWords
+            state.simplifiedTextSnippet
         )
     },
     restore = { restored ->
@@ -166,44 +154,33 @@ private val ReadingScreenStateSaver: Saver<ReadingScreenState, Any> = listSaver(
             isReadingRulerEnabled = restored[2] as Boolean,
             rulerYOffset = restored[3] as Float,
             currentPlayingWordIndex = restored[4] as Int,
-            simplifiedTextSnippet = restored[5] as String?,
-            showSyllableBreaks = restored[6] as Boolean,
-            colorSyllables = restored[7] as Boolean,
-            useOriginalWords = restored[8] as Boolean
+            simplifiedTextSnippet = restored[5] as String?
         )
     }
 )
 
 private data class ReadingParagraph(
     val original: String,
-    val words: List<IndexedSyllableWord>
+    val words: List<IndexedReaderWord>
 )
 
-private data class IndexedSyllableWord(
+private data class IndexedReaderWord(
     val index: Int,
-    val value: SyllableWord
+    val value: ReaderWord
 )
 
 @Composable
 fun PremiumReadingScreen(
     text: String,
-    backendWords: List<SyllableWord> = emptyList(),
+    backendWords: List<ReaderWord> = emptyList(),
     onSimplifyText: suspend (String) -> String,
     aiHelpState: AiHelpState = AiHelpState.Idle,
     onExplainTextWithAi: (String) -> Unit = {},
     onDismissAiHelp: () -> Unit = {},
     languageCode: String,
-    readerDisplayPreferences: ReaderDisplayPreferences = ReaderDisplayPreferences(),
-    onReaderDisplayPreferencesChange: (ReaderDisplayPreferences) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val state = rememberSaveable(text, saver = ReadingScreenStateSaver) {
-        ReadingScreenState(
-            showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks,
-            colorSyllables = readerDisplayPreferences.colorSyllables,
-            useOriginalWords = false
-        )
-    }
+    val state = rememberSaveable(text, saver = ReadingScreenStateSaver) { ReadingScreenState() }
     val coroutineScope = rememberCoroutineScope()
     val simplifyErrorMessage = stringResource(R.string.reader_simplify_error)
     val paragraphs = remember(text, backendWords) { buildReadingParagraphs(text, backendWords) }
@@ -232,12 +209,6 @@ fun PremiumReadingScreen(
         }
     }
 
-    LaunchedEffect(readerDisplayPreferences) {
-        state.showSyllableBreaks = readerDisplayPreferences.showSyllableBreaks
-        state.colorSyllables = readerDisplayPreferences.colorSyllables
-        state.useOriginalWords = false
-    }
-
     Column(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -252,14 +223,6 @@ fun PremiumReadingScreen(
                 ttsController.playFrom(startIndex)
             },
             onStop = { ttsController.stop() },
-            onShowSyllableBreaksChange = { enabled ->
-                state.showSyllableBreaks = enabled
-                onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
-            },
-            onColorSyllablesChange = { enabled ->
-                state.colorSyllables = enabled
-                onReaderDisplayPreferencesChange(state.toReaderDisplayPreferences())
-            },
             onAiHelpClick = { onExplainTextWithAi(text) }
         )
 
@@ -318,8 +281,6 @@ private fun ReadingControls(
     canPlay: Boolean,
     onPlay: () -> Unit,
     onStop: () -> Unit,
-    onShowSyllableBreaksChange: (Boolean) -> Unit,
-    onColorSyllablesChange: (Boolean) -> Unit,
     onAiHelpClick: () -> Unit
 ) {
     Column(
@@ -420,17 +381,6 @@ private fun ReadingControls(
                 }
             )
         }
-
-        ReadingSwitch(
-            label = stringResource(R.string.reader_show_syllable_breaks),
-            checked = state.showSyllableBreaks,
-            onCheckedChange = onShowSyllableBreaksChange
-        )
-        ReadingSwitch(
-            label = stringResource(R.string.reader_color_syllables),
-            checked = state.colorSyllables,
-            onCheckedChange = onColorSyllablesChange
-        )
 
         Button(
             onClick = onAiHelpClick,
@@ -533,7 +483,7 @@ private fun ReadingTextFlow(
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 paragraph.words.forEach { indexedWord ->
-                    SyllableWordChip(
+                    ReaderWordChip(
                         indexedWord = indexedWord,
                         state = state,
                         paragraphText = paragraph.original,
@@ -548,8 +498,8 @@ private fun ReadingTextFlow(
 
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun SyllableWordChip(
-    indexedWord: IndexedSyllableWord,
+private fun ReaderWordChip(
+    indexedWord: IndexedReaderWord,
     state: ReadingScreenState,
     paragraphText: String,
     onClick: (Int) -> Unit,
@@ -565,18 +515,8 @@ private fun SyllableWordChip(
     )
 
     Text(
-        text = remember(
-            indexedWord.value,
-            state.showSyllableBreaks,
-            state.colorSyllables,
-            state.useOriginalWords
-        ) {
-            indexedWord.value.toAnnotatedSyllables(
-                showSyllableBreaks = state.showSyllableBreaks,
-                colorSyllables = state.colorSyllables,
-                useOriginalWords = state.useOriginalWords
-            )
-        },
+        text = indexedWord.value.original,
+        color = DeepBlueBlack,
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)
@@ -596,43 +536,6 @@ private fun SyllableWordChip(
             lineHeight = state.lineHeight.sp,
             letterSpacing = state.letterSpacing.sp
         )
-    )
-}
-
-private fun SyllableWord.toAnnotatedSyllables(
-    showSyllableBreaks: Boolean,
-    colorSyllables: Boolean,
-    useOriginalWords: Boolean
-) = buildAnnotatedString {
-    if (useOriginalWords || (!showSyllableBreaks && !colorSyllables)) {
-        withStyle(SpanStyle(color = DeepBlueBlack)) {
-            append(original)
-        }
-        return@buildAnnotatedString
-    }
-
-    val safeSyllables = syllables.ifEmpty { listOf(original) }
-    safeSyllables.forEachIndexed { index, syllable ->
-        withStyle(
-            SpanStyle(
-                color = if (!colorSyllables || index % 2 == 0) DeepBlueBlack else SyllableAlternateColor
-            )
-        ) {
-            append(syllable)
-        }
-        if (showSyllableBreaks && index < safeSyllables.lastIndex) {
-            withStyle(SpanStyle(color = DarkSlateGray.copy(alpha = 0.58f))) {
-                append("-")
-            }
-        }
-    }
-}
-
-private fun ReadingScreenState.toReaderDisplayPreferences(): ReaderDisplayPreferences {
-    return ReaderDisplayPreferences(
-        showSyllableBreaks = showSyllableBreaks,
-        colorSyllables = colorSyllables,
-        useOriginalWords = false
     )
 }
 
@@ -926,7 +829,7 @@ private fun AiHelpSheet(
 
 @Composable
 private fun rememberTextToSpeechController(
-    words: List<IndexedSyllableWord>,
+    words: List<IndexedReaderWord>,
     state: ReadingScreenState,
     languageCode: String
 ): TextToSpeechController {
@@ -1079,7 +982,7 @@ private data class WordTextRange(
 )
 
 private fun buildUtteranceTracking(
-    words: List<IndexedSyllableWord>,
+    words: List<IndexedReaderWord>,
     startIndex: Int,
     fallbackLanguageCode: String
 ): UtteranceTracking {
@@ -1214,14 +1117,14 @@ private fun estimateWordDurationMillis(word: String): Long {
 
 private fun buildReadingParagraphs(
     text: String,
-    backendWords: List<SyllableWord> = emptyList()
+    backendWords: List<ReaderWord> = emptyList()
 ): List<ReadingParagraph> {
     if (backendWords.isNotEmpty()) {
         return listOf(
             ReadingParagraph(
                 original = text,
                 words = backendWords.mapIndexed { index, word ->
-                    IndexedSyllableWord(index = index, value = word)
+                    IndexedReaderWord(index = index, value = word)
                 }
             )
         )
@@ -1240,12 +1143,9 @@ private fun buildReadingParagraphs(
                 .split(Regex("\\s+"))
                 .filter { it.isNotBlank() }
                 .map { token ->
-                    IndexedSyllableWord(
+                    IndexedReaderWord(
                         index = nextIndex++,
-                        value = SyllableWord(
-                            original = token,
-                            syllables = splitIntoSyllables(token)
-                        )
+                        value = ReaderWord(original = token)
                     )
                 }
 
@@ -1254,78 +1154,6 @@ private fun buildReadingParagraphs(
                 words = words
             )
         }
-}
-
-private fun splitIntoSyllables(token: String): List<String> {
-    val trimmed = token.trim()
-    if (trimmed.isBlank()) {
-        return emptyList()
-    }
-
-    val firstCoreIndex = trimmed.indexOfFirst { it.isLetterOrDigit() }
-    val lastCoreIndex = trimmed.indexOfLast { it.isLetterOrDigit() }
-    if (firstCoreIndex == -1 || lastCoreIndex == -1 || firstCoreIndex > lastCoreIndex) {
-        return listOf(trimmed)
-    }
-
-    val prefix = trimmed.substring(0, firstCoreIndex)
-    val core = trimmed.substring(firstCoreIndex, lastCoreIndex + 1)
-    val suffix = trimmed.substring(lastCoreIndex + 1)
-    val baseSyllables = splitCoreIntoSyllables(core)
-    if (baseSyllables.isEmpty()) {
-        return listOf(trimmed)
-    }
-
-    return baseSyllables.mapIndexed { index, syllable ->
-        buildString {
-            if (index == 0) {
-                append(prefix)
-            }
-            append(syllable)
-            if (index == baseSyllables.lastIndex) {
-                append(suffix)
-            }
-        }
-    }
-}
-
-private fun splitCoreIntoSyllables(core: String): List<String> {
-    if (core.length <= 4) {
-        return listOf(core)
-    }
-
-    val vowelIndices = core.indices.filter { index -> core[index].isKazakhRussianVowel() }
-    if (vowelIndices.size <= 1) {
-        return listOf(core)
-    }
-
-    val breakPoints = buildList {
-        for (vowelPosition in 0 until vowelIndices.lastIndex) {
-            val currentVowel = vowelIndices[vowelPosition]
-            val nextVowel = vowelIndices[vowelPosition + 1]
-            val consonantsBetween = nextVowel - currentVowel - 1
-            val breakPoint = when {
-                consonantsBetween <= 1 -> currentVowel + 1
-                consonantsBetween == 2 -> currentVowel + 2
-                else -> currentVowel + 2
-            }.coerceIn(1, core.lastIndex)
-            add(breakPoint)
-        }
-    }.distinct().sorted()
-
-    val result = mutableListOf<String>()
-    var start = 0
-    breakPoints.forEach { end ->
-        if (end > start) {
-            result += core.substring(start, end)
-            start = end
-        }
-    }
-    if (start < core.length) {
-        result += core.substring(start)
-    }
-
-    return result.filter { it.isNotBlank() }.ifEmpty { listOf(core) }
 }
 
 private fun Char.isKazakhRussianVowel(): Boolean {

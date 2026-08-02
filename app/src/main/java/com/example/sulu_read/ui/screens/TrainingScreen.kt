@@ -61,7 +61,7 @@ import com.example.sulu_read.domain.model.Exercise
 import com.example.sulu_read.ui.components.ErrorState
 import com.example.sulu_read.ui.components.LoadingState
 import com.example.sulu_read.ui.components.SuluCard
-import com.example.sulu_read.ui.components.SyllableChip
+import com.example.sulu_read.ui.components.OptionChip
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -205,7 +205,7 @@ private fun TrainingContent(
             null -> state.feedback
             else -> stringResource(state.feedbackResId)
         }
-        val canSubmit = canSubmitExerciseAnswer(exercise, state.selectedAnswer) &&
+        val canSubmit = canSubmitExerciseAnswer(state.selectedAnswer) &&
             feedbackText == null &&
             !state.isSubmitting
 
@@ -377,7 +377,6 @@ private fun TrainingProgress(
 private fun TrainingSkillRail(activeSkill: TrainingSkill?) {
     val steps = listOf(
         SkillStep(TrainingSkill.Phonology, R.string.training_skill_phonology),
-        SkillStep(TrainingSkill.Syllables, R.string.training_skill_syllables),
         SkillStep(TrainingSkill.Decoding, R.string.training_skill_decoding),
         SkillStep(TrainingSkill.Visual, R.string.training_skill_visual),
         SkillStep(TrainingSkill.Morphology, R.string.training_skill_morphology)
@@ -461,33 +460,9 @@ private fun ExerciseBody(
     onResetAnswer: () -> Unit
 ) {
     when (exercise.type) {
-        "syllable_order" -> SyllableOrderBody(
-            exercise = exercise,
-            selectedAnswer = selectedAnswer,
-            accent = accent,
-            onSelect = onSelect,
-            onResetAnswer = onResetAnswer
-        )
-
-        "missing_syllable" -> MissingSyllableBody(
-            exercise = exercise,
-            selectedAnswer = selectedAnswer,
-            accent = accent,
-            onSpeak = onSpeak,
-            onSelect = onSelect
-        )
-
         // The target word must stay hidden: the answer is the word itself.
         "auditory_match",
         "word_recognition" -> AuditoryMatchBody(
-            exercise = exercise,
-            selectedAnswer = selectedAnswer,
-            accent = accent,
-            onSpeak = onSpeak,
-            onSelect = onSelect
-        )
-
-        "word_to_syllables" -> WordToSyllablesBody(
             exercise = exercise,
             selectedAnswer = selectedAnswer,
             accent = accent,
@@ -514,94 +489,6 @@ private fun ExerciseBody(
     }
 }
 
-@OptIn(ExperimentalLayoutApi::class)
-@Composable
-private fun SyllableOrderBody(
-    exercise: Exercise,
-    selectedAnswer: String,
-    accent: Color,
-    onSelect: (String) -> Unit,
-    onResetAnswer: () -> Unit
-) {
-    val selected = selectedSyllables(selectedAnswer)
-    Text(
-        text = stringResource(R.string.training_answer_so_far),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(6.dp))
-    Text(
-        text = selected.joinToString("-").ifBlank { stringResource(R.string.training_answer_placeholder) },
-        style = MaterialTheme.typography.headlineSmall.copy(lineHeight = 34.sp, letterSpacing = 0.sp),
-        fontWeight = FontWeight.SemiBold,
-        color = if (selected.isEmpty()) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.onSurface
-    )
-    if (selected.isNotEmpty()) {
-        Spacer(modifier = Modifier.height(8.dp))
-        FlowRow(
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            selected.forEachIndexed { index, syllable ->
-                SyllableChip(
-                    text = syllable,
-                    selected = true,
-                    onClick = {
-                        onSelect(selected.filterIndexed { selectedIndex, _ -> selectedIndex != index }.joinToString("-"))
-                    }
-                )
-            }
-            TextButton(onClick = onResetAnswer) {
-                Text(text = stringResource(R.string.training_reset_answer), color = accent)
-            }
-        }
-    }
-    Spacer(modifier = Modifier.height(16.dp))
-    Text(
-        text = stringResource(R.string.training_available_syllables),
-        style = MaterialTheme.typography.bodyMedium,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-    Spacer(modifier = Modifier.height(8.dp))
-    FlowRow(
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
-        exercise.options.forEach { option ->
-            val availableCount = exercise.options.count { it == option }
-            val selectedCount = selected.count { it == option }
-            val canSelect = selectedCount < availableCount && selected.size < exercise.syllables.size
-            SyllableChip(
-                text = option,
-                enabled = canSelect,
-                onClick = {
-                    onSelect((selected + option).joinToString("-"))
-                }
-            )
-        }
-    }
-}
-
-@Composable
-private fun MissingSyllableBody(
-    exercise: Exercise,
-    selectedAnswer: String,
-    accent: Color,
-    onSpeak: (String) -> Unit,
-    onSelect: (String) -> Unit
-) {
-    WordFocus(text = exercise.prompt)
-    Spacer(modifier = Modifier.height(12.dp))
-    TtsPlayButton(
-        text = exercise.targetWord,
-        accent = accent,
-        onSpeak = onSpeak,
-        modifier = Modifier.fillMaxWidth()
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-    AnswerOptions(exercise.options, selectedAnswer, accent, onSelect)
-}
-
 @Composable
 private fun AuditoryMatchBody(
     exercise: Exercise,
@@ -610,26 +497,6 @@ private fun AuditoryMatchBody(
     onSpeak: (String) -> Unit,
     onSelect: (String) -> Unit
 ) {
-    TtsPlayButton(
-        text = exercise.targetWord,
-        accent = accent,
-        onSpeak = onSpeak,
-        modifier = Modifier.fillMaxWidth()
-    )
-    Spacer(modifier = Modifier.height(12.dp))
-    AnswerOptions(exercise.options, selectedAnswer, accent, onSelect)
-}
-
-@Composable
-private fun WordToSyllablesBody(
-    exercise: Exercise,
-    selectedAnswer: String,
-    accent: Color,
-    onSpeak: (String) -> Unit,
-    onSelect: (String) -> Unit
-) {
-    WordFocus(text = exercise.targetWord)
-    Spacer(modifier = Modifier.height(12.dp))
     TtsPlayButton(
         text = exercise.targetWord,
         accent = accent,
@@ -783,17 +650,10 @@ private fun ChoiceButton(
     }
 }
 
-private fun selectedSyllables(answer: String): List<String> {
-    return answer.split("-").filter { it.isNotBlank() }
-}
-
-private fun canSubmitExerciseAnswer(exercise: Exercise, selectedAnswer: String): Boolean {
-    return if (exercise.type == "syllable_order") {
-        val selected = selectedSyllables(selectedAnswer)
-        selected.size == exercise.syllables.size && exercise.syllables.isNotEmpty()
-    } else {
-        selectedAnswer.isNotBlank()
-    }
+// Every remaining exercise is answered by picking one option, so a non-blank selection is the
+// whole gate. Syllable ordering was the only type that built its answer from several taps.
+private fun canSubmitExerciseAnswer(selectedAnswer: String): Boolean {
+    return selectedAnswer.isNotBlank()
 }
 
 /**
@@ -854,7 +714,6 @@ private fun TtsPlayButton(
 
 private enum class TrainingSkill {
     Phonology,
-    Syllables,
     Decoding,
     Visual,
     Morphology
@@ -879,24 +738,6 @@ private fun exerciseInsight(exercise: Exercise): ExerciseInsight {
             labelResId = R.string.training_skill_phonology,
             goalResId = R.string.training_goal_phonology,
             instructionResId = R.string.training_instruction_auditory_match
-        )
-        "missing_syllable" -> ExerciseInsight(
-            skill = TrainingSkill.Syllables,
-            labelResId = R.string.training_skill_syllables,
-            goalResId = R.string.training_goal_syllables,
-            instructionResId = R.string.training_instruction_missing_syllable
-        )
-        "syllable_order" -> ExerciseInsight(
-            skill = TrainingSkill.Syllables,
-            labelResId = R.string.training_skill_syllables,
-            goalResId = R.string.training_goal_syllables,
-            instructionResId = R.string.training_instruction_syllable_order
-        )
-        "word_to_syllables" -> ExerciseInsight(
-            skill = TrainingSkill.Decoding,
-            labelResId = R.string.training_skill_decoding,
-            goalResId = R.string.training_goal_decoding,
-            instructionResId = R.string.training_instruction_word_to_syllables
         )
         "word_recognition" -> ExerciseInsight(
             skill = TrainingSkill.Visual,
@@ -923,7 +764,6 @@ private fun exerciseInsight(exercise: Exercise): ExerciseInsight {
 private fun skillAccent(skill: TrainingSkill): Color {
     return when (skill) {
         TrainingSkill.Phonology -> Color(0xFF2D776F)
-        TrainingSkill.Syllables -> Color(0xFF7A6330)
         TrainingSkill.Decoding -> Color(0xFF3F5F8F)
         TrainingSkill.Visual -> Color(0xFF6A4F8F)
         TrainingSkill.Morphology -> Color(0xFF8A4C62)

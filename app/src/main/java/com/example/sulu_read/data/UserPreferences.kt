@@ -6,7 +6,6 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.example.sulu_read.domain.model.AppLanguage
-import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
@@ -15,10 +14,8 @@ private val Context.suluReadDataStore by preferencesDataStore(name = "sulu_read_
 interface UserPreferenceStore {
     val userId: Flow<String?>
     val languageCode: Flow<String>
-    val readerDisplayPreferences: Flow<ReaderDisplayPreferences>
     suspend fun saveUserId(userId: String)
     suspend fun saveLanguageCode(languageCode: String)
-    suspend fun saveReaderDisplayPreferences(readerPreferences: ReaderDisplayPreferences)
 }
 
 class UserPreferences(private val context: Context) : UserPreferenceStore {
@@ -30,14 +27,6 @@ class UserPreferences(private val context: Context) : UserPreferenceStore {
         AppLanguage.normalizeCode(
             preferences[LANGUAGE_CODE_KEY] ?: AppLanguage.defaultCode()
         ).also(::cacheLanguageCode)
-    }
-
-    override val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = context.suluReadDataStore.data.map { preferences ->
-        ReaderDisplayPreferences(
-            showSyllableBreaks = preferences[SHOW_SYLLABLE_BREAKS_KEY] ?: true,
-            colorSyllables = preferences[COLOR_SYLLABLES_KEY] ?: true,
-            useOriginalWords = preferences[USE_ORIGINAL_WORDS_KEY] ?: false
-        )
     }
 
     override suspend fun saveUserId(userId: String) {
@@ -53,14 +42,6 @@ class UserPreferences(private val context: Context) : UserPreferenceStore {
         }
     }
 
-    override suspend fun saveReaderDisplayPreferences(readerPreferences: ReaderDisplayPreferences) {
-        context.suluReadDataStore.edit { preferences ->
-            preferences[SHOW_SYLLABLE_BREAKS_KEY] = readerPreferences.showSyllableBreaks
-            preferences[COLOR_SYLLABLES_KEY] = readerPreferences.colorSyllables
-            preferences[USE_ORIGINAL_WORDS_KEY] = readerPreferences.useOriginalWords
-        }
-    }
-
     private fun cacheLanguageCode(languageCode: String) {
         context.getSharedPreferences(LANGUAGE_CACHE_NAME, Context.MODE_PRIVATE)
             .edit()
@@ -73,9 +54,6 @@ class UserPreferences(private val context: Context) : UserPreferenceStore {
         private const val LANGUAGE_CACHE_KEY = "language_code"
         private val USER_ID_KEY = stringPreferencesKey("user_id")
         private val LANGUAGE_CODE_KEY = stringPreferencesKey("language_code")
-        private val SHOW_SYLLABLE_BREAKS_KEY = booleanPreferencesKey("reader_show_syllable_breaks")
-        private val COLOR_SYLLABLES_KEY = booleanPreferencesKey("reader_color_syllables")
-        private val USE_ORIGINAL_WORDS_KEY = booleanPreferencesKey("reader_use_original_words")
 
         fun initialLanguageCode(context: Context): String {
             val cached = context.getSharedPreferences(LANGUAGE_CACHE_NAME, Context.MODE_PRIVATE)

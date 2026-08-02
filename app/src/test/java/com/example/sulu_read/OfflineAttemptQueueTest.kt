@@ -13,7 +13,6 @@ import com.example.sulu_read.data.dto.ScreeningResultDto
 import com.example.sulu_read.data.dto.SimplifyDto
 import com.example.sulu_read.data.dto.UserDto
 import com.example.sulu_read.domain.model.Exercise
-import com.example.sulu_read.domain.model.ReaderDisplayPreferences
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -40,7 +39,6 @@ class OfflineAttemptQueueTest {
             subExercise = "morphology",
             prompt = "Choose root",
             targetWord = "балаларымызға",
-            syllables = listOf("бала", "лар", "ымыз", "ға"),
             options = listOf("бала + лар + ымыз + ға"),
             correctAnswer = "бала + лар + ымыз + ға",
             difficultyLevel = 3,
@@ -115,10 +113,8 @@ private object FailingAttemptApi : SuluReadApi {
 private object FakePreferences : UserPreferenceStore {
     override val userId: Flow<String?> = MutableStateFlow("user-1")
     override val languageCode: Flow<String> = MutableStateFlow("kk")
-    override val readerDisplayPreferences: Flow<ReaderDisplayPreferences> = MutableStateFlow(ReaderDisplayPreferences())
     override suspend fun saveUserId(userId: String) = Unit
     override suspend fun saveLanguageCode(languageCode: String) = Unit
-    override suspend fun saveReaderDisplayPreferences(readerPreferences: ReaderDisplayPreferences) = Unit
 }
 
 private class FakePendingAttemptQueue : PendingAttemptQueue {

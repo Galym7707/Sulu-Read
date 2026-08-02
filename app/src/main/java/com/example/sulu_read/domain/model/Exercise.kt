@@ -6,7 +6,6 @@ data class Exercise(
     val subExercise: String?,
     val prompt: String,
     val targetWord: String,
-    val syllables: List<String>,
     val options: List<String>,
     val correctAnswer: String,
     val difficultyLevel: Int,

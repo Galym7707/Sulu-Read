@@ -1,4 +1,4 @@
-from .syllabification import adapt_text, extract_word_features, prepare_text_for_adaptation
+from .text_preparation import extract_word_features, prepare_text_for_adaptation
 
 
 def build_adaptation_payload(*, source: str, text: str, title: str | None, max_text_chars: int) -> dict:
@@ -13,15 +13,15 @@ def build_adaptation_payload(*, source: str, text: str, title: str | None, max_t
         "source": source,
         "title": title,
         "original_text": normalized_text,
-        "adapted_text": adapt_text(normalized_text),
+        # Kept as a field because clients read it, but no longer a different string: adaptation
+        # used to mean inserting syllable hyphens, and the reader now shows words whole.
+        "adapted_text": normalized_text,
         "word_count": len(words),
         "unique_word_count": len({word.original.lower() for word in words}),
         "truncated": truncated,
         "words": [
             {
                 "original": word.original,
-                "adapted": word.adapted,
-                "syllables": word.syllables,
                 "language_hint": word.language_hint,
                 "vowel_harmony": word.vowel_harmony,
             }

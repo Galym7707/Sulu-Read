@@ -311,7 +311,6 @@ object ApiClient : SuluReadApi {
             subExercise = json.optString("sub_exercise").ifBlank { null },
             prompt = json.optString("prompt"),
             targetWord = json.optString("target_word"),
-            syllables = json.optJSONArray("syllables").toStringList(),
             options = json.optJSONArray("options").toStringList(),
             correctAnswer = json.optString("correct_answer"),
             difficultyLevel = json.optInt("difficulty_level"),
