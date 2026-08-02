@@ -16,16 +16,22 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Lightbulb
+import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.MicOff
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -36,6 +42,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
@@ -54,6 +61,10 @@ import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 
 private val ScenePanelBackground = Color(0xFFFFFCF4)
+private val ListeningColor = Color(0xFF2E6F40)
+private val TryAgainColor = Color(0xFFA24A1E)
+
+private const val PROGRESS_BAR_HEIGHT_DP = 12
 
 // Material's minimum accessible touch target. The default button height falls under it once
 // padding is accounted for on small screens.
@@ -273,12 +284,14 @@ fun FocusReaderScreen(
             text = stringResource(R.string.focus_mode_title),
             style = MaterialTheme.typography.titleMedium
         )
-        Text(
-            text = stringResource(
-                R.string.focus_progress,
-                (ladder.masteryShare() * 100).toInt()
-            ),
-            style = MaterialTheme.typography.bodyMedium
+        // A bar rather than a percentage. "62%" is a number a child has to interpret; a bar
+        // that is a bit further along than last time is read without being taught.
+        LinearProgressIndicator(
+            progress = { ladder.masteryShare() },
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(PROGRESS_BAR_HEIGHT_DP.dp)
+                .clip(RoundedCornerShape(6.dp))
         )
 
         FocusTextBlock(
@@ -298,14 +311,29 @@ fun FocusReaderScreen(
                 }
             }
         } else {
-            Text(
-                text = when {
-                    showTryAgain -> stringResource(R.string.focus_try_again)
-                    isSessionActive && !isSpeaking -> stringResource(R.string.focus_listening)
-                    else -> stringResource(R.string.focus_listen)
-                },
-                style = MaterialTheme.typography.bodyLarge
-            )
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Icon(
+                    imageVector = when {
+                        showTryAgain -> Icons.Default.Refresh
+                        isSessionActive && !isSpeaking -> Icons.Default.Mic
+                        else -> Icons.Default.MicOff
+                    },
+                    contentDescription = null,
+                    tint = if (showTryAgain) TryAgainColor else ListeningColor
+                )
+                Text(
+                    text = when {
+                        showTryAgain -> stringResource(R.string.focus_try_again)
+                        isSessionActive && !isSpeaking -> stringResource(R.string.focus_listening)
+                        else -> stringResource(R.string.focus_listen)
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (showTryAgain) TryAgainColor else ListeningColor
+                )
+            }
 
             when (ladder.step) {
                 FocusStep.Letters -> {
@@ -365,6 +393,11 @@ fun FocusReaderScreen(
                             .weight(1f)
                             .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
+                        Icon(
+                            imageVector = if (isSessionActive) Icons.Default.Stop else Icons.Default.Mic,
+                            contentDescription = null
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
                         Text(
                             text = stringResource(
                                 if (isSessionActive) R.string.focus_listen_stop
