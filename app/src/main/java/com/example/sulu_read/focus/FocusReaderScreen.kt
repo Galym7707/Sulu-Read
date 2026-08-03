@@ -70,9 +70,10 @@ private const val PROGRESS_BAR_HEIGHT_DP = 12
 // padding is accounted for on small screens.
 private const val MIN_TOUCH_TARGET_DP = 56
 
-// Breath between one recognition ending and the next beginning. Also stops a device that
+// Breath between one session ending and the next beginning. Only paid when the engine actually
+// closed a session, not between words, so it can be short; it exists to stop a device that
 // returns "heard nothing" instantly from spinning the recognizer in a tight loop.
-private const val LISTEN_RESTART_DELAY_MILLIS = 250L
+private const val SESSION_RESTART_DELAY_MILLIS = 120L
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -96,6 +97,8 @@ fun FocusReaderScreen(
     var showTryAgain by remember { mutableStateOf(false) }
     var isFlashing by remember { mutableStateOf(false) }
     var micDenied by remember { mutableStateOf(false) }
+    // Distinguishes "said nothing" from "said the wrong thing" once a session ends.
+    var heardAnySpeech by remember { mutableStateOf(false) }
 
     val speechGate = remember(context) { SpeechGate(context) }
     // Starts optimistic. SpeechRecognizer.isRecognitionAvailable() returns false on devices
@@ -177,47 +180,73 @@ fun FocusReaderScreen(
         isSessionActive = true
     }
 
-    // Re-arms itself on every word change, so a correct read moves the highlight AND starts
-    // listening for the next word with no tap in between. The language is resolved per word,
-    // so a Kazakh word inside a Russian text is still recognised as Kazakh.
-    LaunchedEffect(isSessionActive, isSpeaking, ladder.wordIndex, ladder.step, listenAttempt) {
-        val word = currentWord ?: return@LaunchedEffect
-        if (!isSessionActive || isSpeaking) {
+    // One session spans many words. Deliberately NOT keyed on the word index or the ladder step:
+    // re-keying on those tore the recogniser down and started it again between every pair of
+    // words, and the reader paid the restart — a fixed delay, the service session setup, and
+    // often a RECOGNIZER_BUSY retry because cancelling does not free the microphone at once.
+    // The nudge timer moving the step used to cost a restart mid-word for the same reason.
+    LaunchedEffect(isSessionActive, isSpeaking, listenAttempt) {
+        if (!isSessionActive || isSpeaking || currentWord == null) {
             return@LaunchedEffect
         }
-        delay(LISTEN_RESTART_DELAY_MILLIS)
-        // Guards the word against being finished twice. A partial result can be accepted at the
-        // same moment the engine delivers its final one, and without this the second delivery
-        // would advance the reader past the following word without them ever reading it.
-        var settled = false
-        speechGate.listenOnce(
-            languageCode = detectSpeechLanguageCode(word.spoken, languageCode),
-            onResult = { hypotheses ->
-                if (settled) {
-                    return@listenOnce
+        delay(SESSION_RESTART_DELAY_MILLIS)
+
+        // Transcript tokens already credited to a word. The engine keeps revising one growing
+        // transcript, so without this the same spoken word would be offered again for the next
+        // target and the reader would be advanced past words they never read.
+        var consumedTokens = 0
+
+        fun consume(transcript: String) {
+            val tokens = tokenizeTranscript(transcript)
+            if (tokens.size < consumedTokens) {
+                // The engine rewrote its transcript shorter than it was. Start again rather than
+                // index past the end of it.
+                consumedTokens = 0
+            }
+            val fresh = tokens.drop(consumedTokens)
+            if (fresh.isEmpty()) {
+                return
+            }
+
+            val targets = words.drop(ladder.wordIndex).map { it.spoken }
+            val match = matchSpokenStream(fresh, targets)
+            if (match.wordsMatched <= 0) {
+                return
+            }
+
+            consumedTokens += match.tokensConsumed
+            heardAnySpeech = true
+            showTryAgain = false
+            // Applied one word at a time so the ladder still records each read, and so a fluent
+            // burst that clears several words is scored as several clean reads.
+            var next = ladder
+            repeat(match.wordsMatched) {
+                val spoken = words.getOrNull(next.wordIndex)?.spoken ?: return@repeat
+                next = next.onCorrectRead(spoken, words.size)
+            }
+            ladder = next
+        }
+
+        speechGate.startContinuous(
+            languageCode = detectSpeechLanguageCode(currentWord.spoken, languageCode),
+            onTranscript = ::consume,
+            onEnded = { hypotheses ->
+                // The engine closed the session, normally on silence. A target still unread
+                // after the reader clearly said something is the misread; silence is not.
+                val stillUnread = words.getOrNull(ladder.wordIndex)
+                if (stillUnread != null && hypotheses.isNotEmpty() && heardAnySpeech) {
+                    val leftover = tokenizeTranscript(hypotheses.first()).drop(consumedTokens)
+                    if (leftover.isNotEmpty()) {
+                        ladder = ladder.onMisread(stillUnread.spoken, words.size)
+                        showTryAgain = true
+                    }
                 }
-                settled = true
-                when {
-                    // Nothing was said. Silence is not a wrong answer — re-arm and let the
-                    // nudge timers decide when this reader needs help.
-                    hypotheses.isEmpty() -> listenAttempt += 1
-                    isSpokenWordAccepted(word.spoken, hypotheses) -> finishWord(wasCorrect = true)
-                    else -> finishWord(wasCorrect = false)
-                }
+                heardAnySpeech = false
+                listenAttempt += 1
             },
             onUnavailable = {
                 isSessionActive = false
                 micUnavailable = true
-            },
-            // Only ever accepts. A partial hypothesis that does not match yet is not a
-            // misreading — the reader may be mid-word — so a wrong answer still has to wait
-            // for the engine to finish.
-            onPartial = { hypotheses ->
-                if (!settled && isSpokenWordAccepted(word.spoken, hypotheses)) {
-                    settled = true
-                    speechGate.cancel()
-                    finishWord(wasCorrect = true)
-                }
             }
         )
     }

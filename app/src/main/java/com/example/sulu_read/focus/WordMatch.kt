@@ -163,6 +163,50 @@ private fun candidatesFrom(hypothesis: String): List<String> {
     return if (words.size <= 1) listOf(hypothesis) else words + hypothesis
 }
 
+/**
+ * How much of a running transcript the reader has got through.
+ *
+ * @param wordsMatched consecutive targets read correctly, starting at the first one offered.
+ * @param tokensConsumed transcript tokens accounted for, so the next pass over a longer version
+ *   of the same transcript does not match the same speech twice.
+ */
+data class StreamMatch(val wordsMatched: Int, val tokensConsumed: Int)
+
+/**
+ * Walks a live transcript against the words still to be read.
+ *
+ * This exists so recognition does not have to stop at every word. One session stays open while
+ * the reader reads on, and each time the engine revises its transcript the new part is matched
+ * against the next target, then the one after it. A fluent reader can clear several words from a
+ * single utterance, and nobody waits for a recogniser to be torn down and started again.
+ *
+ * Tokens that match nothing are stepped over rather than failing the read: engines insert filler
+ * ("эм", "the"), and the reader's own hesitation lands in the transcript too. Matching stops at
+ * the first target that is not found, so words are only ever cleared in order.
+ */
+fun matchSpokenStream(tokens: List<String>, targets: List<String>): StreamMatch {
+    var wordsMatched = 0
+    var tokensConsumed = 0
+    var tokenIndex = 0
+
+    while (wordsMatched < targets.size && tokenIndex < tokens.size) {
+        val target = targets[wordsMatched]
+        val hit = (tokenIndex until tokens.size).firstOrNull { candidate ->
+            isSpokenWordAccepted(target, listOf(tokens[candidate]))
+        } ?: break
+
+        wordsMatched += 1
+        tokenIndex = hit + 1
+        tokensConsumed = tokenIndex
+    }
+
+    return StreamMatch(wordsMatched = wordsMatched, tokensConsumed = tokensConsumed)
+}
+
+fun tokenizeTranscript(transcript: String): List<String> {
+    return transcript.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+}
+
 fun isSpokenWordAccepted(target: String, heardAlternatives: List<String>): Boolean {
     val foldedTarget = fold(normalizeForMatch(target))
     if (foldedTarget.isEmpty()) {
