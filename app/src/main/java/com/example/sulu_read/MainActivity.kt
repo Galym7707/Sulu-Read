@@ -120,6 +120,7 @@ import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
+import java.net.URLEncoder
 import java.util.Locale
 import java.util.UUID
 import kotlin.math.max
@@ -237,6 +238,30 @@ private enum class DocumentSource {
     File
 }
 
+/** A book in the ready-made library that ships with the backend. */
+data class CatalogBook(
+    val id: String,
+    val title: String,
+    val author: String,
+    val language: String,
+    val grade: Int,
+    val pageCount: Int,
+    val wordCount: Int,
+    val sourceUrl: String,
+    // The works are public domain; the Wikisource editions they came from are CC BY-SA. Both
+    // travel with the book so the app can credit them.
+    val workLicense: String,
+    val editionLicense: String
+)
+
+/** A picture for a tapped noun, with the credit its licence requires. */
+data class WordPicture(
+    val word: String,
+    val imageUrl: String,
+    val attribution: String,
+    val licenseName: String
+)
+
 /** One page of an uploaded book, as the backend divided it. */
 data class BookPage(
     val pageNumber: Int,
@@ -256,6 +281,8 @@ private sealed interface AppState {
         val title: String?,
         val words: List<ReaderWord>
     ) : AppState
+
+    data object Catalog : AppState
 
     data class ReadingBook(
         val pages: List<BookPage>,
@@ -403,6 +430,8 @@ fun SuluReadRoute(
     var errorMessage by rememberSaveable { mutableStateOf<String?>(null) }
     var adaptationRunId by remember { mutableIntStateOf(0) }
     var adaptationJob by remember { mutableStateOf<Job?>(null) }
+    var catalogBooks by remember { mutableStateOf<List<CatalogBook>>(emptyList()) }
+    var isCatalogLoading by remember { mutableStateOf(false) }
 
     fun cancelAdaptation() {
         adaptationRunId += 1
@@ -705,6 +734,35 @@ fun SuluReadRoute(
             )
         }
 
+        AppState.Catalog -> {
+            CatalogScreen(
+                modifier = modifier,
+                books = catalogBooks,
+                isLoading = isCatalogLoading,
+                onOpenBook = { book ->
+                    appState = AppState.Loading
+                    coroutineScope.launch {
+                        when (val result = SuluReadApiClient.fetchCatalogBook(context, book.id)) {
+                            is ApiResult.Book -> appState = AppState.ReadingBook(
+                                pages = result.pages,
+                                title = book.title,
+                                truncated = false,
+                                ocrPageNumbers = emptyList()
+                            )
+
+                            is ApiResult.Error -> {
+                                errorMessage = result.message
+                                appState = AppState.Catalog
+                            }
+
+                            is ApiResult.Success -> appState = AppState.Catalog
+                        }
+                    }
+                },
+                onBackHome = { appState = AppState.Home }
+            )
+        }
+
         is AppState.ReadingBook -> {
             BookReadingScreen(
                 modifier = modifier,
@@ -758,6 +816,17 @@ fun SuluReadRoute(
             onFileClick = {
                 showDocumentSheet = false
                 bookPickerLauncher.launch(BOOK_MIME_TYPES)
+            },
+            onCatalogClick = {
+                showDocumentSheet = false
+                appState = AppState.Catalog
+                isCatalogLoading = true
+                coroutineScope.launch {
+                    catalogBooks = SuluReadApiClient.fetchCatalog(
+                        AppLanguage.backendHintFor(languageCode)
+                    )
+                    isCatalogLoading = false
+                }
             }
         )
     }
@@ -882,6 +951,114 @@ private fun LoadingScreen(
         Spacer(modifier = Modifier.height(18.dp))
         TextButton(onClick = onCancel) {
             Text(text = stringResource(R.string.cancel))
+        }
+    }
+}
+
+/**
+ * The ready-made library.
+ *
+ * These books ship with the backend already divided into pages, so opening one is a lookup
+ * rather than an upload: there is nothing to photograph, no OCR, and no waiting. Everything in
+ * here is public domain, and each book carries where its text came from.
+ */
+@Composable
+private fun CatalogScreen(
+    modifier: Modifier = Modifier,
+    books: List<CatalogBook>,
+    isLoading: Boolean,
+    onOpenBook: (CatalogBook) -> Unit,
+    onBackHome: () -> Unit
+) {
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 20.dp, vertical = 22.dp),
+        verticalArrangement = Arrangement.spacedBy(14.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.catalog_title),
+                    style = MaterialTheme.typography.headlineSmall,
+                    color = TextPrimary
+                )
+                Text(
+                    text = stringResource(R.string.catalog_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
+                )
+            }
+            Spacer(modifier = Modifier.width(12.dp))
+            TextButton(onClick = onBackHome) {
+                Text(text = stringResource(R.string.reader_back_home))
+            }
+        }
+
+        when {
+            isLoading -> Text(
+                text = stringResource(R.string.catalog_loading),
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextMuted
+            )
+
+            books.isEmpty() -> Text(
+                text = stringResource(R.string.catalog_empty),
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextMuted
+            )
+
+            else -> books.forEach { book ->
+                CatalogBookCard(book = book, onClick = { onOpenBook(book) })
+            }
+        }
+    }
+}
+
+@Composable
+private fun CatalogBookCard(book: CatalogBook, onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 88.dp),
+        shape = RoundedCornerShape(18.dp),
+        colors = CardDefaults.cardColors(containerColor = FieldSurface),
+        border = BorderStroke(1.dp, SoftSageBorder)
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = book.title,
+                style = MaterialTheme.typography.titleLarge,
+                color = TextPrimary
+            )
+            Text(
+                text = book.author,
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextMuted
+            )
+            Text(
+                text = stringResource(R.string.catalog_book_meta, book.grade, book.pageCount),
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextMuted
+            )
+            Text(
+                text = stringResource(
+                    R.string.catalog_source_note,
+                    book.workLicense,
+                    book.editionLicense
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = TextMuted
+            )
         }
     }
 }
@@ -1106,7 +1283,13 @@ private fun ReadingScreen(
                 aiHelpState = aiHelpState,
                 onExplainTextWithAi = onExplainTextWithAi,
                 onDismissAiHelp = onDismissAiHelp,
-                languageCode = languageCode
+                languageCode = languageCode,
+                onLookUpWordPicture = { word ->
+                    SuluReadApiClient.fetchWordPicture(
+                        word = word,
+                        languageHint = AppLanguage.backendHintFor(languageCode)
+                    )
+                }
             )
         }
     }
@@ -1340,7 +1523,8 @@ private fun DocumentSourceSheet(
     onDismissRequest: () -> Unit,
     onCameraClick: () -> Unit,
     onGalleryClick: () -> Unit,
-    onFileClick: () -> Unit
+    onFileClick: () -> Unit,
+    onCatalogClick: () -> Unit
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
@@ -1381,6 +1565,12 @@ private fun DocumentSourceSheet(
                 title = stringResource(R.string.document_sheet_file_title),
                 subtitle = stringResource(R.string.document_sheet_file_subtitle),
                 onClick = onFileClick
+            )
+            DocumentSourceAction(
+                icon = Icons.Default.AutoAwesome,
+                title = stringResource(R.string.catalog_title),
+                subtitle = stringResource(R.string.catalog_subtitle),
+                onClick = onCatalogClick
             )
         }
     }
@@ -1665,6 +1855,126 @@ private object SuluReadApiClient {
 
             ApiResult.Error(connectionErrorMessage(context))
         }
+
+    /** The ready-made library. Its books ship with the backend, so this is a plain GET. */
+    suspend fun fetchCatalog(languageHint: String): List<CatalogBook> = withContext(Dispatchers.IO) {
+        for (baseUrl in ApiClient.backendBaseUrls) {
+            val books = runCatching {
+                val connection = openGetConnection("$baseUrl/v1/catalog?language_hint=$languageHint")
+                try {
+                    val json = JSONObject(readResponseBody(connection))
+                    val array = json.optJSONArray("books") ?: return@runCatching emptyList()
+                    (0 until array.length()).mapNotNull { index ->
+                        val item = array.optJSONObject(index) ?: return@mapNotNull null
+                        CatalogBook(
+                            id = item.optString("id").ifBlank { return@mapNotNull null },
+                            title = item.optString("title"),
+                            author = item.optString("author"),
+                            language = item.optString("language"),
+                            grade = item.optInt("grade"),
+                            pageCount = item.optInt("page_count"),
+                            wordCount = item.optInt("word_count"),
+                            sourceUrl = item.optString("source_url"),
+                            workLicense = item.optString("work_license"),
+                            editionLicense = item.optString("edition_license")
+                        )
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+
+            if (books != null) {
+                return@withContext books
+            }
+        }
+        emptyList()
+    }
+
+    suspend fun fetchCatalogBook(context: Context, bookId: String): ApiResult = withContext(Dispatchers.IO) {
+        for (baseUrl in ApiClient.backendBaseUrls) {
+            val result = runCatching {
+                val connection = openGetConnection("$baseUrl/v1/catalog/$bookId")
+                try {
+                    val json = JSONObject(readResponseBody(connection))
+                    val array = json.optJSONArray("pages")
+                    val pages = (0 until (array?.length() ?: 0)).mapNotNull { index ->
+                        val page = array?.optJSONObject(index) ?: return@mapNotNull null
+                        val text = page.optString("text").ifBlank { return@mapNotNull null }
+                        BookPage(
+                            pageNumber = page.optInt("page_number", index + 1),
+                            text = text,
+                            wordCount = text.split(Regex("\\s+")).count { it.isNotBlank() }
+                        )
+                    }
+                    if (pages.isEmpty()) {
+                        null
+                    } else {
+                        ApiResult.Book(
+                            pages = pages,
+                            title = json.optString("title").ifBlank { null },
+                            truncated = false,
+                            ocrPageNumbers = emptyList()
+                        )
+                    }
+                } finally {
+                    connection.disconnect()
+                }
+            }.getOrNull()
+
+            if (result != null) {
+                return@withContext result
+            }
+        }
+        ApiResult.Error(connectionErrorMessage(context))
+    }
+
+    /**
+     * A picture for a tapped word.
+     *
+     * Returns null for anything that is not a concrete noun, which is most words in any
+     * sentence. That is an ordinary answer and the reader is shown nothing, rather than an
+     * error they did not cause.
+     */
+    suspend fun fetchWordPicture(word: String, languageHint: String): WordPicture? =
+        withContext(Dispatchers.IO) {
+            val encoded = URLEncoder.encode(word, "UTF-8")
+            for (baseUrl in ApiClient.backendBaseUrls) {
+                val picture = runCatching {
+                    val connection = openGetConnection(
+                        "$baseUrl/v1/word-picture?word=$encoded&language_hint=$languageHint"
+                    )
+                    try {
+                        val json = JSONObject(readResponseBody(connection))
+                        if (!json.optBoolean("found")) {
+                            return@runCatching null
+                        }
+                        WordPicture(
+                            word = json.optString("word", word),
+                            imageUrl = json.optString("image_url"),
+                            attribution = json.optString("attribution"),
+                            licenseName = json.optString("license_name")
+                        )
+                    } finally {
+                        connection.disconnect()
+                    }
+                }.getOrNull()
+
+                if (picture != null) {
+                    return@withContext picture
+                }
+            }
+            null
+        }
+
+    private fun openGetConnection(endpoint: String): HttpURLConnection {
+        return (URL(endpoint).openConnection() as HttpURLConnection).apply {
+            requestMethod = "GET"
+            connectTimeout = CONNECT_TIMEOUT_MS
+            readTimeout = READ_TIMEOUT_MS
+            setRequestProperty("Accept", "application/json")
+        }
+    }
 
     private fun parseBookResponse(context: Context, httpCode: Int, body: String): ApiResult {
         val json = runCatching { JSONObject(body) }.getOrNull()

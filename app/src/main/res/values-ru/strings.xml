@@ -190,4 +190,14 @@
     <string name="book_next_page">Дальше</string>
     <string name="book_page_from_scan">Эта страница распознана со скана, поэтому слово может быть неточным.</string>
     <string name="book_truncated_notice">Книга длинная. Открыли первые %1$d страниц.</string>
+    <string name="word_picture_close">Закрыть</string>
+    <string name="word_picture_credit">Картинка: %1$s (%2$s), Wikimedia</string>
+    <string name="word_picture_unavailable">Не удалось загрузить картинку</string>
+    <string name="catalog_title">Библиотека</string>
+    <string name="catalog_subtitle">Готовые книги, уже подготовленные для чтения</string>
+    <string name="catalog_open">Библиотека</string>
+    <string name="catalog_empty">Для этого языка книг пока нет</string>
+    <string name="catalog_loading">Открываем библиотеку…</string>
+    <string name="catalog_book_meta">%1$d класс · %2$d стр.</string>
+    <string name="catalog_source_note">Текст: %1$s. Издание: %2$s, Wikisource.</string>
 </resources>

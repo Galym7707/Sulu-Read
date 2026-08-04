@@ -191,4 +191,14 @@
     <string name="book_next_page">Next</string>
     <string name="book_page_from_scan">This page was read from a scan, so a word may be wrong.</string>
     <string name="book_truncated_notice">This book is long. The first %1$d pages were opened.</string>
+    <string name="word_picture_close">Close</string>
+    <string name="word_picture_credit">Picture: %1$s (%2$s), Wikimedia</string>
+    <string name="word_picture_unavailable">The picture could not be loaded</string>
+    <string name="catalog_title">Library</string>
+    <string name="catalog_subtitle">Ready-made books, already prepared for reading</string>
+    <string name="catalog_open">Library</string>
+    <string name="catalog_empty">No books for this language yet</string>
+    <string name="catalog_loading">Opening the library…</string>
+    <string name="catalog_book_meta">Grade %1$d · %2$d pages</string>
+    <string name="catalog_source_note">Text: %1$s. Edition: %2$s, Wikisource.</string>
 </resources>

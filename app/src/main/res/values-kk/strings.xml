@@ -190,4 +190,14 @@
     <string name="book_next_page">Әрі қарай</string>
     <string name="book_page_from_scan">Бұл бет скеннен оқылды, сондықтан сөз дәл болмауы мүмкін.</string>
     <string name="book_truncated_notice">Кітап ұзын. Алғашқы %1$d бет ашылды.</string>
+    <string name="word_picture_close">Жабу</string>
+    <string name="word_picture_credit">Сурет: %1$s (%2$s), Wikimedia</string>
+    <string name="word_picture_unavailable">Суретті жүктеу мүмкін болмады</string>
+    <string name="catalog_title">Кітапхана</string>
+    <string name="catalog_subtitle">Оқуға дайындалған кітаптар</string>
+    <string name="catalog_open">Кітапхана</string>
+    <string name="catalog_empty">Бұл тілде кітаптар әзірге жоқ</string>
+    <string name="catalog_loading">Кітапхана ашылуда…</string>
+    <string name="catalog_book_meta">%1$d сынып · %2$d бет</string>
+    <string name="catalog_source_note">Мәтін: %1$s. Басылым: %2$s, Wikisource.</string>
 </resources>

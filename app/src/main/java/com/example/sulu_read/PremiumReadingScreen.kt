@@ -88,6 +88,7 @@ import com.example.sulu_read.audio.applyNaturalVoice
 import com.example.sulu_read.audio.detectSpeechLanguageCode
 import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.domain.model.AppLanguage
+import com.example.sulu_read.ui.components.WordPictureDialog
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -178,10 +179,16 @@ fun PremiumReadingScreen(
     onExplainTextWithAi: (String) -> Unit = {},
     onDismissAiHelp: () -> Unit = {},
     languageCode: String,
+    // Returns null for anything that is not a concrete noun, which is most words. The reader is
+    // shown nothing in that case rather than an empty box.
+    onLookUpWordPicture: suspend (String) -> WordPicture? = { null },
     modifier: Modifier = Modifier
 ) {
     val state = rememberSaveable(text, saver = ReadingScreenStateSaver) { ReadingScreenState() }
     val coroutineScope = rememberCoroutineScope()
+    var pictureWord by remember(text) { mutableStateOf<String?>(null) }
+    var wordPicture by remember(text) { mutableStateOf<WordPicture?>(null) }
+    var isPictureLoading by remember(text) { mutableStateOf(false) }
     val simplifyErrorMessage = stringResource(R.string.reader_simplify_error)
     val paragraphs = remember(text, backendWords) { buildReadingParagraphs(text, backendWords) }
     val words = remember(paragraphs) { paragraphs.flatMap { paragraph -> paragraph.words } }
@@ -236,7 +243,21 @@ fun PremiumReadingScreen(
             ReadingTextFlow(
                 paragraphs = paragraphs,
                 state = state,
-                onWordClick = { index -> ttsController.playFrom(index) },
+                onWordClick = { index ->
+                    // Tapping a word both reads it aloud and, when it is a noun, shows what it
+                    // means. The picture is what a child who cannot yet decode the word needs;
+                    // the audio is what they need to say it.
+                    ttsController.playFrom(index)
+                    val tapped = words.getOrNull(index)?.value?.original
+                    if (tapped != null) {
+                        pictureWord = tapped
+                        coroutineScope.launch {
+                            wordPicture = runCatching { onLookUpWordPicture(tapped) }.getOrNull()
+                            isPictureLoading = false
+                        }
+                        isPictureLoading = true
+                    }
+                },
                 onSimplifyRequest = ::requestSimplification
             )
 
@@ -271,6 +292,23 @@ fun PremiumReadingScreen(
         AiHelpSheet(
             state = aiHelpState,
             onDismissRequest = onDismissAiHelp
+        )
+    }
+
+    // Shown only once a picture is actually in hand. A dialog that opens on every tap and then
+    // says "nothing here" for most words would make tapping feel broken, so a word with no
+    // picture simply reads itself aloud and nothing appears.
+    val picture = wordPicture
+    if (!isPictureLoading && picture != null && pictureWord != null) {
+        WordPictureDialog(
+            word = picture.word.ifBlank { pictureWord.orEmpty() },
+            imageUrl = picture.imageUrl,
+            attribution = picture.attribution,
+            licenseName = picture.licenseName,
+            onDismiss = {
+                pictureWord = null
+                wordPicture = null
+            }
         )
     }
 }

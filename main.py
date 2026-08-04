@@ -20,7 +20,16 @@ from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
 from backend.app.database import check_database_ready, init_database, using_runtime_sqlite_fallback
-from backend.app.routers import ai, exercises, progress, screening, simplify, users
+from backend.app.routers import (
+    ai,
+    catalog,
+    exercises,
+    progress,
+    screening,
+    simplify,
+    users,
+    word_picture,
+)
 from backend.app.services.adaptation_service import build_adaptation_payload
 from backend.app.services.document_extraction import (
     extension_of,
@@ -304,6 +313,8 @@ app.include_router(users.router)
 app.include_router(exercises.router)
 app.include_router(screening.router)
 app.include_router(progress.router)
+app.include_router(catalog.router)
+app.include_router(word_picture.router)
 app.include_router(simplify.router)
 app.include_router(ai.router)
 

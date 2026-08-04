@@ -231,3 +231,43 @@ class AiGenerateResponse(BaseModel):
 class AiGenerateErrorResponse(BaseModel):
     success: bool = False
     error: str
+
+
+class CatalogBookSummary(BaseModel):
+    id: str
+    title: str
+    author: str
+    language: str
+    grade: int
+    page_count: int
+    word_count: int
+    source_url: str
+    work_license: str
+    edition_license: str
+
+
+class CatalogListResponse(BaseModel):
+    status: str
+    count: int
+    books: list[CatalogBookSummary]
+
+
+class CatalogPage(BaseModel):
+    page_number: int
+    text: str
+
+
+class CatalogBookResponse(CatalogBookSummary):
+    status: str
+    pages: list[CatalogPage]
+
+
+class WordPictureResponse(BaseModel):
+    status: str
+    found: bool
+    is_noun: bool
+    word: str | None = None
+    image_url: str | None = None
+    page_url: str | None = None
+    attribution: str | None = None
+    license_name: str | None = None
