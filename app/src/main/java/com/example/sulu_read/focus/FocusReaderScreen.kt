@@ -99,6 +99,10 @@ fun FocusReaderScreen(
     var micDenied by remember { mutableStateOf(false) }
     // Distinguishes "said nothing" from "said the wrong thing" once a session ends.
     var heardAnySpeech by remember { mutableStateOf(false) }
+    // A session that ended almost as soon as it opened is a device refusing, not a reader
+    // pausing. Only that case is worth waiting before retrying; pausing after an ordinary
+    // session just adds dead air between one word and the next.
+    var wasInstantFailure by remember { mutableStateOf(false) }
 
     val speechGate = remember(context) { SpeechGate(context) }
     // Starts optimistic. SpeechRecognizer.isRecognitionAvailable() returns false on devices
@@ -107,6 +111,13 @@ fun FocusReaderScreen(
     var micUnavailable by remember(context) { mutableStateOf(false) }
     DisposableEffect(speechGate) {
         onDispose { speechGate.release() }
+    }
+
+    // Binding to the recognition service takes real time. Doing it here rather than inside the
+    // first session keeps that cost off the reader's first word, which is the one where a delay
+    // reads as the app being broken.
+    LaunchedEffect(speechGate, languageCode) {
+        speechGate.prepare(languageCode)
     }
 
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
@@ -189,7 +200,9 @@ fun FocusReaderScreen(
         if (!isSessionActive || isSpeaking || currentWord == null) {
             return@LaunchedEffect
         }
-        delay(SESSION_RESTART_DELAY_MILLIS)
+        if (wasInstantFailure) {
+            delay(SESSION_RESTART_DELAY_MILLIS)
+        }
 
         // Transcript tokens already credited to a word. The engine keeps revising one growing
         // transcript, so without this the same spoken word would be offered again for the next
@@ -241,6 +254,7 @@ fun FocusReaderScreen(
                         showTryAgain = true
                     }
                 }
+                wasInstantFailure = hypotheses.isEmpty() && !heardAnySpeech
                 heardAnySpeech = false
                 listenAttempt += 1
             },
