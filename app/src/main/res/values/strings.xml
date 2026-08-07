@@ -62,7 +62,6 @@
     <string name="training_feedback_saved_detail">The answer is saved locally and will sync when possible.</string>
     <string name="training_sync_synced">All answers synced</string>
     <string name="training_sync_pending">Pending sync: %1$d</string>
-    <string name="training_attempt_saved_pending">Saved offline. It will sync when the connection returns.</string>
 
     <string name="progress_title">Progress</string>
     <string name="progress_profile_loading">Preparing profile...</string>
@@ -104,7 +103,6 @@
     <string name="profile_student">Student: %1$s</string>
     <string name="profile_username">Username: %1$s</string>
     <string name="profile_user_id">User ID: %1$s</string>
-    <string name="profile_backend_language">Backend language: %1$s</string>
     <string name="profile_selected_language">Selected language: %1$s</string>
 
     <string name="document_status_camera_ready">Textbook page is ready. Sulu-Read is sending it for adaptation.</string>
@@ -196,7 +194,6 @@
     <string name="word_picture_unavailable">The picture could not be loaded</string>
     <string name="catalog_title">Library</string>
     <string name="catalog_subtitle">Ready-made books, already prepared for reading</string>
-    <string name="catalog_open">Library</string>
     <string name="catalog_empty">No books for this language yet</string>
     <string name="catalog_loading">Opening the library…</string>
     <string name="catalog_book_meta">Grade %1$d · %2$d pages</string>

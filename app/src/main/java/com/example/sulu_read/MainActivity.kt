@@ -104,6 +104,17 @@ import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.focus.FocusReaderScreen
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
+import com.example.sulu_read.ui.theme.DeepSageGreen
+import com.example.sulu_read.ui.theme.FieldSurface
+import com.example.sulu_read.ui.theme.SoftMint
+import com.example.sulu_read.ui.theme.SoftSage
+import com.example.sulu_read.ui.theme.SoftSageBorder
+import com.example.sulu_read.ui.theme.TextMuted
+import com.example.sulu_read.ui.theme.TextPrimary
+import com.example.sulu_read.ui.theme.WarmCream
+import com.example.sulu_read.ui.theme.WarningSurface
+import com.example.sulu_read.ui.theme.WelcomeBorder
+import com.example.sulu_read.ui.theme.WelcomeSurface
 import com.example.sulu_read.ui.screens.AiHelpState
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
 import com.google.mlkit.vision.documentscanner.GmsDocumentScanning
@@ -143,22 +154,13 @@ private val BOOK_MIME_TYPES = arrayOf(
 )
 private const val UPLOAD_JPEG_QUALITY = 86
 
-private val WarmCream = Color(0xFFFFFDF6)
-private val DeepSageGreen = Color(0xFF2E6F40)
-private val SoftMint = Color(0xFFEAF5ED)
-private val SoftSageBorder = Color(0xFFCFE3D4)
-private val TextPrimary = Color(0xFF2B2A24)
-private val TextMuted = Color(0xFF6A665D)
-private val FieldSurface = Color(0xFFFFFCF4)
-private val WelcomeSurface = Color(0xFFFFF7E7)
-private val WarningSurface = Color(0xFFFFF3DF)
 
 private val SuluReadColorScheme = lightColorScheme(
     primary = DeepSageGreen,
     onPrimary = Color.White,
     primaryContainer = SoftMint,
     onPrimaryContainer = TextPrimary,
-    secondary = Color(0xFF6C8F73),
+    secondary = SoftSage,
     onSecondary = Color.White,
     secondaryContainer = SoftMint,
     onSecondaryContainer = TextPrimary,
@@ -442,6 +444,20 @@ fun SuluReadRoute(
         appState = AppState.Home
     }
 
+    // Reached from two places — the home screen card and the document sheet — so it lives here
+    // rather than being written out at each of them.
+    fun openCatalog() {
+        showDocumentSheet = false
+        appState = AppState.Catalog
+        isCatalogLoading = true
+        coroutineScope.launch {
+            catalogBooks = SuluReadApiClient.fetchCatalog(
+                AppLanguage.backendHintFor(languageCode)
+            )
+            isCatalogLoading = false
+        }
+    }
+
     fun runAdaptation(request: PendingAdaptationRequest) {
         adaptationRunId += 1
         val runId = adaptationRunId
@@ -708,6 +724,7 @@ fun SuluReadRoute(
                     errorMessage = null
                 },
                 onScanClick = { showDocumentSheet = true },
+            onLibraryClick = ::openCatalog,
                 selectedDocumentUri = selectedDocumentUri,
                 selectedDocumentSource = selectedDocumentSource,
                 documentStatus = documentStatus,
@@ -817,17 +834,7 @@ fun SuluReadRoute(
                 showDocumentSheet = false
                 bookPickerLauncher.launch(BOOK_MIME_TYPES)
             },
-            onCatalogClick = {
-                showDocumentSheet = false
-                appState = AppState.Catalog
-                isCatalogLoading = true
-                coroutineScope.launch {
-                    catalogBooks = SuluReadApiClient.fetchCatalog(
-                        AppLanguage.backendHintFor(languageCode)
-                    )
-                    isCatalogLoading = false
-                }
-            }
+            onCatalogClick = ::openCatalog
         )
     }
 
@@ -856,6 +863,7 @@ private fun SuluReadHomeScreen(
     onWebLinkChange: (String) -> Unit,
     onClearWebLink: () -> Unit,
     onScanClick: () -> Unit,
+    onLibraryClick: () -> Unit,
     selectedDocumentUri: Uri?,
     selectedDocumentSource: DocumentSource?,
     documentStatus: String?,
@@ -872,6 +880,7 @@ private fun SuluReadHomeScreen(
     ) {
         HeaderSection()
         ScanTextbookCard(onClick = onScanClick)
+        LibraryCard(onClick = onLibraryClick)
         DocumentStatusCard(
             selectedDocumentUri = selectedDocumentUri,
             selectedDocumentSource = selectedDocumentSource,
@@ -1357,7 +1366,7 @@ private fun HeaderSection() {
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = WelcomeSurface),
-            border = BorderStroke(1.dp, Color(0xFFF1DFC1)),
+            border = BorderStroke(1.dp, WelcomeBorder),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Row(
@@ -1387,6 +1396,63 @@ private fun HeaderSection() {
                     text = stringResource(R.string.home_support_message),
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextPrimary
+                )
+            }
+        }
+    }
+}
+
+/**
+ * Opening a ready-made book.
+ *
+ * Deliberately a peer of the scan card rather than an item inside the camera sheet: a reader who
+ * wants a book that is already prepared has no reason to look behind a camera button for it, and
+ * this is the one route into the app that needs no photograph, no file and no waiting.
+ */
+@Composable
+private fun LibraryCard(onClick: () -> Unit) {
+    Card(
+        onClick = onClick,
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 96.dp),
+        shape = RoundedCornerShape(24.dp),
+        colors = CardDefaults.cardColors(containerColor = FieldSurface),
+        border = BorderStroke(1.dp, SoftSageBorder)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(20.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .clip(CircleShape)
+                    .background(SoftMint),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.MenuBook,
+                    contentDescription = null,
+                    tint = DeepSageGreen,
+                    modifier = Modifier.size(28.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(16.dp))
+
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = stringResource(R.string.catalog_title),
+                    style = MaterialTheme.typography.titleLarge,
+                    color = TextPrimary
+                )
+                Text(
+                    text = stringResource(R.string.catalog_subtitle),
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextMuted
                 )
             }
         }
@@ -2239,6 +2305,7 @@ private fun SuluReadHomeScreenPreview() {
             onWebLinkChange = {},
             onClearWebLink = {},
             onScanClick = {},
+            onLibraryClick = {},
             selectedDocumentUri = null,
             selectedDocumentSource = null,
             documentStatus = null,

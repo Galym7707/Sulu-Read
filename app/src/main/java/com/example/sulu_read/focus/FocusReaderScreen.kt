@@ -45,7 +45,6 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
@@ -58,11 +57,11 @@ import com.example.sulu_read.audio.applyNaturalVoice
 import com.example.sulu_read.audio.detectSpeechLanguageCode
 import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.ui.screens.AiHelpState
+import com.example.sulu_read.ui.theme.FieldSurface
+import com.example.sulu_read.ui.theme.ListeningColor
+import com.example.sulu_read.ui.theme.TryAgainColor
 import kotlinx.coroutines.delay
 
-private val ScenePanelBackground = Color(0xFFFFFCF4)
-private val ListeningColor = Color(0xFF2E6F40)
-private val TryAgainColor = Color(0xFFA24A1E)
 
 private const val PROGRESS_BAR_HEIGHT_DP = 12
 
@@ -327,8 +326,16 @@ fun FocusReaderScreen(
             text = stringResource(R.string.focus_mode_title),
             style = MaterialTheme.typography.titleMedium
         )
-        // A bar rather than a percentage. "62%" is a number a child has to interpret; a bar
-        // that is a bit further along than last time is read without being taught.
+        Text(
+            text = stringResource(
+                R.string.focus_progress,
+                (ladder.masteryShare() * 100).toInt()
+            ),
+            style = MaterialTheme.typography.bodyMedium
+        )
+        // The bar carries the meaning and the line above names it. A bar on its own leaves the
+        // reader guessing what it measures, and a percentage on its own is a number a child has
+        // to interpret; together each covers the other's weakness.
         LinearProgressIndicator(
             progress = { ladder.masteryShare() },
             modifier = Modifier
@@ -485,7 +492,7 @@ private fun MeaningHint(aiHelpState: AiHelpState, onDismissHint: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(ScenePanelBackground)
+            .background(FieldSurface)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -526,7 +533,7 @@ private fun PausePanel(onContinue: () -> Unit) {
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .background(ScenePanelBackground)
+            .background(FieldSurface)
             .padding(14.dp),
         verticalArrangement = Arrangement.spacedBy(10.dp)
     ) {

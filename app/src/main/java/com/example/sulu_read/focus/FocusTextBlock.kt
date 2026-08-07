@@ -22,8 +22,11 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onSizeChanged
+import com.example.sulu_read.ui.theme.FocusHighlight
+import com.example.sulu_read.ui.theme.FocusWordColor
+import com.example.sulu_read.ui.theme.ReadingSurface
+import com.example.sulu_read.ui.theme.RestingWordColor
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLayoutResult
@@ -34,9 +37,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
-internal val FocusHighlight = Color(0xFFFFD54F)
-internal val FocusWordColor = Color(0xFF14110C)
-internal val RestingWordColor = Color(0xFF3F3A33)
 
 // The word being read is set well above the surrounding text rather than a notch above it.
 // A difference a reader has to look for is not a cue; at half again the resting size the eye
@@ -114,7 +114,9 @@ fun FocusTextBlock(
             .fillMaxWidth()
             .heightIn(max = BLOCK_MAX_HEIGHT_DP.dp)
             .clip(RoundedCornerShape(18.dp))
-            .background(Color.White)
+            // Not white. A white page under a bright screen is a documented source of visual
+            // stress for dyslexic readers, and this is the surface they look at longest.
+            .background(ReadingSurface)
             .padding(BLOCK_PADDING_DP.dp)
             .onSizeChanged { viewportHeight = it.height }
     ) {

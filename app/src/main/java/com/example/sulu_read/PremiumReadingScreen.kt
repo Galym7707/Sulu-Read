@@ -89,6 +89,9 @@ import com.example.sulu_read.audio.detectSpeechLanguageCode
 import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.ui.components.WordPictureDialog
+import com.example.sulu_read.ui.theme.FieldSurface
+import com.example.sulu_read.ui.theme.PlaybackHighlight
+import com.example.sulu_read.ui.theme.SoftSageBorder
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -108,11 +111,8 @@ private const val NO_PLAYING_WORD = -1
 
 private val DeepBlueBlack = Color(0xFF1A237E)
 private val DarkSlateGray = Color(0xFF37474F)
-private val PlaybackHighlight = Color(0xFFFFF9C4)
 private val RulerHighlight = Color(0xFFFFD166).copy(alpha = 0.26f)
 private val RulerEdge = Color(0xFF8A6D1D).copy(alpha = 0.42f)
-private val ControlPanelBackground = Color(0xFFFFFCF4)
-private val ControlPanelBorder = Color(0xFFCFE3D4)
 
 @Stable
 private class ReadingScreenState(
@@ -325,7 +325,7 @@ private fun ReadingControls(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(18.dp))
-            .background(ControlPanelBackground)
+            .background(FieldSurface)
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
@@ -345,7 +345,7 @@ private fun ReadingControls(
             onValueChange = { state.lineHeight = it.coerceIn(20f, 48f) }
         )
 
-        HorizontalDivider(color = ControlPanelBorder)
+        HorizontalDivider(color = SoftSageBorder)
 
         Row(
             modifier = Modifier.fillMaxWidth(),

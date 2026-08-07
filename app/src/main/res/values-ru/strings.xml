@@ -62,7 +62,6 @@
     <string name="training_feedback_saved_detail">Ответ сохранён на устройстве и отправится при подключении.</string>
     <string name="training_sync_synced">Все ответы синхронизированы</string>
     <string name="training_sync_pending">Ожидают синхронизации: %1$d</string>
-    <string name="training_attempt_saved_pending">Сохранено офлайн. Ответ отправится при восстановлении соединения.</string>
 
     <string name="progress_title">Прогресс</string>
     <string name="progress_profile_loading">Профиль загружается...</string>
@@ -104,7 +103,6 @@
     <string name="profile_student">Ученик: %1$s</string>
     <string name="profile_username">Логин: %1$s</string>
     <string name="profile_user_id">ID пользователя: %1$s</string>
-    <string name="profile_backend_language">Язык профиля: %1$s</string>
     <string name="profile_selected_language">Выбранный язык: %1$s</string>
     <string name="document_status_camera_ready">Страница учебника готова. Sulu-Read отправляет ее на обработку.</string>
     <string name="document_status_gallery_ready">Фото учебника загружено. Sulu-Read отправляет его на обработку.</string>
@@ -195,7 +193,6 @@
     <string name="word_picture_unavailable">Не удалось загрузить картинку</string>
     <string name="catalog_title">Библиотека</string>
     <string name="catalog_subtitle">Готовые книги, уже подготовленные для чтения</string>
-    <string name="catalog_open">Библиотека</string>
     <string name="catalog_empty">Для этого языка книг пока нет</string>
     <string name="catalog_loading">Открываем библиотеку…</string>
     <string name="catalog_book_meta">%1$d класс · %2$d стр.</string>

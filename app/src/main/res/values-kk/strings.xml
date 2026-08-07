@@ -2,7 +2,7 @@
     <string name="app_name">Sulu-Read</string>
     <string name="nav_reader">Оқу</string>
     <string name="nav_training">Жаттығу</string>
-    <string name="nav_progress">Прогресс</string>
+    <string name="nav_progress">Үлгерім</string>
     <string name="nav_settings">Баптаулар</string>
 
     <string name="reader_letter_spacing">Әріп аралығы</string>
@@ -62,11 +62,10 @@
     <string name="training_feedback_saved_detail">Жауап құрылғыда сақталды және қосылым болғанда жіберіледі.</string>
     <string name="training_sync_synced">Барлық жауап синхрондалды</string>
     <string name="training_sync_pending">Синхрондау күтіп тұр: %1$d</string>
-    <string name="training_attempt_saved_pending">Офлайн сақталды. Қосылым қалпына келгенде жіберіледі.</string>
 
-    <string name="progress_title">Прогресс</string>
+    <string name="progress_title">Үлгерім</string>
     <string name="progress_profile_loading">Профиль дайындалып жатыр...</string>
-    <string name="progress_loading">Прогресс жүктелуде...</string>
+    <string name="progress_loading">Үлгерім жүктелуде...</string>
     <string name="progress_empty">Әзірге дерек жоқ. Жаттығуды бастаңыз.</string>
     <string name="progress_total_exercises">Жаттығулар</string>
     <string name="progress_accuracy">Дәлдік</string>
@@ -104,7 +103,6 @@
     <string name="profile_student">Оқушы: %1$s</string>
     <string name="profile_username">Логин: %1$s</string>
     <string name="profile_user_id">Пайдаланушы ID: %1$s</string>
-    <string name="profile_backend_language">Профиль тілі: %1$s</string>
     <string name="profile_selected_language">Таңдалған тіл: %1$s</string>
     <string name="document_status_camera_ready">Оқулық беті дайын. Sulu-Read оны бейімдеуге жіберіп жатыр.</string>
     <string name="document_status_gallery_ready">Оқулық фотосы жүктелді. Sulu-Read оны бейімдеуге жіберіп жатыр.</string>
@@ -153,7 +151,7 @@
     <string name="api_connection_error">Sulu-Read серверінен жауап алу мүмкін болмады. Интернетті тексеріп, қайта көріңіз. Hugging Face-та алғашқы тану бірнеше минутқа созылуы мүмкін.</string>
     <string name="error_profile_create">Профиль жасау мүмкін болмады. Қосылымды тексеріңіз.</string>
     <string name="error_account_auth">Кіру немесе тіркелу мүмкін болмады. Логинді, құпия сөзді және қосылымды тексеріңіз.</string>
-    <string name="error_progress_load">Прогресті жүктеу мүмкін болмады.</string>
+    <string name="error_progress_load">Үлгерімді жүктеу мүмкін болмады.</string>
     <string name="error_training_load">Жаттығуларды жүктеу мүмкін болмады. Қайта көріңіз.</string>
     <string name="training_attempt_save_error">Жауап сақталмады. Қайта көріңіз.</string>
 
@@ -195,7 +193,6 @@
     <string name="word_picture_unavailable">Суретті жүктеу мүмкін болмады</string>
     <string name="catalog_title">Кітапхана</string>
     <string name="catalog_subtitle">Оқуға дайындалған кітаптар</string>
-    <string name="catalog_open">Кітапхана</string>
     <string name="catalog_empty">Бұл тілде кітаптар әзірге жоқ</string>
     <string name="catalog_loading">Кітапхана ашылуда…</string>
     <string name="catalog_book_meta">%1$d сынып · %2$d бет</string>
