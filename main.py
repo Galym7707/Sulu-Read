@@ -464,7 +464,7 @@ async def adapt_image(
         return build_adapted_response(
             source="image",
             text=extracted_text,
-            title=file.filename,
+            title=None,
         )
     except Exception:
         logger.exception("Image adaptation failed")
@@ -525,7 +525,7 @@ async def adapt_file(
         return AdaptedBookResponse(
             status="success",
             source="file",
-            title=file.filename,
+            title=title_from_filename(file.filename),
             page_count=len(pages),
             pages=pages,
             truncated=truncated,
@@ -608,6 +608,20 @@ async def recognise_page_image(request: Request, page_png: bytes, language_hint:
 
     extracted_text = apply_ocr_correction(extracted_text, language_hint)
     return service_clean_ocr_text(extracted_text)
+
+
+def title_from_filename(filename: str | None) -> str | None:
+    """A readable book title from an uploaded file name.
+
+    Drops the extension and tidies the separators a file name usually carries. Returns None when
+    nothing readable is left, so the client falls back to its own localized label rather than
+    showing something like "scan-001".
+    """
+    if not filename:
+        return None
+    stem = filename.rsplit(".", 1)[0] if "." in filename else filename
+    stem = re.sub(r"[_\-]+", " ", stem).strip()
+    return stem or None
 
 
 def error_response(message: str, status_code: int = 200) -> JSONResponse:

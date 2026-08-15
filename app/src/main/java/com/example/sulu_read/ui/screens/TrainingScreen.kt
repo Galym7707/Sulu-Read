@@ -62,6 +62,12 @@ import com.example.sulu_read.ui.components.ErrorState
 import com.example.sulu_read.ui.components.LoadingState
 import com.example.sulu_read.ui.components.SuluCard
 import com.example.sulu_read.ui.components.OptionChip
+import com.example.sulu_read.ui.theme.CorrectColor
+import com.example.sulu_read.ui.theme.IncorrectColor
+import com.example.sulu_read.ui.theme.SkillDecoding
+import com.example.sulu_read.ui.theme.SkillMorphology
+import com.example.sulu_read.ui.theme.SkillPhonology
+import com.example.sulu_read.ui.theme.SkillVisual
 
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -310,7 +316,7 @@ private fun TrainingCompletePanel(onStart: () -> Unit) {
         Icon(
             imageVector = Icons.Default.CheckCircle,
             contentDescription = null,
-            tint = Color(0xFF2F7D49),
+            tint = CorrectColor,
             modifier = Modifier.size(36.dp)
         )
         Spacer(modifier = Modifier.height(10.dp))
@@ -563,8 +569,8 @@ private fun WordFocus(text: String) {
 @Composable
 private fun FeedbackMessage(text: String, isCorrect: Boolean?, accent: Color) {
     val targetColor = when (isCorrect) {
-        true -> Color(0xFF2F7D49)
-        false -> Color(0xFF93621A)
+        true -> CorrectColor
+        false -> IncorrectColor
         null -> accent
     }
     val feedbackColor by animateColorAsState(
@@ -763,9 +769,9 @@ private fun exerciseInsight(exercise: Exercise): ExerciseInsight {
 
 private fun skillAccent(skill: TrainingSkill): Color {
     return when (skill) {
-        TrainingSkill.Phonology -> Color(0xFF2D776F)
-        TrainingSkill.Decoding -> Color(0xFF3F5F8F)
-        TrainingSkill.Visual -> Color(0xFF6A4F8F)
-        TrainingSkill.Morphology -> Color(0xFF8A4C62)
+        TrainingSkill.Phonology -> SkillPhonology
+        TrainingSkill.Decoding -> SkillDecoding
+        TrainingSkill.Visual -> SkillVisual
+        TrainingSkill.Morphology -> SkillMorphology
     }
 }

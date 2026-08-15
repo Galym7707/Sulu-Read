@@ -197,4 +197,6 @@
     <string name="catalog_loading">Открываем библиотеку…</string>
     <string name="catalog_book_meta">%1$d класс · %2$d стр.</string>
     <string name="catalog_source_note">Текст: %1$s. Издание: %2$s, Wikisource.</string>
+    <string name="catalog_failed">Не удалось открыть библиотеку. Проверьте подключение.</string>
+    <string name="catalog_retry">Повторить</string>
 </resources>

@@ -37,12 +37,15 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.MenuBook
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.CameraAlt
@@ -104,16 +107,19 @@ import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.focus.FocusReaderScreen
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
-import com.example.sulu_read.ui.theme.DeepSageGreen
+import com.example.sulu_read.ui.theme.AccentBlue
 import com.example.sulu_read.ui.theme.FieldSurface
-import com.example.sulu_read.ui.theme.SoftMint
-import com.example.sulu_read.ui.theme.SoftSage
-import com.example.sulu_read.ui.theme.SoftSageBorder
+import com.example.sulu_read.ui.theme.AccentTint
+import com.example.sulu_read.ui.theme.AccentBlueSoft
+import com.example.sulu_read.ui.theme.CardBorder
+import com.example.sulu_read.ui.theme.CardSurface
 import com.example.sulu_read.ui.theme.TextMuted
 import com.example.sulu_read.ui.theme.TextPrimary
-import com.example.sulu_read.ui.theme.WarmCream
+import com.example.sulu_read.ui.theme.PageBackground
+import com.example.sulu_read.ui.theme.WarningBorder
+import com.example.sulu_read.ui.theme.WarningIcon
 import com.example.sulu_read.ui.theme.WarningSurface
-import com.example.sulu_read.ui.theme.WelcomeBorder
+import com.example.sulu_read.ui.theme.AccentBorder
 import com.example.sulu_read.ui.theme.WelcomeSurface
 import com.example.sulu_read.ui.screens.AiHelpState
 import com.google.mlkit.vision.documentscanner.GmsDocumentScannerOptions
@@ -138,6 +144,11 @@ import kotlin.math.max
 
 private const val CONNECT_TIMEOUT_MS = 20_000
 private const val READ_TIMEOUT_MS = 270_000
+
+// Small JSON reads: the catalogue listing, a book, a word picture. A backend that is asleep or
+// unreachable has to be given up on quickly enough that the reader can be told.
+private const val FETCH_CONNECT_TIMEOUT_MS = 12_000
+private const val FETCH_READ_TIMEOUT_MS = 25_000
 private const val ADAPTATION_TIMEOUT_MS = 300_000L
 private const val MAX_UPLOAD_IMAGE_SIDE = 1800
 
@@ -156,22 +167,26 @@ private const val UPLOAD_JPEG_QUALITY = 86
 
 
 private val SuluReadColorScheme = lightColorScheme(
-    primary = DeepSageGreen,
+    primary = AccentBlue,
     onPrimary = Color.White,
-    primaryContainer = SoftMint,
+    primaryContainer = AccentTint,
     onPrimaryContainer = TextPrimary,
-    secondary = SoftSage,
+    secondary = AccentBlueSoft,
     onSecondary = Color.White,
-    secondaryContainer = SoftMint,
+    secondaryContainer = AccentTint,
     onSecondaryContainer = TextPrimary,
-    background = WarmCream,
+    background = PageBackground,
     onBackground = TextPrimary,
-    surface = WarmCream,
+    // Material's "surface" is what cards and sheets sit on, not the page. Both were previously
+    // the page colour, so every screen that reaches for colorScheme.surface — the reader's
+    // panels, the training answer buttons — painted its cards in the page colour and they
+    // disappeared into it.
+    surface = CardSurface,
     onSurface = TextPrimary,
-    surfaceVariant = SoftMint,
+    surfaceVariant = AccentTint,
     onSurfaceVariant = TextMuted,
-    outline = SoftSageBorder,
-    outlineVariant = SoftSageBorder
+    outline = CardBorder,
+    outlineVariant = CardBorder
 )
 
 private val SuluReadTypography = Typography(
@@ -434,6 +449,7 @@ fun SuluReadRoute(
     var adaptationJob by remember { mutableStateOf<Job?>(null) }
     var catalogBooks by remember { mutableStateOf<List<CatalogBook>>(emptyList()) }
     var isCatalogLoading by remember { mutableStateOf(false) }
+    var catalogFailed by remember { mutableStateOf(false) }
 
     fun cancelAdaptation() {
         adaptationRunId += 1
@@ -450,10 +466,11 @@ fun SuluReadRoute(
         showDocumentSheet = false
         appState = AppState.Catalog
         isCatalogLoading = true
+        catalogFailed = false
         coroutineScope.launch {
-            catalogBooks = SuluReadApiClient.fetchCatalog(
-                AppLanguage.backendHintFor(languageCode)
-            )
+            val books = SuluReadApiClient.fetchCatalog(AppLanguage.backendHintFor(languageCode))
+            catalogBooks = books.orEmpty()
+            catalogFailed = books == null
             isCatalogLoading = false
         }
     }
@@ -756,6 +773,8 @@ fun SuluReadRoute(
                 modifier = modifier,
                 books = catalogBooks,
                 isLoading = isCatalogLoading,
+                hasFailed = catalogFailed,
+                onRetry = ::openCatalog,
                 onOpenBook = { book ->
                     appState = AppState.Loading
                     coroutineScope.launch {
@@ -910,7 +929,7 @@ private fun CameraScanScreen(
     ) {
         CircularProgressIndicator(
             modifier = Modifier.size(56.dp),
-            color = DeepSageGreen,
+            color = AccentBlue,
             strokeWidth = 5.dp
         )
 
@@ -945,7 +964,7 @@ private fun LoadingScreen(
     ) {
         CircularProgressIndicator(
             modifier = Modifier.size(64.dp),
-            color = DeepSageGreen,
+            color = AccentBlue,
             strokeWidth = 5.dp
         )
 
@@ -976,57 +995,72 @@ private fun CatalogScreen(
     modifier: Modifier = Modifier,
     books: List<CatalogBook>,
     isLoading: Boolean,
+    hasFailed: Boolean,
+    onRetry: () -> Unit,
     onOpenBook: (CatalogBook) -> Unit,
     onBackHome: () -> Unit
 ) {
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 20.dp, vertical = 22.dp),
-        verticalArrangement = Arrangement.spacedBy(14.dp)
+            .padding(horizontal = 20.dp)
+            .padding(top = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = stringResource(R.string.catalog_title),
-                    style = MaterialTheme.typography.headlineSmall,
-                    color = TextPrimary
-                )
-                Text(
-                    text = stringResource(R.string.catalog_subtitle),
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TextMuted
+        // A back arrow and the title on one line. The previous version put a long subtitle in a
+        // narrow column beside a text button, so the subtitle wrapped over three lines and
+        // collided with the button.
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            IconButton(onClick = onBackHome, modifier = Modifier.size(44.dp)) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = stringResource(R.string.reader_back_home),
+                    tint = TextPrimary
                 )
             }
-            Spacer(modifier = Modifier.width(12.dp))
-            TextButton(onClick = onBackHome) {
-                Text(text = stringResource(R.string.reader_back_home))
-            }
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = stringResource(R.string.catalog_title),
+                style = MaterialTheme.typography.headlineSmall,
+                color = TextPrimary
+            )
         }
 
         when {
-            isLoading -> Text(
-                text = stringResource(R.string.catalog_loading),
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextMuted
-            )
+            isLoading -> CatalogNotice(stringResource(R.string.catalog_loading))
 
-            books.isEmpty() -> Text(
-                text = stringResource(R.string.catalog_empty),
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextMuted
-            )
+            hasFailed -> Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                CatalogNotice(stringResource(R.string.catalog_failed))
+                Button(
+                    onClick = onRetry,
+                    shape = RoundedCornerShape(14.dp),
+                    modifier = Modifier.heightIn(min = 52.dp)
+                ) {
+                    Text(text = stringResource(R.string.catalog_retry))
+                }
+            }
 
-            else -> books.forEach { book ->
-                CatalogBookCard(book = book, onClick = { onOpenBook(book) })
+            books.isEmpty() -> CatalogNotice(stringResource(R.string.catalog_empty))
+
+            else -> LazyColumn(
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = PaddingValues(bottom = 24.dp)
+            ) {
+                items(books, key = { it.id }) { book ->
+                    CatalogBookCard(book = book, onClick = { onOpenBook(book) })
+                }
             }
         }
     }
+}
+
+@Composable
+private fun CatalogNotice(message: String) {
+    Text(
+        text = message,
+        style = MaterialTheme.typography.bodyLarge,
+        color = TextMuted
+    )
 }
 
 @Composable
@@ -1038,7 +1072,7 @@ private fun CatalogBookCard(book: CatalogBook, onClick: () -> Unit) {
             .heightIn(min = 88.dp),
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = FieldSurface),
-        border = BorderStroke(1.dp, SoftSageBorder)
+        border = BorderStroke(1.dp, CardBorder)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
@@ -1057,15 +1091,6 @@ private fun CatalogBookCard(book: CatalogBook, onClick: () -> Unit) {
             Text(
                 text = stringResource(R.string.catalog_book_meta, book.grade, book.pageCount),
                 style = MaterialTheme.typography.bodyMedium,
-                color = TextMuted
-            )
-            Text(
-                text = stringResource(
-                    R.string.catalog_source_note,
-                    book.workLicense,
-                    book.editionLicense
-                ),
-                style = MaterialTheme.typography.bodySmall,
                 color = TextMuted
             )
         }
@@ -1332,7 +1357,7 @@ private fun ProcessingErrorDialog(
                 Text(text = stringResource(R.string.cancel))
             }
         },
-        containerColor = WarmCream,
+        containerColor = PageBackground,
         titleContentColor = TextPrimary,
         textContentColor = TextPrimary
     )
@@ -1366,7 +1391,7 @@ private fun HeaderSection() {
             modifier = Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(24.dp),
             colors = CardDefaults.cardColors(containerColor = WelcomeSurface),
-            border = BorderStroke(1.dp, WelcomeBorder),
+            border = BorderStroke(1.dp, AccentBorder),
             elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
         ) {
             Row(
@@ -1379,13 +1404,13 @@ private fun HeaderSection() {
                     modifier = Modifier
                         .size(46.dp)
                         .clip(CircleShape)
-                        .background(SoftMint),
+                        .background(AccentTint),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = DeepSageGreen,
+                        tint = AccentBlue,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -1418,7 +1443,7 @@ private fun LibraryCard(onClick: () -> Unit) {
             .heightIn(min = 96.dp),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = FieldSurface),
-        border = BorderStroke(1.dp, SoftSageBorder)
+        border = BorderStroke(1.dp, CardBorder)
     ) {
         Row(
             modifier = Modifier
@@ -1430,13 +1455,13 @@ private fun LibraryCard(onClick: () -> Unit) {
                 modifier = Modifier
                     .size(52.dp)
                     .clip(CircleShape)
-                    .background(SoftMint),
+                    .background(AccentTint),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
                     contentDescription = null,
-                    tint = DeepSageGreen,
+                    tint = AccentBlue,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -1470,8 +1495,8 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
                 onClick = onClick
             ),
         shape = RoundedCornerShape(24.dp),
-        colors = CardDefaults.cardColors(containerColor = SoftMint),
-        border = BorderStroke(1.5.dp, DeepSageGreen.copy(alpha = 0.22f)),
+        colors = CardDefaults.cardColors(containerColor = AccentTint),
+        border = BorderStroke(1.5.dp, AccentBlue.copy(alpha = 0.22f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
@@ -1485,7 +1510,7 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(DeepSageGreen),
+                    .background(AccentBlue),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1528,9 +1553,9 @@ private fun DocumentStatusCard(
     }
 
     val isReady = selectedDocumentUri != null
-    val containerColor = if (isReady) SoftMint else WarningSurface
-    val borderColor = if (isReady) SoftSageBorder else Color(0xFFE9C98D)
-    val iconColor = if (isReady) DeepSageGreen else Color(0xFF946B2D)
+    val containerColor = if (isReady) AccentTint else WarningSurface
+    val borderColor = if (isReady) CardBorder else WarningBorder
+    val iconColor = if (isReady) AccentBlue else WarningIcon
     val sourceText = when (selectedDocumentSource) {
         DocumentSource.Camera -> stringResource(R.string.document_status_source_camera)
         DocumentSource.Gallery -> stringResource(R.string.document_status_source_gallery)
@@ -1594,7 +1619,7 @@ private fun DocumentSourceSheet(
 ) {
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        containerColor = WarmCream,
+        containerColor = PageBackground,
         shape = RoundedCornerShape(topStart = 28.dp, topEnd = 28.dp)
     ) {
         Column(
@@ -1657,8 +1682,8 @@ private fun DocumentSourceAction(
                 onClick = onClick
             ),
         shape = RoundedCornerShape(20.dp),
-        colors = CardDefaults.cardColors(containerColor = SoftMint),
-        border = BorderStroke(1.dp, SoftSageBorder)
+        colors = CardDefaults.cardColors(containerColor = AccentTint),
+        border = BorderStroke(1.dp, CardBorder)
     ) {
         Row(
             modifier = Modifier
@@ -1670,7 +1695,7 @@ private fun DocumentSourceAction(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(DeepSageGreen),
+                    .background(AccentBlue),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1739,12 +1764,12 @@ private fun WebLinkAccessibilitySection(
                 imeAction = ImeAction.Done
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = DeepSageGreen,
-                unfocusedBorderColor = SoftSageBorder,
+                focusedBorderColor = AccentBlue,
+                unfocusedBorderColor = CardBorder,
                 focusedContainerColor = FieldSurface,
                 unfocusedContainerColor = FieldSurface,
-                cursorColor = DeepSageGreen,
-                focusedLabelColor = DeepSageGreen,
+                cursorColor = AccentBlue,
+                focusedLabelColor = AccentBlue,
                 unfocusedLabelColor = TextMuted,
                 focusedTextColor = TextPrimary,
                 unfocusedTextColor = TextPrimary,
@@ -1761,9 +1786,9 @@ private fun WebLinkAccessibilitySection(
                 .height(62.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = DeepSageGreen,
+                containerColor = AccentBlue,
                 contentColor = Color.White,
-                disabledContainerColor = DeepSageGreen.copy(alpha = 0.62f),
+                disabledContainerColor = AccentBlue.copy(alpha = 0.62f),
                 disabledContentColor = Color.White
             ),
             contentPadding = PaddingValues(horizontal = 22.dp)
@@ -1923,7 +1948,7 @@ private object SuluReadApiClient {
         }
 
     /** The ready-made library. Its books ship with the backend, so this is a plain GET. */
-    suspend fun fetchCatalog(languageHint: String): List<CatalogBook> = withContext(Dispatchers.IO) {
+    suspend fun fetchCatalog(languageHint: String): List<CatalogBook>? = withContext(Dispatchers.IO) {
         for (baseUrl in ApiClient.backendBaseUrls) {
             val books = runCatching {
                 val connection = openGetConnection("$baseUrl/v1/catalog?language_hint=$languageHint")
@@ -1954,7 +1979,9 @@ private object SuluReadApiClient {
                 return@withContext books
             }
         }
-        emptyList()
+        // null means "could not reach the library", which the screen has to distinguish from an
+        // empty shelf.
+        null
     }
 
     suspend fun fetchCatalogBook(context: Context, bookId: String): ApiResult = withContext(Dispatchers.IO) {
@@ -2036,8 +2063,11 @@ private object SuluReadApiClient {
     private fun openGetConnection(endpoint: String): HttpURLConnection {
         return (URL(endpoint).openConnection() as HttpURLConnection).apply {
             requestMethod = "GET"
-            connectTimeout = CONNECT_TIMEOUT_MS
-            readTimeout = READ_TIMEOUT_MS
+            // Deliberately not the upload timeouts. These reads are a few kilobytes of JSON, and
+            // borrowing the 4-minute upload budget meant an unreachable backend left the library
+            // screen saying "opening..." for minutes with nothing the reader could do.
+            connectTimeout = FETCH_CONNECT_TIMEOUT_MS
+            readTimeout = FETCH_READ_TIMEOUT_MS
             setRequestProperty("Accept", "application/json")
         }
     }

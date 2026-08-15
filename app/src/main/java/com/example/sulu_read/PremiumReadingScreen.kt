@@ -91,7 +91,11 @@ import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.ui.components.WordPictureDialog
 import com.example.sulu_read.ui.theme.FieldSurface
 import com.example.sulu_read.ui.theme.PlaybackHighlight
-import com.example.sulu_read.ui.theme.SoftSageBorder
+import com.example.sulu_read.ui.theme.ReaderTextColor
+import com.example.sulu_read.ui.theme.RulerBand
+import com.example.sulu_read.ui.theme.RulerEdgeColor
+import com.example.sulu_read.ui.theme.TextMuted
+import com.example.sulu_read.ui.theme.CardBorder
 import com.example.sulu_read.ui.screens.AiHelpState
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -109,10 +113,8 @@ private const val DEFAULT_LETTER_SPACING = 1.5f
 private const val DEFAULT_LINE_HEIGHT = 34f
 private const val NO_PLAYING_WORD = -1
 
-private val DeepBlueBlack = Color(0xFF1A237E)
-private val DarkSlateGray = Color(0xFF37474F)
-private val RulerHighlight = Color(0xFFFFD166).copy(alpha = 0.26f)
-private val RulerEdge = Color(0xFF8A6D1D).copy(alpha = 0.42f)
+private val RulerHighlight = RulerBand.copy(alpha = 0.26f)
+private val RulerEdge = RulerEdgeColor.copy(alpha = 0.42f)
 
 @Stable
 private class ReadingScreenState(
@@ -345,7 +347,7 @@ private fun ReadingControls(
             onValueChange = { state.lineHeight = it.coerceIn(20f, 48f) }
         )
 
-        HorizontalDivider(color = SoftSageBorder)
+        HorizontalDivider(color = CardBorder)
 
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -554,7 +556,7 @@ private fun ReaderWordChip(
 
     Text(
         text = indexedWord.value.original,
-        color = DeepBlueBlack,
+        color = ReaderTextColor,
         modifier = Modifier
             .clip(RoundedCornerShape(8.dp))
             .background(backgroundColor)

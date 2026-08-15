@@ -197,4 +197,6 @@
     <string name="catalog_loading">Кітапхана ашылуда…</string>
     <string name="catalog_book_meta">%1$d сынып · %2$d бет</string>
     <string name="catalog_source_note">Мәтін: %1$s. Басылым: %2$s, Wikisource.</string>
+    <string name="catalog_failed">Кітапхананы ашу мүмкін болмады. Қосылымды тексеріңіз.</string>
+    <string name="catalog_retry">Қайталау</string>
 </resources>

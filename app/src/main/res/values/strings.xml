@@ -198,4 +198,6 @@
     <string name="catalog_loading">Opening the library…</string>
     <string name="catalog_book_meta">Grade %1$d · %2$d pages</string>
     <string name="catalog_source_note">Text: %1$s. Edition: %2$s, Wikisource.</string>
+    <string name="catalog_failed">Could not reach the library. Check the connection.</string>
+    <string name="catalog_retry">Try again</string>
 </resources>
