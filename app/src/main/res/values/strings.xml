@@ -7,9 +7,6 @@
 
     <string name="reader_letter_spacing">Letter spacing</string>
     <string name="reader_line_height">Line height</string>
-    <string name="reader_read_aloud">Read aloud</string>
-    <string name="reader_start_reading">Start reading</string>
-    <string name="reader_stop_reading">Stop reading</string>
     <string name="reader_ruler">Reading ruler</string>
     <string name="reader_simplify_title">In simple words ✨</string>
     <string name="reader_simplify_loading">Simplifying text...</string>
@@ -121,11 +118,7 @@
     <string name="input_missing_link_or_scan">Paste a link or scan a textbook page.</string>
     <string name="camera_scan_instruction">Open the scanner, crop the page, and press Next.</string>
     <string name="common_back">Back</string>
-    <string name="reading_source_image">Source: textbook photo</string>
-    <string name="reading_source_url">Source: link</string>
-    <string name="reading_source_material">Source: material</string>
     <string name="reader_adapted_text_title">Adapted text</string>
-    <string name="reader_source_summary">%1$s · words: %2$d</string>
     <string name="reader_back_home">Home</string>
     <string name="reader_create_training_from_text">Create training from this text</string>
     <string name="home_tagline">See meaning, not just letters</string>
@@ -197,7 +190,9 @@
     <string name="catalog_empty">No books for this language yet</string>
     <string name="catalog_loading">Opening the library…</string>
     <string name="catalog_book_meta">Grade %1$d · %2$d pages</string>
-    <string name="catalog_source_note">Text: %1$s. Edition: %2$s, Wikisource.</string>
     <string name="catalog_failed">Could not reach the library. Check the connection.</string>
     <string name="catalog_retry">Try again</string>
+    <string name="tts_voice_missing">This phone has no voice for this language, so reading aloud will sound wrong. Install a voice in Settings → Language → Text-to-speech.</string>
+    <string name="reader_listen">Listen</string>
+    <string name="reader_settings">Reading settings</string>
 </resources>

@@ -11,11 +11,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -28,6 +27,7 @@ import androidx.compose.material.icons.filled.MicOff
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
@@ -54,6 +54,7 @@ import androidx.core.content.ContextCompat
 import com.example.sulu_read.R
 import com.example.sulu_read.ReaderWord
 import com.example.sulu_read.audio.applyNaturalVoice
+import com.example.sulu_read.audio.canSpeak
 import com.example.sulu_read.audio.detectSpeechLanguageCode
 import com.example.sulu_read.audio.speakCompat
 import com.example.sulu_read.ui.screens.AiHelpState
@@ -74,7 +75,6 @@ private const val MIN_TOUCH_TARGET_DP = 56
 // returns "heard nothing" instantly from spinning the recognizer in a tight loop.
 private const val SESSION_RESTART_DELAY_MILLIS = 120L
 
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 fun FocusReaderScreen(
     text: String,
@@ -121,8 +121,18 @@ fun FocusReaderScreen(
 
     val mainHandler = remember { Handler(Looper.getMainLooper()) }
     var textToSpeech by remember { mutableStateOf<TextToSpeech?>(null) }
-    DisposableEffect(context) {
-        val engine = TextToSpeech(context) {}
+    // Null until the engine has answered. A Kazakh reader on a phone with no Kazakh voice was
+    // simply given a Russian one, with nothing on screen saying so — the app knew and did not
+    // tell them.
+    var voiceMissing by remember(languageCode) { mutableStateOf(false) }
+    DisposableEffect(context, languageCode) {
+        lateinit var engine: TextToSpeech
+        engine = TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                val available = engine.canSpeak(languageCode)
+                mainHandler.post { voiceMissing = !available }
+            }
+        }
         // Utterance callbacks arrive off the main thread, so hop back before touching state.
         engine.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
@@ -306,7 +316,7 @@ fun FocusReaderScreen(
         val word = currentWord ?: return@LaunchedEffect
         when (ladder.step) {
             FocusStep.Letters -> {
-                speak(letterNamesFor(word.spoken).joinToString(" , "))
+                speak(letterNamesFor(word.spoken, detectSpeechLanguageCode(word.spoken, languageCode)).joinToString(" , "))
                 delay(SWEEP_FLASH_MILLIS * 4)
                 speak(word.spoken)
             }
@@ -392,7 +402,10 @@ fun FocusReaderScreen(
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Text(
-                        text = letterNamesFor(currentWord.spoken)
+                        text = letterNamesFor(
+                            currentWord.spoken,
+                            detectSpeechLanguageCode(currentWord.spoken, languageCode)
+                        )
                             .joinToString(" · "),
                         style = MaterialTheme.typography.titleMedium
                     )
@@ -416,18 +429,35 @@ fun FocusReaderScreen(
                 )
             }
 
-            Row(
+            if (voiceMissing) {
+                Text(
+                    text = stringResource(R.string.tts_voice_missing),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TryAgainColor
+                )
+            }
+
+            // Stacked, not side by side. Two weighted buttons in a row each get an exact half
+            // width, and the icon plus the button's own padding ate most of it before the label
+            // was measured — about 74dp of room for a label needing 84dp — so Compose broke the
+            // word instead: "Слушат" / "ь". Full-width buttons have no such constraint, they
+            // survive a large system font size, and two big stacked targets are easier for this
+            // reader to hit anyway.
+            Column(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+                verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
                 if (micUnavailable || micDenied) {
                     Button(
                         onClick = { finishWord(wasCorrect = true) },
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
-                        Text(text = stringResource(R.string.focus_i_read_it))
+                        Text(
+                            text = stringResource(R.string.focus_i_read_it),
+                            maxLines = 1
+                        )
                     }
                 } else {
                     Button(
@@ -440,19 +470,21 @@ fun FocusReaderScreen(
                             }
                         },
                         modifier = Modifier
-                            .weight(1f)
+                            .fillMaxWidth()
                             .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                     ) {
                         Icon(
                             imageVector = if (isSessionActive) Icons.Default.Stop else Icons.Default.Mic,
-                            contentDescription = null
+                            contentDescription = null,
+                            modifier = Modifier.size(ButtonDefaults.IconSize)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
+                        Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
                         Text(
                             text = stringResource(
                                 if (isSessionActive) R.string.focus_listen_stop
                                 else R.string.focus_listen_start
-                            )
+                            ),
+                            maxLines = 1
                         )
                     }
                 }
@@ -467,15 +499,16 @@ fun FocusReaderScreen(
                         )
                     },
                     modifier = Modifier
-                        .weight(1f)
+                        .fillMaxWidth()
                         .heightIn(min = MIN_TOUCH_TARGET_DP.dp)
                 ) {
                     Icon(
                         imageVector = Icons.Default.Lightbulb,
-                        contentDescription = null
+                        contentDescription = null,
+                        modifier = Modifier.size(ButtonDefaults.IconSize)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.focus_help))
+                    Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+                    Text(text = stringResource(R.string.focus_help), maxLines = 1)
                 }
             }
         }

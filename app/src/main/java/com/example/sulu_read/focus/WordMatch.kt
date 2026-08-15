@@ -4,20 +4,57 @@ import kotlin.math.min
 
 // Pairs a speech recognizer and a beginning reader confuse routinely. Folding both sides
 // through this map means such a swap costs nothing, while a real misreading still costs.
-private val FoldedLetters: Map<Char, Char> = mapOf(
+private val SharedFolds: Map<Char, Char> = mapOf(
     'ё' to 'е',
     'й' to 'и',
-    'ъ' to 'ь',
+    'ъ' to 'ь'
+)
+
+// Kazakh letters whose nearest Russian neighbour the recognizer writes when it is transcribing
+// in Russian. Near-allophonic: қ and ғ occur only in back-harmony words, к and г only in front-
+// harmony ones, so the pair is fixed by the rest of the word and confusing them cannot make one
+// real word into another. Safe to fold whenever the target is Kazakh.
+private val KazakhConsonantFolds: Map<Char, Char> = mapOf(
     'қ' to 'к',
     'ғ' to 'г',
     'ң' to 'н',
-    'һ' to 'х',
+    'һ' to 'х'
+)
+
+/**
+ * Kazakh vowels that Russian does not have, and і.
+ *
+ * These are phonemic: күн and құн, түс and тұс, сөз and соз, тіс and тыс, ол and өл are
+ * different words. Folding them unconditionally — which is what this file used to do — made the
+ * gate accept every one of those as a correct reading of the other, so the gate was strict for
+ * Russian and wide open for Kazakh, the exact inversion of what it is for.
+ *
+ * They are folded only when the recogniser has demonstrably not been transcribing in Kazakh: see
+ * [isRussianModeTranscript]. If it wrote a Kazakh letter anywhere, it could have written this
+ * distinction too, so a mismatch is evidence of a real misreading and has to cost.
+ */
+private val KazakhVowelFolds: Map<Char, Char> = mapOf(
     'ө' to 'о',
     'ұ' to 'у',
     'ү' to 'у',
     'ә' to 'а',
     'і' to 'ы'
 )
+
+private val KazakhSpecificLetters: Set<Char> =
+    (KazakhConsonantFolds.keys + KazakhVowelFolds.keys).toSet()
+
+/**
+ * True when a Kazakh word came back written in an alphabet that cannot express it.
+ *
+ * The recogniser is often running a Russian model — for a Kazakh word made only of shared
+ * letters, or when the language could not be set — and then it has no way to write ә, ө, ұ, ү or
+ * і at all. In that case a missing Kazakh vowel is the transcriber's limit, not the child's
+ * mistake, and folding is right. When the transcript does contain Kazakh letters, it is not.
+ */
+private fun isRussianModeTranscript(target: String, heard: String): Boolean {
+    return target.any { it in KazakhSpecificLetters } && heard.none { it in KazakhSpecificLetters }
+}
 
 // Word-final obstruents are devoiced in both Russian and Kazakh — "дуб" leaves the mouth as
 // "дуп" no matter who is speaking — so whichever of the pair the recognizer wrote down says
@@ -72,8 +109,19 @@ fun normalizeForMatch(raw: String): String {
         .filter { it.isLetterOrDigit() }
 }
 
-private fun fold(normalized: String): String {
-    return normalized.map { character -> FoldedLetters[character] ?: character }.joinToString("")
+/**
+ * @param foldKazakhVowels fold ә, ө, ұ, ү and і to their nearest Russian vowel. Only correct
+ *   when the recogniser could not have written them — see [isRussianModeTranscript].
+ */
+private fun fold(normalized: String, foldKazakhVowels: Boolean): String {
+    return normalized
+        .map { character ->
+            SharedFolds[character]
+                ?: KazakhConsonantFolds[character]
+                ?: (if (foldKazakhVowels) KazakhVowelFolds[character] else null)
+                ?: character
+        }
+        .joinToString("")
 }
 
 private fun toleranceFor(length: Int): Int = when {
@@ -110,8 +158,8 @@ private fun isLatin(value: String): Boolean {
  * Note this maps sounds, never vowel quality: "cat" and "cut" must stay distinct, because
  * telling those apart is the reading skill being trained.
  */
-internal fun phoneticKey(raw: String): String {
-    val folded = fold(normalizeForMatch(raw))
+internal fun phoneticKey(raw: String, foldKazakhVowels: Boolean = false): String {
+    val folded = fold(normalizeForMatch(raw), foldKazakhVowels)
     if (folded.isEmpty()) {
         return ""
     }
@@ -208,27 +256,34 @@ fun tokenizeTranscript(transcript: String): List<String> {
 }
 
 fun isSpokenWordAccepted(target: String, heardAlternatives: List<String>): Boolean {
-    val foldedTarget = fold(normalizeForMatch(target))
-    if (foldedTarget.isEmpty()) {
+    val normalizedTarget = normalizeForMatch(target)
+    if (fold(normalizedTarget, foldKazakhVowels = false).isEmpty()) {
         return false
     }
-
-    val targetPhonetic = phoneticKey(target)
-    val tolerance = toleranceFor(foldedTarget.length)
 
     return heardAlternatives
         .flatMap { candidatesFrom(it) }
         .any { heard ->
-            val foldedHeard = fold(normalizeForMatch(heard))
+            val normalizedHeard = normalizeForMatch(heard)
+            // Decided per pair, not once for the word: whether folding the Kazakh vowels away is
+            // fair depends on what this particular transcript was able to write.
+            val foldVowels = isRussianModeTranscript(normalizedTarget, normalizedHeard)
+            val foldedTarget = fold(normalizedTarget, foldVowels)
+            val foldedHeard = fold(normalizedHeard, foldVowels)
+            val tolerance = toleranceFor(foldedTarget.length)
+
             when {
                 foldedHeard.isEmpty() -> false
+                foldedTarget.isEmpty() -> false
                 foldedHeard == foldedTarget -> true
                 // Same letters in a different order is a reading error, not recognizer noise.
                 isTransposition(foldedTarget, foldedHeard) -> false
                 // Identical once both sides are reduced to sound. No tolerance is allowed on
                 // top of this: the phonetic key has already discarded detail, and stacking an
                 // edit budget on it would start accepting genuinely different words.
-                targetPhonetic.isNotEmpty() && phoneticKey(heard) == targetPhonetic -> true
+                phoneticKey(target, foldVowels).let {
+                    it.isNotEmpty() && phoneticKey(heard, foldVowels) == it
+                } -> true
                 else -> editDistance(foldedTarget, foldedHeard) <= tolerance
             }
         }

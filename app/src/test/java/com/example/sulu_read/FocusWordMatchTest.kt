@@ -201,6 +201,44 @@ class FocusWordMatchTest {
     }
 
     @Test
+    fun acceptsKazakhWordWrittenByARussianModeRecogniser() {
+        // The engine was transcribing in Russian and has no ә, ө, ұ, ү or і to write, so the
+        // missing letter is the transcriber's limit, not the child's mistake.
+        assertTrue(isSpokenWordAccepted("қала", listOf("кала")))
+        assertTrue(isSpokenWordAccepted("кітап", listOf("кытап")))
+        assertTrue(isSpokenWordAccepted("үй", listOf("уй")))
+        assertTrue(isSpokenWordAccepted("сөз", listOf("соз")))
+        assertTrue(isSpokenWordAccepted("әке", listOf("аке")))
+    }
+
+    @Test
+    fun keepsKazakhVowelsApartWhenTheRecogniserCouldWriteThem() {
+        // These are different Kazakh words. The old table folded every Kazakh vowel away
+        // unconditionally and accepted each of these as a correct reading of the other, so the
+        // gate was strict for Russian and wide open for Kazakh.
+        assertFalse(isSpokenWordAccepted("күн", listOf("құн")))
+        assertFalse(isSpokenWordAccepted("түс", listOf("тұс")))
+        assertFalse(isSpokenWordAccepted("тіс", listOf("тұс")))
+        assertFalse(isSpokenWordAccepted("сөз", listOf("сұз")))
+    }
+
+    @Test
+    fun aRussianModeTranscriptStillMergesKazakhVowels() {
+        // The deliberate cost of the rule above. When the transcript contains no Kazakh letter
+        // at all there is no way to tell "the engine could not write ө" from "the child said о",
+        // so the benefit of the doubt goes to the child. Documented rather than hidden.
+        assertTrue(isSpokenWordAccepted("өл", listOf("ол")))
+    }
+
+    @Test
+    fun kazakhConsonantsStayInterchangeable() {
+        // қ/к and ғ/г are fixed by vowel harmony, so confusing them cannot make one real word
+        // into another - unlike the vowels.
+        assertTrue(isSpokenWordAccepted("қар", listOf("кар")))
+        assertTrue(isSpokenWordAccepted("ағаш", listOf("агаш")))
+    }
+
+    @Test
     fun rejectsEmptyInput() {
         assertFalse(isSpokenWordAccepted("книга", emptyList()))
         assertFalse(isSpokenWordAccepted("книга", listOf("", "   ")))

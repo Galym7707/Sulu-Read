@@ -1239,12 +1239,6 @@ private fun ReadingScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var isFocusMode by rememberSaveable(state.adaptedText) { mutableStateOf(false) }
-    val sourceText = when (state.source) {
-        "image" -> stringResource(R.string.reading_source_image)
-        "url" -> stringResource(R.string.reading_source_url)
-        else -> stringResource(R.string.reading_source_material)
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -1267,11 +1261,6 @@ private fun ReadingScreen(
                         style = MaterialTheme.typography.titleLarge,
                         color = TextPrimary
                     )
-                    Text(
-                        text = stringResource(R.string.reader_source_summary, sourceText, state.wordCount),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TextMuted
-                    )
                 }
 
                 Spacer(modifier = Modifier.width(12.dp))
@@ -1280,14 +1269,6 @@ private fun ReadingScreen(
                     Text(text = stringResource(R.string.reader_back_home))
                 }
             }
-        }
-
-        Button(
-            onClick = { onCreateTrainingFromText(extractTrainingWords(state.originalText.ifBlank { state.adaptedText })) },
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Text(text = stringResource(R.string.reader_create_training_from_text))
         }
 
         TextButton(onClick = { isFocusMode = !isFocusMode }) {
@@ -1325,6 +1306,19 @@ private fun ReadingScreen(
                     )
                 }
             )
+
+            // Below the text on purpose. Building a training set from a passage is something an
+            // adult does once the reading is done, and it used to sit between the reader and the
+            // first line they were meant to read.
+            TextButton(
+                onClick = {
+                    onCreateTrainingFromText(
+                        extractTrainingWords(state.originalText.ifBlank { state.adaptedText })
+                    )
+                }
+            ) {
+                Text(text = stringResource(R.string.reader_create_training_from_text))
+            }
         }
     }
 }
@@ -1815,6 +1809,21 @@ private fun WebLinkAccessibilitySection(
     }
 }
 
+/**
+ * A JSON string that is absent, JSON null, or blank, as a Kotlin null.
+ *
+ * org.json's optString returns the four-character string "null" when the value is JSON null, not
+ * an empty string. Every `optString(...).ifBlank { null }` in this file was therefore producing
+ * the string "null" and passing it on as if it were a real value — which is how the reader came
+ * to show a document titled "null" once the backend started sending title: null for photos.
+ */
+private fun JSONObject.optStringOrNull(name: String): String? {
+    if (isNull(name)) {
+        return null
+    }
+    return optString(name).takeUnless { it.isBlank() || it == "null" }
+}
+
 private object SuluReadApiClient {
     suspend fun adaptUrl(context: Context, url: String, languageHint: String): ApiResult = withContext(Dispatchers.IO) {
         val payload = JSONObject()
@@ -1959,7 +1968,7 @@ private object SuluReadApiClient {
                         val item = array.optJSONObject(index) ?: return@mapNotNull null
                         CatalogBook(
                             id = item.optString("id").ifBlank { return@mapNotNull null },
-                            title = item.optString("title"),
+                            title = item.optStringOrNull("title").orEmpty(),
                             author = item.optString("author"),
                             language = item.optString("language"),
                             grade = item.optInt("grade"),
@@ -2005,7 +2014,7 @@ private object SuluReadApiClient {
                     } else {
                         ApiResult.Book(
                             pages = pages,
-                            title = json.optString("title").ifBlank { null },
+                            title = json.optStringOrNull("title"),
                             truncated = false,
                             ocrPageNumbers = emptyList()
                         )
@@ -2043,10 +2052,10 @@ private object SuluReadApiClient {
                             return@runCatching null
                         }
                         WordPicture(
-                            word = json.optString("word", word),
-                            imageUrl = json.optString("image_url"),
-                            attribution = json.optString("attribution"),
-                            licenseName = json.optString("license_name")
+                            word = json.optStringOrNull("word") ?: word,
+                            imageUrl = json.optStringOrNull("image_url").orEmpty(),
+                            attribution = json.optStringOrNull("attribution").orEmpty(),
+                            licenseName = json.optStringOrNull("license_name").orEmpty()
                         )
                     } finally {
                         connection.disconnect()
@@ -2091,7 +2100,7 @@ private object SuluReadApiClient {
                 val ocrJson = json.optJSONArray("ocr_page_numbers")
                 return ApiResult.Book(
                     pages = pages,
-                    title = json.optString("title").ifBlank { null },
+                    title = json.optStringOrNull("title"),
                     truncated = json.optBoolean("truncated", false),
                     ocrPageNumbers = (0 until (ocrJson?.length() ?: 0)).map { ocrJson!!.optInt(it) }
                 )
@@ -2197,9 +2206,9 @@ private object SuluReadApiClient {
             return ApiResult.Success(
                 adaptedText = adaptedText,
                 originalText = json.optString("original_text"),
-                source = json.optString("source", "material"),
+                source = json.optStringOrNull("source") ?: "material",
                 wordCount = json.optInt("word_count", 0),
-                title = json.optString("title").ifBlank { null },
+                title = json.optStringOrNull("title"),
                 words = parseBackendReaderWords(json)
             )
         }

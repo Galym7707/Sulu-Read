@@ -21,6 +21,12 @@
         <intent>
             <action android:name="android.speech.RecognitionService" />
         </intent>
+        <!-- Same filtering hides text-to-speech engines: without this getEngines() comes back
+             filtered and the "install a voice" intent resolves to nothing, so a reader whose
+             phone has no Kazakh voice cannot be sent anywhere to get one. -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
     </queries>
 
     <application

@@ -7,9 +7,6 @@
 
     <string name="reader_letter_spacing">Әріп аралығы</string>
     <string name="reader_line_height">Жол биіктігі</string>
-    <string name="reader_read_aloud">Дауыстап оқу</string>
-    <string name="reader_start_reading">Оқуды бастау</string>
-    <string name="reader_stop_reading">Оқуды тоқтату</string>
     <string name="reader_ruler">Оқу сызғышы</string>
     <string name="reader_simplify_title">Қарапайым сөзбен ✨</string>
     <string name="reader_simplify_loading">Мәтін жеңілдетілуде...</string>
@@ -120,11 +117,7 @@
     <string name="input_missing_link_or_scan">Сілтемені енгізіңіз немесе оқулық бетін сканерлеңіз.</string>
     <string name="camera_scan_instruction">Сканерді ашып, бетті қиып, Next батырмасын басыңыз.</string>
     <string name="common_back">Қайту</string>
-    <string name="reading_source_image">Дереккөз: оқулық фотосы</string>
-    <string name="reading_source_url">Дереккөз: сілтеме</string>
-    <string name="reading_source_material">Дереккөз: материал</string>
     <string name="reader_adapted_text_title">Мәтін бейімделді</string>
-    <string name="reader_source_summary">%1$s · сөз: %2$d</string>
     <string name="reader_back_home">Басты бет</string>
     <string name="reader_create_training_from_text">Осы мәтіннен жаттығу жасау</string>
     <string name="home_tagline">Тек әріп емес, мағынаны көру</string>
@@ -196,7 +189,9 @@
     <string name="catalog_empty">Бұл тілде кітаптар әзірге жоқ</string>
     <string name="catalog_loading">Кітапхана ашылуда…</string>
     <string name="catalog_book_meta">%1$d сынып · %2$d бет</string>
-    <string name="catalog_source_note">Мәтін: %1$s. Басылым: %2$s, Wikisource.</string>
     <string name="catalog_failed">Кітапхананы ашу мүмкін болмады. Қосылымды тексеріңіз.</string>
     <string name="catalog_retry">Қайталау</string>
+    <string name="tts_voice_missing">Бұл телефонда осы тілге арналған дауыс жоқ, сондықтан дауыстап оқу дұрыс естілмейді. Дауысты орнатыңыз: Параметрлер → Тіл → Мәтінді дыбыстау.</string>
+    <string name="reader_listen">Тыңдау</string>
+    <string name="reader_settings">Оқу параметрлері</string>
 </resources>

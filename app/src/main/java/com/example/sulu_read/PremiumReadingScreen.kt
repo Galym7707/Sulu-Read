@@ -32,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.VolumeUp
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material.icons.filled.Stop
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -218,13 +219,19 @@ fun PremiumReadingScreen(
         }
     }
 
+    var showSettings by rememberSaveable(text) { mutableStateOf(false) }
+
     Column(
         modifier = modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(16.dp)
+        verticalArrangement = Arrangement.spacedBy(12.dp)
     ) {
-        ReadingControls(
-            state = state,
+        // Reading, then the two things a reader reaches for while reading. Everything else —
+        // letter spacing, line height, the ruler — is set once and then never touched, so it
+        // lives behind the gear rather than above the text. Before this, roughly a screenful of
+        // controls sat between the reader and the first line they were meant to read.
+        ReadingQuickBar(
             canPlay = words.isNotEmpty() && ttsController.isReady,
+            isPlaying = state.currentPlayingWordIndex != NO_PLAYING_WORD,
             onPlay = {
                 val startIndex = state.currentPlayingWordIndex
                     .takeIf { it in words.indices }
@@ -232,7 +239,8 @@ fun PremiumReadingScreen(
                 ttsController.playFrom(startIndex)
             },
             onStop = { ttsController.stop() },
-            onAiHelpClick = { onExplainTextWithAi(text) }
+            onAiHelpClick = { onExplainTextWithAi(text) },
+            onOpenSettings = { showSettings = true }
         )
 
         Box(
@@ -290,6 +298,13 @@ fun PremiumReadingScreen(
         )
     }
 
+    if (showSettings) {
+        ReaderSettingsSheet(
+            state = state,
+            onDismissRequest = { showSettings = false }
+        )
+    }
+
     if (aiHelpState !is AiHelpState.Idle) {
         AiHelpSheet(
             state = aiHelpState,
@@ -315,14 +330,96 @@ fun PremiumReadingScreen(
     }
 }
 
+/**
+ * The controls a reader uses *while* reading: listen, ask for help, and a way into the rest.
+ *
+ * Three icon buttons rather than a card of labelled rows, because this sits above the text and
+ * every dp it takes is a dp of reading the child cannot see.
+ */
 @Composable
-private fun ReadingControls(
-    state: ReadingScreenState,
+private fun ReadingQuickBar(
     canPlay: Boolean,
+    isPlaying: Boolean,
     onPlay: () -> Unit,
     onStop: () -> Unit,
-    onAiHelpClick: () -> Unit
+    onAiHelpClick: () -> Unit,
+    onOpenSettings: () -> Unit
 ) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Button(
+            onClick = if (isPlaying) onStop else onPlay,
+            enabled = canPlay,
+            shape = RoundedCornerShape(14.dp),
+            modifier = Modifier
+                .weight(1f)
+                .heightIn(min = 52.dp)
+        ) {
+            Icon(
+                imageVector = if (isPlaying) Icons.Default.Stop else Icons.Default.PlayArrow,
+                contentDescription = null,
+                modifier = Modifier.size(ButtonDefaults.IconSize)
+            )
+            Spacer(modifier = Modifier.width(ButtonDefaults.IconSpacing))
+            Text(text = stringResource(R.string.reader_listen), maxLines = 1)
+        }
+
+        IconButton(onClick = onAiHelpClick, modifier = Modifier.size(52.dp)) {
+            Icon(
+                imageVector = Icons.Default.AutoAwesome,
+                contentDescription = stringResource(R.string.reader_ai_help),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+
+        IconButton(onClick = onOpenSettings, modifier = Modifier.size(52.dp)) {
+            Icon(
+                imageVector = Icons.Default.Tune,
+                contentDescription = stringResource(R.string.reader_settings),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
+    }
+}
+
+/**
+ * Letter spacing, line height and the reading ruler.
+ *
+ * Set once by a reader or a teacher and then left alone, so it belongs behind a control rather
+ * than above the text. It reuses the existing controls body unchanged; only where it lives has
+ * changed.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun ReaderSettingsSheet(
+    state: ReadingScreenState,
+    onDismissRequest: () -> Unit
+) {
+    ModalBottomSheet(
+        onDismissRequest = onDismissRequest,
+        containerColor = FieldSurface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 20.dp)
+                .padding(bottom = 28.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Text(
+                text = stringResource(R.string.reader_settings),
+                style = MaterialTheme.typography.titleLarge
+            )
+            ReadingControls(state = state)
+        }
+    }
+}
+
+@Composable
+private fun ReadingControls(state: ReadingScreenState) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -354,61 +451,6 @@ private fun ReadingControls(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.SpaceBetween
         ) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.VolumeUp,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(24.dp)
-                )
-                Text(
-                    text = stringResource(R.string.reader_read_aloud),
-                    style = MaterialTheme.typography.titleMedium,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-            }
-
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                IconButton(
-                    onClick = onPlay,
-                    enabled = canPlay,
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.PlayArrow,
-                        contentDescription = stringResource(R.string.reader_start_reading),
-                        tint = if (canPlay) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                IconButton(
-                    onClick = onStop,
-                    enabled = state.currentPlayingWordIndex != NO_PLAYING_WORD,
-                    modifier = Modifier.size(42.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Stop,
-                        contentDescription = stringResource(R.string.reader_stop_reading),
-                        tint = if (state.currentPlayingWordIndex != NO_PLAYING_WORD) {
-                            MaterialTheme.colorScheme.primary
-                        } else {
-                            MaterialTheme.colorScheme.onSurfaceVariant
-                        }
-                    )
-                }
-            }
-        }
-
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.SpaceBetween
-        ) {
             Text(
                 text = stringResource(R.string.reader_ruler),
                 style = MaterialTheme.typography.titleMedium,
@@ -422,21 +464,6 @@ private fun ReadingControls(
             )
         }
 
-        Button(
-            onClick = onAiHelpClick,
-            modifier = Modifier
-                .fillMaxWidth()
-                .height(54.dp),
-            shape = RoundedCornerShape(14.dp)
-        ) {
-            Icon(
-                imageVector = Icons.Default.AutoAwesome,
-                contentDescription = null,
-                modifier = Modifier.size(22.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Text(text = stringResource(R.string.reader_ai_help))
-        }
     }
 }
 

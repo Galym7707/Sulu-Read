@@ -288,7 +288,7 @@ object ApiClient : SuluReadApi {
         return UserDto(
             userId = json.optString("user_id"),
             displayName = json.optString("display_name"),
-            username = json.optString("username").ifBlank { null },
+            username = json.optNullableString("username"),
             age = json.opt("age")?.takeIf { it != JSONObject.NULL } as? Int,
             languagePreference = json.optString("language_preference"),
             skillProfile = parseSkillProfile(json.getJSONObject("skill_profile"))
@@ -308,7 +308,7 @@ object ApiClient : SuluReadApi {
         return ExerciseDto(
             exerciseId = json.optString("exercise_id"),
             type = json.optString("type"),
-            subExercise = json.optString("sub_exercise").ifBlank { null },
+            subExercise = json.optNullableString("sub_exercise"),
             prompt = json.optString("prompt"),
             targetWord = json.optString("target_word"),
             options = json.optJSONArray("options").toStringList(),

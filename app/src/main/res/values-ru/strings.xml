@@ -7,9 +7,6 @@
 
     <string name="reader_letter_spacing">Расстояние между буквами</string>
     <string name="reader_line_height">Высота строки</string>
-    <string name="reader_read_aloud">Чтение вслух</string>
-    <string name="reader_start_reading">Начать чтение</string>
-    <string name="reader_stop_reading">Остановить чтение</string>
     <string name="reader_ruler">Линейка чтения</string>
     <string name="reader_simplify_title">Простыми словами ✨</string>
     <string name="reader_simplify_loading">Упрощаем текст...</string>
@@ -120,11 +117,7 @@
     <string name="input_missing_link_or_scan">Вставьте ссылку или отсканируйте страницу учебника.</string>
     <string name="camera_scan_instruction">Откройте сканер, обрежьте страницу и нажмите Next.</string>
     <string name="common_back">Вернуться</string>
-    <string name="reading_source_image">Источник: фото учебника</string>
-    <string name="reading_source_url">Источник: ссылка</string>
-    <string name="reading_source_material">Источник: материал</string>
     <string name="reader_adapted_text_title">Текст адаптирован</string>
-    <string name="reader_source_summary">%1$s · слов: %2$d</string>
     <string name="reader_back_home">На главный</string>
     <string name="reader_create_training_from_text">Создать тренировку из этого текста</string>
     <string name="home_tagline">Видеть смысл, а не просто буквы</string>
@@ -196,7 +189,9 @@
     <string name="catalog_empty">Для этого языка книг пока нет</string>
     <string name="catalog_loading">Открываем библиотеку…</string>
     <string name="catalog_book_meta">%1$d класс · %2$d стр.</string>
-    <string name="catalog_source_note">Текст: %1$s. Издание: %2$s, Wikisource.</string>
     <string name="catalog_failed">Не удалось открыть библиотеку. Проверьте подключение.</string>
     <string name="catalog_retry">Повторить</string>
+    <string name="tts_voice_missing">На этом телефоне нет голоса для этого языка, поэтому чтение вслух будет звучать неправильно. Установите голос: Настройки → Язык → Синтез речи.</string>
+    <string name="reader_listen">Слушать</string>
+    <string name="reader_settings">Настройки чтения</string>
 </resources>

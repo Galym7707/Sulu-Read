@@ -1,5 +1,7 @@
 package com.example.sulu_read.focus
 
+import com.example.sulu_read.domain.model.AppLanguage
+
 // Letter NAMES, not letter sounds. The spell step of the ladder exists because the source
 // method forbids sounding letters out: «Говори только названия букв по одной».
 private val RussianLetterNames: Map<Char, String> = mapOf(
@@ -10,12 +12,43 @@ private val RussianLetterNames: Map<Char, String> = mapOf(
     'ъ' to "твёрдый знак", 'ы' to "ы", 'ь' to "мягкий знак", 'э' to "э", 'ю' to "ю", 'я' to "я"
 )
 
-// ponytail: project data, NOT taken from any provided source — the sources never spell out
-// Kazakh letter names. Needs a native-speaker / school-textbook review before release;
-// the vault records this as an open question (docs/llm-wiki/wiki/lint-report.md).
-private val KazakhOnlyLetterNames: Map<Char, String> = mapOf(
-    'ә' to "ә", 'ғ' to "ғе", 'қ' to "қа", 'ң' to "ың", 'ө' to "ө",
-    'ұ' to "ұ", 'ү' to "ү", 'һ' to "һә", 'і' to "і"
+/**
+ * The Kazakh alphabet, named the Kazakh way.
+ *
+ * This has to be its own table rather than a handful of additions to the Russian one. The two
+ * alphabets share all 33 Russian letters but do not name them alike: Kazakh consonants take a
+ * following "е" where Russian takes "э", so т is "те" and not "тэ", б is "бе" and not "бэ". An
+ * earlier version merged the tables and kept only the nine Kazakh-specific characters, on the
+ * stated belief that "the three alphabets share no keys" — they share thirty-three — so every
+ * Kazakh word was spelled out to the child in Russian letter names.
+ *
+ * Names marked below as unreviewed are the ones a Kazakh-speaking teacher should confirm against
+ * a school Әліппе. They are not guesses in the sense of being unsupported, but they are not
+ * verified either, and this is read aloud to a child learning the alphabet.
+ */
+private val KazakhLetterNames: Map<Char, String> = mapOf(
+    // Vowels are named as the sound they make.
+    'а' to "а", 'ә' to "ә", 'е' to "е", 'ё' to "ё", 'и' to "и", 'о' to "о", 'ө' to "ө",
+    'у' to "у", 'ұ' to "ұ", 'ү' to "ү", 'ы' to "ы", 'і' to "і", 'э' to "э", 'ю' to "ю",
+    'я' to "я",
+
+    // Consonants take a following "е". This is the block that was wrong.
+    'б' to "бе", 'в' to "ве", 'г' to "ге", 'д' to "де", 'ж' to "же", 'з' to "зе",
+    'к' to "ке", 'п' to "пе", 'т' to "те", 'ц' to "це", 'ч' to "че",
+
+    // Back-harmony pair of к/г, named with the back vowel to match.
+    'қ' to "қа", 'ғ' to "ға",
+
+    'х' to "ха", 'һ' to "һа", 'ш' to "ша", 'щ' to "ща",
+
+    // UNREVIEWED. The Russian э-forms are certainly wrong for Kazakh; these are the standard
+    // Kazakh forms but have not been checked against a textbook.
+    'л' to "эл", 'м' to "эм", 'н' to "эн", 'р' to "эр", 'с' to "эс", 'ф' to "эф",
+    'ң' to "ең",
+
+    // UNREVIEWED. Previously these read out the whole Russian phrases "и краткое",
+    // "твёрдый знак" and "мягкий знак" in the middle of a Kazakh word.
+    'й' to "қысқа и", 'ъ' to "айыру белгісі", 'ь' to "жіңішкелік белгісі"
 )
 
 // Without these the English UI had no letter names at all: every Latin character fell through
@@ -29,16 +62,25 @@ private val EnglishLetterNames: Map<Char, String> = mapOf(
     'y' to "why", 'z' to "zee"
 )
 
-// One table, looked up per character instead of per UI language. The three alphabets share no
-// keys, and it is the letter in front of the reader — not the menu they picked — that decides
-// how it is named. Selecting the table by UI language meant a Kazakh word inside a Russian
-// text spelled out as "қ" instead of "қа", and an English text spelled out as nothing at all.
-private val LetterNames: Map<Char, String> =
-    RussianLetterNames + KazakhOnlyLetterNames + EnglishLetterNames
+/**
+ * Letter names for a word, in the alphabet the word belongs to.
+ *
+ * Latin always falls through to the English names regardless of the language asked for: a Latin
+ * character has no Cyrillic name, and the alternative is handing the raw character to the
+ * speech engine, which reads "a" as a word rather than as a letter.
+ */
+fun letterNamesFor(word: String, languageCode: String): List<String> {
+    val cyrillicNames = when (AppLanguage.fromCode(languageCode)) {
+        AppLanguage.Kazakh -> KazakhLetterNames
+        else -> RussianLetterNames
+    }
 
-fun letterNamesFor(word: String): List<String> {
     return word
         .lowercase()
         .filter { it.isLetterOrDigit() }
-        .map { character -> LetterNames[character] ?: character.toString() }
+        .map { character ->
+            EnglishLetterNames[character]
+                ?: cyrillicNames[character]
+                ?: character.toString()
+        }
 }
