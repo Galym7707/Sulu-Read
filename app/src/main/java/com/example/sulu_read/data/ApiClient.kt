@@ -25,9 +25,15 @@ object ApiClient : SuluReadApi {
     val backendBaseUrls: List<String> = buildList {
         BuildConfig.AI_BACKEND_URL.trim().trimEnd('/').takeIf { it.isNotBlank() }?.let(::add)
         add("https://galym7707-sulu-read-backend.hf.space")
-        add("http://10.0.2.2:8000")
-        add("http://192.168.0.100:8000")
-        add("http://192.168.0.103:8000")
+
+        // Только для разработки. В релизе этих адресов быть не должно: на чужом телефоне
+        // приложение стучалось бы по этим IP в домашнюю сеть пользователя - к его роутеру,
+        // камере или принтеру, у кого что стоит на 192.168.0.100.
+        if (BuildConfig.DEBUG) {
+            add("http://10.0.2.2:8000")
+            add("http://192.168.0.100:8000")
+            add("http://192.168.0.103:8000")
+        }
     }.distinct()
 
     private const val CONNECT_TIMEOUT_MS = 20_000
