@@ -50,16 +50,42 @@ Morphology tasks use lightweight Kazakh suffix heuristics only. They are practic
 ## Focus Reading Mode
 
 The reader screen has a word-by-word mode. The whole text is rendered in a bundled
-Times-metric serif and blurred except the current word, which is sharp and highlighted.
-The highlight advances when the reader says the word aloud; each miss peels off one layer
-of support — a 200 ms re-flash, coloured syllables, letter names, then a short AI meaning
-hint — and the last layer always releases the reader forward rather than trapping them.
-Speech pacing starts slow and speeds up as the share of unaided reads approaches 80%.
-Words that needed deep help are collected and can be sent straight into the exercise
-generator. Reading is never interrupted by a quiz: help is offered, never demanded.
+Times-metric serif with the current word enlarged and highlighted.
 
-The mode works without a microphone: if speech recognition is unavailable or the permission
-is declined, the gate becomes a self-check button.
+**The reader moves the focus, not the app.** "Next word" advances it and tapping any word in
+the text jumps straight to it, so going back over a line costs one tap. Nothing else moves the
+highlight: no recogniser, no timer. Help is still offered — 5 s of silence re-flashes the word,
+9 s reads its letters, and the help button climbs the same ladder to a short AI meaning hint —
+but it is never demanded, and reading is never interrupted by a quiz.
+
+**The microphone listens the whole time and judges nothing while reading.** It records what the
+reader says; when the text ends, or when they press "Stop and check", the transcript is lined up
+against the words they actually walked through and the mode shows what came out wrong: the word,
+and what was heard in its place. Words it never heard are reported as not heard rather than as
+misread — a microphone that missed a word is not a child who read it wrong.
+
+The microphone is opened once for the whole reading, not once per pause. On Android 12 and
+above the recogniser is asked for a *segmented* session (`EXTRA_SEGMENTED_SESSION` keyed to
+`EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS`), which turns that silence value into the end
+of a **segment** rather than the end of the session: each word is finalised and handed over while
+the microphone stays open. Without it a session closed after every pause, and the words spoken
+during the teardown and restart were simply gone — reported to the reader as never heard. On a
+real device that cost the first word of every session and most short function words. Below API 31,
+and on any recogniser that ignores the request, the old restart-per-pause behaviour still applies;
+nothing depends on the segmented path being available.
+
+The alignment happens once, at the end, on purpose. A recogniser answers a few hundred
+milliseconds after the mouth does, so crediting each token to whichever word was focused at that
+instant mislabels every word the reader passed quickly, and one word skipped in silence shifts
+every later word onto the wrong token. Filler the engine invents and the reader's own false
+starts are stepped over rather than counted against a word.
+
+Misread words are collected and can be sent straight into the exercise generator, together with
+any word that needed deep help. Speech pacing starts slow and speeds up as the share of unaided
+reads approaches 80%.
+
+The mode works without a microphone: if speech recognition is unavailable or the permission is
+declined, the reading simply is not checked and the focus controls work exactly as before.
 
 Design notes and their sources: `docs/llm-wiki/wiki/concepts/focus-reading-method.md`.
 The bundled font and its licence: `docs/superpowers/notes/focus-font-license.md`.

@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -22,6 +23,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import com.example.sulu_read.ui.theme.FocusHighlight
 import com.example.sulu_read.ui.theme.FocusWordColor
@@ -54,8 +56,10 @@ private const val HIGHLIGHT_PADDING_DP = 4
 private const val HIGHLIGHT_LINE_INSET_DP = 5
 
 // Without a cap the card grows to the height of the whole document and pushes every control
-// off-screen, so the reader never discovers that help exists.
-private const val BLOCK_MAX_HEIGHT_DP = 320
+// off-screen, so the reader never discovers that help exists. 280dp rather than 320: measured on
+// a 1220x2712 phone, the extra 40dp was the difference between the reader seeing the button that
+// moves the focus and having to go looking for it. Five lines of context still fit.
+private const val BLOCK_MAX_HEIGHT_DP = 280
 
 // The focus word is parked a third of the way down rather than centred: it leaves the text
 // still to be read in view, which is the direction the reader is heading.
@@ -80,6 +84,7 @@ fun FocusTextBlock(
     words: List<FocusWord>,
     focusIndex: Int,
     isFocusEmphasised: Boolean,
+    onWordTapped: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val scrollState = rememberScrollState()
@@ -134,6 +139,16 @@ fun FocusTextBlock(
                 onTextLayout = { layout = it },
                 modifier = Modifier
                     .fillMaxWidth()
+                    // The reader drives the focus. Tapping the text is the direct way to say
+                    // "I am here now" — going back to re-read a line, or skipping ahead — and
+                    // it needs no control of its own on a screen that is already full.
+                    .pointerInput(ranges) {
+                        detectTapGestures { position ->
+                            val result = layout ?: return@detectTapGestures
+                            val offset = result.getOffsetForPosition(position)
+                            wordIndexAt(ranges, offset)?.let(onWordTapped)
+                        }
+                    }
                     .drawBehind {
                         val result = layout ?: return@drawBehind
                         val range = focusRange ?: return@drawBehind
@@ -183,6 +198,22 @@ internal fun focusWordRanges(words: List<FocusWord>): List<IntRange> {
         cursor += word.display.length
     }
     return ranges
+}
+
+/**
+ * Which word a character offset belongs to, or the word just before it.
+ *
+ * A tap lands on a space or on the gap at the end of a line as often as it lands on a glyph, and
+ * a tap that does nothing reads as the app being broken. Falling back to the word that started
+ * before the offset means every tap inside the block moves the focus somewhere sensible.
+ */
+internal fun wordIndexAt(ranges: List<IntRange>, offset: Int): Int? {
+    val exact = ranges.indexOfFirst { offset in it }
+    if (exact >= 0) {
+        return exact
+    }
+    val preceding = ranges.indexOfLast { it.first <= offset }
+    return preceding.takeIf { it >= 0 }
 }
 
 private fun buildFocusAnnotatedString(

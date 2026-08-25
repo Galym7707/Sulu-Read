@@ -103,6 +103,10 @@ private const val MEDIUM_WORD_MAX_LENGTH = 7
 private const val MEDIUM_WORD_TOLERANCE = 1
 private const val LONG_WORD_TOLERANCE = 2
 
+// Compiled once. Both call sites below run inside the reading review's per-cell alignment loop,
+// where building a fresh Regex meant a Pattern.compile for every target/token pair on the page.
+private val WHITESPACE = Regex("\\s+")
+
 fun normalizeForMatch(raw: String): String {
     return raw
         .lowercase()
@@ -207,52 +211,31 @@ private fun editDistance(first: String, second: String): Int {
  * in it. Without this the reader is marked wrong for having paused before speaking.
  */
 private fun candidatesFrom(hypothesis: String): List<String> {
-    val words = hypothesis.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    val words = hypothesis.trim().split(WHITESPACE).filter { it.isNotBlank() }
     return if (words.size <= 1) listOf(hypothesis) else words + hypothesis
 }
 
 /**
- * How much of a running transcript the reader has got through.
+ * Whether a heard token is close enough to a target to be worth reporting as a misreading of it.
  *
- * @param wordsMatched consecutive targets read correctly, starting at the first one offered.
- * @param tokensConsumed transcript tokens accounted for, so the next pass over a longer version
- *   of the same transcript does not match the same speech twice.
+ * The reading review has to choose, for every token it cannot match, between "this is how the
+ * reader said that word" and "this is not the reader reading at all". Only the first is worth
+ * showing them. Half the length of the longer side is a deliberately loose budget: a misreading
+ * is allowed to be quite wrong and still be a misreading of *that* word, while engine filler and
+ * room noise — which share almost nothing with the word on the page — fall outside it.
  */
-data class StreamMatch(val wordsMatched: Int, val tokensConsumed: Int)
-
-/**
- * Walks a live transcript against the words still to be read.
- *
- * This exists so recognition does not have to stop at every word. One session stays open while
- * the reader reads on, and each time the engine revises its transcript the new part is matched
- * against the next target, then the one after it. A fluent reader can clear several words from a
- * single utterance, and nobody waits for a recogniser to be torn down and started again.
- *
- * Tokens that match nothing are stepped over rather than failing the read: engines insert filler
- * ("эм", "the"), and the reader's own hesitation lands in the transcript too. Matching stops at
- * the first target that is not found, so words are only ever cleared in order.
- */
-fun matchSpokenStream(tokens: List<String>, targets: List<String>): StreamMatch {
-    var wordsMatched = 0
-    var tokensConsumed = 0
-    var tokenIndex = 0
-
-    while (wordsMatched < targets.size && tokenIndex < tokens.size) {
-        val target = targets[wordsMatched]
-        val hit = (tokenIndex until tokens.size).firstOrNull { candidate ->
-            isSpokenWordAccepted(target, listOf(tokens[candidate]))
-        } ?: break
-
-        wordsMatched += 1
-        tokenIndex = hit + 1
-        tokensConsumed = tokenIndex
+internal fun isPlausibleMisreading(target: String, heard: String): Boolean {
+    val normalizedTarget = normalizeForMatch(target)
+    val normalizedHeard = normalizeForMatch(heard)
+    if (normalizedTarget.isEmpty() || normalizedHeard.isEmpty()) {
+        return false
     }
-
-    return StreamMatch(wordsMatched = wordsMatched, tokensConsumed = tokensConsumed)
+    val budget = maxOf(normalizedTarget.length, normalizedHeard.length) / 2
+    return editDistance(normalizedTarget, normalizedHeard) <= budget
 }
 
 fun tokenizeTranscript(transcript: String): List<String> {
-    return transcript.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
+    return transcript.trim().split(WHITESPACE).filter { it.isNotBlank() }
 }
 
 fun isSpokenWordAccepted(target: String, heardAlternatives: List<String>): Boolean {

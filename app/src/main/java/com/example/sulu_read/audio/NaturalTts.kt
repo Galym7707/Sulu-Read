@@ -86,11 +86,19 @@ fun TextToSpeech.canSpeak(languageCode: String): Boolean {
         TextToSpeech.LANG_AVAILABLE
 }
 
-fun TextToSpeech.speakCompat(text: String, queueMode: Int, utteranceId: String) {
+/**
+ * @return [TextToSpeech.SUCCESS], or [TextToSpeech.ERROR] when the engine refused the request.
+ *
+ * The status is returned rather than swallowed because a refusal is silent in every other way:
+ * no `onStart`, no `onDone`, no `onError`. A caller that flips an "is the app speaking?" flag
+ * before calling this has no other way to learn that it must flip it back, and would wait
+ * forever for a callback that is never coming.
+ */
+fun TextToSpeech.speakCompat(text: String, queueMode: Int, utteranceId: String): Int {
     // minSdk is 24, so the pre-Lollipop branch this used to carry was unreachable — and it
     // called the overload that takes no utterance id, which would have left the reader's
     // "is the app speaking?" flag stuck on, because no progress callback can fire without one.
-    speak(text, queueMode, Bundle(), utteranceId)
+    return speak(text, queueMode, Bundle(), utteranceId)
 }
 
 private fun TextToSpeech.findBestVoice(locale: Locale): Voice? {

@@ -1,8 +1,11 @@
 package com.example.sulu_read
 
 import com.example.sulu_read.focus.buildFocusWords
+import com.example.sulu_read.focus.focusWordRanges
 import com.example.sulu_read.focus.sceneCount
+import com.example.sulu_read.focus.wordIndexAt
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -46,5 +49,27 @@ class FocusScenesTest {
     fun returnsEmptyForBlankText() {
         assertTrue(buildFocusWords("   ").isEmpty())
         assertEquals(0, sceneCount(emptyList()))
+    }
+
+    @Test
+    fun aTapFindsTheWordItLandedOn() {
+        val ranges = focusWordRanges(buildFocusWords("Кот спит дома."))
+        assertEquals(0, wordIndexAt(ranges, 0))
+        assertEquals(1, wordIndexAt(ranges, 5))
+        assertEquals(2, wordIndexAt(ranges, 9))
+    }
+
+    @Test
+    fun aTapOnWhitespaceFallsBackToTheWordBeforeIt() {
+        // Taps land on the gaps between words and at the ragged end of a line at least as often
+        // as they land on a glyph, and a tap that does nothing reads as a broken app.
+        val ranges = focusWordRanges(buildFocusWords("Кот спит дома."))
+        assertEquals(0, wordIndexAt(ranges, 3))
+        assertEquals(2, wordIndexAt(ranges, 400))
+    }
+
+    @Test
+    fun thereIsNothingToTapInAnEmptyText() {
+        assertNull(wordIndexAt(emptyList(), 0))
     }
 }

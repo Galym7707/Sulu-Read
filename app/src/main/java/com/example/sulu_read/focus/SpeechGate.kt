@@ -14,13 +14,18 @@ import com.example.sulu_read.domain.model.AppLanguage
 // the live transcript, but the rest are still returned when a session ends.
 private const val MAX_HYPOTHESES = 10
 
-private const val MINIMUM_UTTERANCE_MILLIS = 300L
+private const val MINIMUM_UTTERANCE_MILLIS = 300
 
-// A beginning reader stares at a hard word for a long time before saying it, and every session
-// that ends on silence has to be started again. Ending the session is the expensive thing here,
-// so the silence budget is generous — it is not trying to detect the end of an utterance, only
-// to notice that the reader has stopped altogether.
-private const val CONTINUOUS_COMPLETE_SILENCE_MILLIS = 8_000L
+// A beginning reader stares at a hard word for a long time before saying it, and on the legacy
+// path every session that ends on silence has to be started again. Ending the session is the
+// expensive thing there, so the silence budget is generous — it is not trying to detect the end
+// of an utterance, only to notice that the reader has stopped altogether.
+private const val CONTINUOUS_COMPLETE_SILENCE_MILLIS = 8_000
+
+// In a segmented session this same silence ends a *segment*, not the session, so a short value is
+// the good one: it is how quickly a spoken word is finalised and handed over, and the microphone
+// stays open across it either way.
+private const val SEGMENT_SILENCE_MILLIS = 1_500
 
 /**
  * Streams what the reader says, so the reading mode can take words off the transcript as they
@@ -34,8 +39,8 @@ private const val CONTINUOUS_COMPLETE_SILENCE_MILLIS = 8_000L
  * networked recognizer automatically and the reader only loses the speed, never the feature.
  *
  * Recognition is not guaranteed on every device or for every language at all, so callers must
- * still handle `onUnavailable` by falling back to a self-check button. The reading mode has to
- * work with no microphone at all.
+ * still handle `onUnavailable`. The reading mode has to work with no microphone at all: without
+ * one the reader still moves the focus themselves and simply gets no review of their reading.
  */
 class SpeechGate(private val context: Context) {
 
@@ -46,11 +51,10 @@ class SpeechGate(private val context: Context) {
     // discovery costs one failed session per language rather than one per word.
     private val networkOnlyLanguages = mutableSetOf<String>()
 
-    private var pendingRequest: Request? = null
-
     private data class Request(
         val languageCode: String,
-        val onTranscript: (String) -> Unit,
+        val onPartial: (String) -> Unit,
+        val onSegment: (List<String>) -> Unit,
         val onEnded: (List<String>) -> Unit,
         val onUnavailable: () -> Unit
     )
@@ -66,17 +70,28 @@ class SpeechGate(private val context: Context) {
         obtainRecognizer(languageCode)
     }
 
+    /**
+     * Opens one listening session and keeps it open.
+     *
+     * @param onPartial the engine's running guess at the segment it is currently hearing. It
+     *   revises this continually, so each call replaces the last rather than adding to it.
+     * @param onSegment a finished piece of the reading. The session is still open and the
+     *   microphone never closed; more segments will follow. This is what makes the capture
+     *   continuous — on the legacy path the equivalent moment is also the end of the session.
+     * @param onEnded the session really is over and the microphone is closed. Call again to
+     *   open another one.
+     */
     fun startContinuous(
         languageCode: String,
-        onTranscript: (String) -> Unit,
+        onPartial: (String) -> Unit,
+        onSegment: (List<String>) -> Unit,
         onEnded: (List<String>) -> Unit,
         onUnavailable: () -> Unit
     ) {
-        start(Request(languageCode, onTranscript, onEnded, onUnavailable))
+        start(Request(languageCode, onPartial, onSegment, onEnded, onUnavailable))
     }
 
     private fun start(request: Request) {
-        pendingRequest = request
         val activeRecognizer = obtainRecognizer(request.languageCode) ?: run {
             request.onUnavailable()
             return
@@ -84,12 +99,30 @@ class SpeechGate(private val context: Context) {
 
         activeRecognizer.setRecognitionListener(object : RecognitionListener {
             override fun onPartialResults(partialResults: Bundle?) {
-                hypothesesFrom(partialResults).firstOrNull()?.let(request.onTranscript)
+                hypothesesFrom(partialResults).firstOrNull()?.let(request.onPartial)
+            }
+
+            /**
+             * A finished piece of a session that is still running.
+             *
+             * This is the whole point of the segmented session: the reader keeps reading, the
+             * microphone never closes, and each word arrives here as the engine settles on it.
+             * Without it the session ended after every pause and the words spoken during the
+             * teardown-and-restart were simply gone — reported to the reader as never heard.
+             */
+            override fun onSegmentResults(segmentResults: Bundle) {
+                request.onSegment(hypothesesFrom(segmentResults))
+            }
+
+            override fun onEndOfSegmentedSession() {
+                request.onEnded(emptyList())
             }
 
             override fun onResults(results: Bundle?) {
                 val hypotheses = hypothesesFrom(results)
-                hypotheses.firstOrNull()?.let(request.onTranscript)
+                // On the legacy path this one callback is both things at once: the last piece of
+                // the reading, and the end of the session.
+                request.onSegment(hypotheses)
                 request.onEnded(hypotheses)
             }
 
@@ -112,7 +145,27 @@ class SpeechGate(private val context: Context) {
                     SpeechRecognizer.ERROR_SPEECH_TIMEOUT,
                     SpeechRecognizer.ERROR_NO_MATCH,
                     SpeechRecognizer.ERROR_RECOGNIZER_BUSY,
-                    SpeechRecognizer.ERROR_CLIENT -> request.onEnded(emptyList())
+                    SpeechRecognizer.ERROR_CLIENT,
+                    // The network went away, or the server did. This one session is lost and the
+                    // next may well work, so it ends like any other. Reporting it as "recognition
+                    // is unavailable" is what used to retire the microphone for the rest of a
+                    // reading over one dropped request — and on a device with no on-device model
+                    // for the language, where every session goes over the network, that is the
+                    // ordinary failure rather than an exotic one.
+                    SpeechRecognizer.ERROR_NETWORK,
+                    SpeechRecognizer.ERROR_NETWORK_TIMEOUT,
+                    SpeechRecognizer.ERROR_SERVER,
+                    SpeechRecognizer.ERROR_AUDIO,
+                    // Throttling, and the recognition service process going away — the Google app
+                    // updating, or a low-memory kill. Both clear on the next session, and both
+                    // are exactly what a device that opens sessions often runs into. The two
+                    // constants only exist from API 31 and 33, but referencing them is safe on
+                    // anything older: they are compile-time constants an old platform never
+                    // reports.
+                    SpeechRecognizer.ERROR_SERVER_DISCONNECTED,
+                    SpeechRecognizer.ERROR_TOO_MANY_REQUESTS -> request.onEnded(emptyList())
+                    // What is left really is unavailable: no permission, or a service that will
+                    // not serve this request at all.
                     else -> request.onUnavailable()
                 }
             }
@@ -190,19 +243,51 @@ class SpeechGate(private val context: Context) {
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, locale.toLanguageTag())
             putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, MAX_HYPOTHESES)
             putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-            putExtra(
-                RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
-                CONTINUOUS_COMPLETE_SILENCE_MILLIS
-            )
-            putExtra(
-                RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
-                CONTINUOUS_COMPLETE_SILENCE_MILLIS
-            )
+            // Int, not Long. These extras are read with getInt, so a Long silently misses and the
+            // engine falls back to its own default — which is what made the "generous" silence
+            // budget below have no effect at all, and left sessions closing every few seconds.
             putExtra(
                 RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS,
                 MINIMUM_UTTERANCE_MILLIS
             )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                // One session, many results. The value of EXTRA_SEGMENTED_SESSION is the *key* of
+                // the extra that decides where one segment ends and the next begins — here, a
+                // pause in the reading. The reader can then read a whole page into a microphone
+                // that is opened once, instead of one that closed after every pause and dropped
+                // whatever was said while it was being built again.
+                putExtra(
+                    RecognizerIntent.EXTRA_SEGMENTED_SESSION,
+                    RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                    SEGMENT_SILENCE_MILLIS
+                )
+            } else {
+                putExtra(
+                    RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS,
+                    CONTINUOUS_COMPLETE_SILENCE_MILLIS
+                )
+                putExtra(
+                    RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS,
+                    CONTINUOUS_COMPLETE_SILENCE_MILLIS
+                )
+            }
         }
+    }
+
+
+    /**
+     * Closes the session and asks for the final transcript.
+     *
+     * Different from [cancel] in the one way that matters to the reading review: cancelling
+     * throws away what the engine has heard, so the last words of a reading would simply be
+     * missing from the report.
+     */
+    fun stop() {
+        runCatching { recognizer?.stopListening() }
     }
 
     fun cancel() {
@@ -212,7 +297,6 @@ class SpeechGate(private val context: Context) {
     fun release() {
         runCatching { recognizer?.destroy() }
         recognizer = null
-        pendingRequest = null
     }
 }
 

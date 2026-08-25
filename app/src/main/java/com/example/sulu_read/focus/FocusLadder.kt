@@ -25,14 +25,6 @@ private const val PAUSE_AFTER_DEEP_WORDS = 3
 // streak of them means today's confusion threshold is low, so offer a break.
 private val DEEP_STEPS = setOf(FocusStep.Letters, FocusStep.Meaning)
 
-// Sweep is deliberately absent: re-flashing a word the reader has just failed teaches them
-// nothing, so it is only ever offered before a failure, by the silence timer or the help
-// button. A miss buys support that carries information.
-private val ESCALATION_ORDER = listOf(
-    FocusStep.Letters,
-    FocusStep.Meaning
-)
-
 data class FocusLadderState(
     val wordIndex: Int = 0,
     val step: FocusStep = FocusStep.Focus,
@@ -60,10 +52,34 @@ fun FocusLadderState.onCorrectRead(currentWord: String, wordCount: Int): FocusLa
     return advance(currentWord, wordCount)
 }
 
-fun FocusLadderState.onMisread(currentWord: String, wordCount: Int): FocusLadderState {
-    val nextStep = ESCALATION_ORDER.firstOrNull { it.ordinal > step.ordinal }
-        ?: return advance(currentWord, wordCount)
-    return copy(step = nextStep)
+/**
+ * The reader moved the focus themselves — the next word, or any word they tapped.
+ *
+ * Moving on is what finishes a word, so that is where the word is scored and where a word that
+ * needed deep help is collected for later practice. Going back to re-read scores nothing: the
+ * word behind is not finished, it is being started again, and counting it would let a reader
+ * inflate the pace by tapping backwards.
+ */
+fun FocusLadderState.onFocusMoved(
+    target: Int,
+    currentWord: String,
+    wordCount: Int
+): FocusLadderState {
+    val clamped = target.coerceIn(0, wordCount)
+    if (clamped == wordIndex) {
+        return this
+    }
+    if (clamped < wordIndex) {
+        // Nothing is scored, but the word being left is still collected when it needed deep
+        // help. A reader turning back is the plainest signal there is that a word was hard, and
+        // dropping the step without collecting it lost exactly the words this list is for.
+        return copy(
+            wordIndex = clamped,
+            step = FocusStep.Focus,
+            triggerWords = if (step in DEEP_STEPS) triggerWords + currentWord else triggerWords
+        )
+    }
+    return advance(currentWord, wordCount).copy(wordIndex = clamped)
 }
 
 fun FocusLadderState.onHelpRequested(minimumStep: FocusStep): FocusLadderState {
