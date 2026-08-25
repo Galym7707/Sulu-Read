@@ -18,3 +18,9 @@ icon-of-the-app.png
 
 .venv/
 scripts/ocr_eval_results/
+
+# Ключ подписи Play. Если он утечёт в публичный репозиторий, любой сможет
+# выпустить поддельное обновление твоего приложения.
+keystore.properties
+*.jks
+*.keystore

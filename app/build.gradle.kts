@@ -4,6 +4,17 @@ plugins {
     alias(libs.plugins.kotlin.compose)
 }
 
+import java.util.Properties
+
+// Пароли от ключа подписи. Файла нет в git - см. keystore.properties.example.
+// Без него debug-сборка работает как раньше, а release просто не подписывается.
+val keystorePropertiesFile = rootProject.file("keystore.properties")
+val keystoreProperties = Properties().apply {
+    if (keystorePropertiesFile.exists()) {
+        keystorePropertiesFile.inputStream().use { load(it) }
+    }
+}
+
 android {
     namespace = "com.example.sulu_read"
     compileSdk = 35
@@ -12,7 +23,7 @@ android {
         .orElse("")
 
     defaultConfig {
-        applicationId = "com.example.sulu_read"
+        applicationId = "kz.suluread.app"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -22,9 +33,26 @@ android {
         buildConfigField("String", "AI_BACKEND_URL", "\"${aiBackendUrl.get().replace("\\", "\\\\").replace("\"", "\\\"")}\"")
     }
 
+    signingConfigs {
+        create("release") {
+            if (keystoreProperties.containsKey("storeFile")) {
+                storeFile = rootProject.file(keystoreProperties.getProperty("storeFile"))
+                storePassword = keystoreProperties.getProperty("storePassword")
+                keyAlias = keystoreProperties.getProperty("keyAlias")
+                keyPassword = keystoreProperties.getProperty("keyPassword")
+            }
+        }
+    }
+
     buildTypes {
         release {
-            isMinifyEnabled = false
+            signingConfig = if (keystoreProperties.containsKey("storeFile")) {
+                signingConfigs.getByName("release")
+            } else {
+                null
+            }
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"
