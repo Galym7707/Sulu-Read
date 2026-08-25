@@ -1193,29 +1193,34 @@ private fun BookReadingScreen(
             )
         }
 
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Button(
-                onClick = { pageIndex = max(0, pageIndex - 1) },
-                enabled = pageIndex > 0,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 56.dp),
-                shape = RoundedCornerShape(14.dp)
+        // A one-page text has nowhere to page to, and this row is pinned below the reading area
+        // rather than scrolling with it — so on a single page it was doing nothing but taking a
+        // permanent 56dp bite out of the height the reader actually reads in.
+        if (state.pages.size > 1) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Text(text = stringResource(R.string.book_previous_page))
-            }
-            Button(
-                onClick = { pageIndex = minOf(state.pages.lastIndex, pageIndex + 1) },
-                enabled = pageIndex < state.pages.lastIndex,
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 56.dp),
-                shape = RoundedCornerShape(14.dp)
-            ) {
-                Text(text = stringResource(R.string.book_next_page))
+                Button(
+                    onClick = { pageIndex = max(0, pageIndex - 1) },
+                    enabled = pageIndex > 0,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 56.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(text = stringResource(R.string.book_previous_page))
+                }
+                Button(
+                    onClick = { pageIndex = minOf(state.pages.lastIndex, pageIndex + 1) },
+                    enabled = pageIndex < state.pages.lastIndex,
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 56.dp),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(text = stringResource(R.string.book_next_page))
+                }
             }
         }
     }
@@ -1271,12 +1276,14 @@ private fun ReadingScreen(
             }
         }
 
-        TextButton(onClick = { isFocusMode = !isFocusMode }) {
-            Text(
-                text = stringResource(
-                    if (isFocusMode) R.string.focus_mode_exit else R.string.focus_mode_enter
-                )
-            )
+        // Only above the text on the way in. Once the reader is inside focus mode, the way out
+        // is not something they reach for on every word, and every row above the reading block
+        // pushes the controls that they do reach for on every word further down the screen —
+        // far enough on a large phone that the microphone button never appeared at all.
+        if (!isFocusMode) {
+            TextButton(onClick = { isFocusMode = true }) {
+                Text(text = stringResource(R.string.focus_mode_enter))
+            }
         }
 
         if (isFocusMode) {
@@ -1290,6 +1297,9 @@ private fun ReadingScreen(
                 onDismissHint = onDismissAiHelp,
                 onCollectTriggerWords = onCreateTrainingFromText
             )
+            TextButton(onClick = { isFocusMode = false }) {
+                Text(text = stringResource(R.string.focus_mode_exit))
+            }
         } else {
             PremiumReadingScreen(
                 text = state.adaptedText,

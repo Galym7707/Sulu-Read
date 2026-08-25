@@ -1,7 +1,6 @@
 package com.example.sulu_read
 
 import com.example.sulu_read.focus.isSpokenWordAccepted
-import com.example.sulu_read.focus.matchSpokenStream
 import com.example.sulu_read.focus.tokenizeTranscript
 import com.example.sulu_read.focus.normalizeForMatch
 import org.junit.Assert.assertEquals
@@ -124,74 +123,6 @@ class FocusWordMatchTest {
         assertFalse(isSpokenWordAccepted("cat", listOf("cut")))
         assertFalse(isSpokenWordAccepted("men", listOf("man")))
         assertFalse(isSpokenWordAccepted("книга", listOf("тетрадь")))
-    }
-
-    @Test
-    fun streamClearsSeveralWordsFromOneUtterance() {
-        // A fluent reader says three words before the engine ends the session; all three must
-        // count, without a recogniser restart between them.
-        val match = matchSpokenStream(
-            tokens = listOf("кот", "спит", "дома"),
-            targets = listOf("кот", "спит", "дома", "тихо")
-        )
-        assertEquals(3, match.wordsMatched)
-        assertEquals(3, match.tokensConsumed)
-    }
-
-    @Test
-    fun streamStopsAtTheFirstWordNotRead() {
-        val match = matchSpokenStream(
-            tokens = listOf("кот", "бежит"),
-            targets = listOf("кот", "спит", "дома")
-        )
-        assertEquals(1, match.wordsMatched)
-        assertEquals(1, match.tokensConsumed)
-    }
-
-    @Test
-    fun streamStepsOverFiller() {
-        val match = matchSpokenStream(
-            tokens = listOf("эм", "кот", "ну", "спит"),
-            targets = listOf("кот", "спит")
-        )
-        assertEquals(2, match.wordsMatched)
-        assertEquals(4, match.tokensConsumed)
-    }
-
-    @Test
-    fun streamNeverMatchesOutOfOrder() {
-        // "спит" arriving first must not clear the second target while the first is unread.
-        val match = matchSpokenStream(
-            tokens = listOf("спит", "кот"),
-            targets = listOf("кот", "спит")
-        )
-        assertEquals(1, match.wordsMatched)
-        assertEquals(2, match.tokensConsumed)
-    }
-
-    @Test
-    fun consumedCountLetsAGrowingTranscriptBeRescanned() {
-        // The engine revises one transcript; the caller drops what it already credited, so the
-        // same speech is never counted twice.
-        val first = matchSpokenStream(listOf("кот"), listOf("кот", "спит"))
-        assertEquals(1, first.wordsMatched)
-
-        val grown = listOf("кот", "спит")
-        val second = matchSpokenStream(grown.drop(first.tokensConsumed), listOf("спит"))
-        assertEquals(1, second.wordsMatched)
-    }
-
-    @Test
-    fun streamMatchesNothingWhenSilent() {
-        val match = matchSpokenStream(emptyList(), listOf("кот"))
-        assertEquals(0, match.wordsMatched)
-        assertEquals(0, match.tokensConsumed)
-    }
-
-    @Test
-    fun streamHonoursThePhoneticRules() {
-        assertEquals(1, matchSpokenStream(listOf("дуп"), listOf("дуб")).wordsMatched)
-        assertEquals(0, matchSpokenStream(listOf("том"), listOf("дом")).wordsMatched)
     }
 
     @Test

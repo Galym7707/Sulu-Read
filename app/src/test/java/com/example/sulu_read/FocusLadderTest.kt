@@ -4,8 +4,8 @@ import com.example.sulu_read.focus.FocusLadderState
 import com.example.sulu_read.focus.FocusStep
 import com.example.sulu_read.focus.masteryShare
 import com.example.sulu_read.focus.onCorrectRead
+import com.example.sulu_read.focus.onFocusMoved
 import com.example.sulu_read.focus.onHelpRequested
-import com.example.sulu_read.focus.onMisread
 import com.example.sulu_read.focus.onNudgeFinished
 import com.example.sulu_read.focus.onPauseAcknowledged
 import com.example.sulu_read.focus.ttsRate
@@ -26,40 +26,62 @@ class FocusLadderTest {
     }
 
     @Test
-    fun firstMisreadGoesStraightToLetters() {
-        // A 200 ms re-flash of a word the reader has just failed teaches them nothing.
-        // The flash is a pre-failure nudge only; failure buys real support immediately.
-        val state = FocusLadderState().onMisread("кот", wordCount)
-        assertEquals(FocusStep.Letters, state.step)
-    }
-
-    @Test
-    fun misreadsEscalateOneStepAtATime() {
-        var state = FocusLadderState()
-        state = state.onMisread("кот", wordCount)
-        assertEquals(FocusStep.Letters, state.step)
-        state = state.onMisread("кот", wordCount)
-        assertEquals(FocusStep.Meaning, state.step)
-        // Still the same word: escalating support must not skip the reader past it.
-        assertEquals(0, state.wordIndex)
-    }
-
-    @Test
-    fun misreadFromTheFlashNudgeStillLandsOnLetters() {
-        // The silence timer may have raised the step to Sweep before the reader spoke.
-        val nudged = FocusLadderState().onHelpRequested(FocusStep.Sweep)
-        assertEquals(FocusStep.Letters, nudged.onMisread("кот", wordCount).step)
-    }
-
-    @Test
-    fun misreadAtLastStepReleasesTheReaderForward() {
-        var state = FocusLadderState()
-        repeat(2) { state = state.onMisread("карандаш", wordCount) }
-        assertEquals(FocusStep.Meaning, state.step)
-        state = state.onMisread("карандаш", wordCount)
+    fun movingForwardScoresTheWordBeingLeft() {
+        val state = FocusLadderState()
+            .onHelpRequested(FocusStep.Letters)
+            .onFocusMoved(1, "математика", wordCount)
         assertEquals(1, state.wordIndex)
         assertEquals(FocusStep.Focus, state.step)
-        assertEquals(listOf("карандаш"), state.triggerWords)
+        assertEquals(listOf("математика"), state.triggerWords)
+        assertEquals(listOf(false), state.recentCleanReads)
+    }
+
+    @Test
+    fun tappingAheadSkipsToThatWordWithoutScoringTheOnesPassed() {
+        val state = FocusLadderState().onFocusMoved(7, "кот", wordCount)
+        assertEquals(7, state.wordIndex)
+        // One word was finished — the one the reader was on. The six they jumped over were
+        // never read, and counting them would be inventing reading that did not happen.
+        assertEquals(listOf(true), state.recentCleanReads)
+    }
+
+    @Test
+    fun goingBackKeepsTheWordThatNeededHelp() {
+        // Turning back is the plainest signal there is that a word was hard, so it is the last
+        // moment to collect it — the step is about to be cleared.
+        val state = FocusLadderState()
+            .onCorrectRead("кот", wordCount)
+            .onHelpRequested(FocusStep.Letters)
+            .onFocusMoved(0, "математика", wordCount)
+        assertEquals(listOf("математика"), state.triggerWords)
+        assertEquals(listOf(true), state.recentCleanReads)
+    }
+
+    @Test
+    fun goingBackToReReadScoresNothing() {
+        val state = FocusLadderState()
+            .onCorrectRead("кот", wordCount)
+            .onCorrectRead("дом", wordCount)
+            .onHelpRequested(FocusStep.Letters)
+            .onFocusMoved(0, "мяч", wordCount)
+        assertEquals(0, state.wordIndex)
+        // Still only the two words that were actually finished.
+        assertEquals(listOf(true, true), state.recentCleanReads)
+        // The support the reader climbed to belongs to the word they left.
+        assertEquals(FocusStep.Focus, state.step)
+    }
+
+    @Test
+    fun movingToTheWordAlreadyFocusedChangesNothing() {
+        val state = FocusLadderState().onCorrectRead("кот", wordCount)
+        assertEquals(state, state.onFocusMoved(1, "дом", wordCount))
+    }
+
+    @Test
+    fun focusNeverLeavesTheText() {
+        val state = FocusLadderState().onFocusMoved(500, "кот", wordCount)
+        assertEquals(wordCount, state.wordIndex)
+        assertEquals(0, FocusLadderState(wordIndex = 3).onFocusMoved(-4, "кот", wordCount).wordIndex)
     }
 
     @Test
@@ -75,9 +97,9 @@ class FocusLadderTest {
     }
 
     @Test
-    fun silenceNudgeDoesNotCountAsAMisread() {
+    fun silenceNudgeCostsTheReaderNothingUntilTheyMoveOn() {
         // Escalating on a timeout must not spend the reader's accuracy budget before they
-        // have even spoken; only advancing a word records anything.
+        // have even spoken; only finishing a word records anything.
         val nudged = FocusLadderState()
             .onHelpRequested(FocusStep.Sweep)
             .onHelpRequested(FocusStep.Letters)
@@ -88,8 +110,7 @@ class FocusLadderTest {
     @Test
     fun wordTakenWithDeepHelpBecomesTriggerWord() {
         var state = FocusLadderState()
-        state = state.onMisread("математика", wordCount)
-        assertEquals(FocusStep.Letters, state.step)
+        state = state.onHelpRequested(FocusStep.Letters)
         state = state.onCorrectRead("математика", wordCount)
         assertEquals(listOf("математика"), state.triggerWords)
     }
@@ -98,7 +119,7 @@ class FocusLadderTest {
     fun threeDeepWordsInARowSuggestAPause() {
         var state = FocusLadderState()
         repeat(3) {
-            repeat(2) { state = state.onMisread("слово", wordCount) }
+            state = state.onHelpRequested(FocusStep.Letters)
             state = state.onCorrectRead("слово", wordCount)
         }
         assertTrue(state.suggestPause)
@@ -111,7 +132,7 @@ class FocusLadderTest {
     @Test
     fun cleanReadBreaksTheDeepWordStreak() {
         var state = FocusLadderState()
-        repeat(2) { state = state.onMisread("слово", wordCount) }
+        state = state.onHelpRequested(FocusStep.Letters)
         state = state.onCorrectRead("слово", wordCount)
         state = state.onCorrectRead("дом", wordCount)
         assertEquals(0, state.consecutiveDeepWords)
@@ -132,7 +153,7 @@ class FocusLadderTest {
 
         var slow = FocusLadderState()
         repeat(20) {
-            slow = slow.onMisread("слово", wordCount)
+            slow = slow.onHelpRequested(FocusStep.Letters)
             slow = slow.onCorrectRead("слово", wordCount)
         }
         assertEquals(0.6f, slow.ttsRate(), 0.001f)
@@ -148,7 +169,7 @@ class FocusLadderTest {
         var state = FocusLadderState()
         repeat(10) { state = state.onCorrectRead("дом", wordCount) }
         repeat(10) {
-            state = state.onMisread("слово", wordCount)
+            state = state.onHelpRequested(FocusStep.Letters)
             state = state.onCorrectRead("слово", wordCount)
         }
         // 10 clean reads out of a 20-word window = 0.5 share = 0.5/0.8 of the way up.
