@@ -22,10 +22,11 @@ fun SuluCard(
 ) {
     Card(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(18.dp),
+        // Mazir separates surfaces with borders, not shadows: flat card, hairline outline.
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = FieldSurface),
         border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+        elevation = CardDefaults.cardElevation(defaultElevation = 0.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp),

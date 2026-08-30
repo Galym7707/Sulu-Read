@@ -107,10 +107,10 @@ import com.example.sulu_read.domain.model.AppLanguage
 import com.example.sulu_read.domain.repository.SuluReadRepository
 import com.example.sulu_read.focus.FocusReaderScreen
 import com.example.sulu_read.ui.navigation.SuluReadNavGraph
-import com.example.sulu_read.ui.theme.AccentBlue
+import com.example.sulu_read.ui.theme.AccentTeal
 import com.example.sulu_read.ui.theme.FieldSurface
 import com.example.sulu_read.ui.theme.AccentTint
-import com.example.sulu_read.ui.theme.AccentBlueSoft
+import com.example.sulu_read.ui.theme.AccentTealSoft
 import com.example.sulu_read.ui.theme.CardBorder
 import com.example.sulu_read.ui.theme.CardSurface
 import com.example.sulu_read.ui.theme.TextMuted
@@ -167,11 +167,11 @@ private const val UPLOAD_JPEG_QUALITY = 86
 
 
 private val SuluReadColorScheme = lightColorScheme(
-    primary = AccentBlue,
+    primary = AccentTeal,
     onPrimary = Color.White,
     primaryContainer = AccentTint,
     onPrimaryContainer = TextPrimary,
-    secondary = AccentBlueSoft,
+    secondary = AccentTealSoft,
     onSecondary = Color.White,
     secondaryContainer = AccentTint,
     onSecondaryContainer = TextPrimary,
@@ -192,9 +192,9 @@ private val SuluReadColorScheme = lightColorScheme(
 private val SuluReadTypography = Typography(
     displayMedium = TextStyle(
         fontFamily = FontFamily.SansSerif,
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 42.sp,
-        lineHeight = 50.sp,
+        fontWeight = FontWeight.Bold,
+        fontSize = 40.sp,
+        lineHeight = 48.sp,
         letterSpacing = 0.sp
     ),
     headlineSmall = TextStyle(
@@ -241,12 +241,13 @@ private val SuluReadTypography = Typography(
     )
 )
 
+// Mazir radii: 10-12 chips and inputs, 14 buttons, 20 dialogs and sheets.
 private val SuluReadShapes = Shapes(
-    extraSmall = RoundedCornerShape(12.dp),
-    small = RoundedCornerShape(16.dp),
-    medium = RoundedCornerShape(20.dp),
-    large = RoundedCornerShape(24.dp),
-    extraLarge = RoundedCornerShape(28.dp)
+    extraSmall = RoundedCornerShape(10.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(14.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(24.dp)
 )
 
 private enum class DocumentSource {
@@ -929,7 +930,7 @@ private fun CameraScanScreen(
     ) {
         CircularProgressIndicator(
             modifier = Modifier.size(56.dp),
-            color = AccentBlue,
+            color = AccentTeal,
             strokeWidth = 5.dp
         )
 
@@ -964,7 +965,7 @@ private fun LoadingScreen(
     ) {
         CircularProgressIndicator(
             modifier = Modifier.size(64.dp),
-            color = AccentBlue,
+            color = AccentTeal,
             strokeWidth = 5.dp
         )
 
@@ -1414,7 +1415,7 @@ private fun HeaderSection() {
                     Icon(
                         imageVector = Icons.Default.AutoAwesome,
                         contentDescription = null,
-                        tint = AccentBlue,
+                        tint = AccentTeal,
                         modifier = Modifier.size(24.dp)
                     )
                 }
@@ -1465,7 +1466,7 @@ private fun LibraryCard(onClick: () -> Unit) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.MenuBook,
                     contentDescription = null,
-                    tint = AccentBlue,
+                    tint = AccentTeal,
                     modifier = Modifier.size(28.dp)
                 )
             }
@@ -1500,7 +1501,7 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
             ),
         shape = RoundedCornerShape(24.dp),
         colors = CardDefaults.cardColors(containerColor = AccentTint),
-        border = BorderStroke(1.5.dp, AccentBlue.copy(alpha = 0.22f)),
+        border = BorderStroke(1.5.dp, AccentTeal.copy(alpha = 0.22f)),
         elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
     ) {
         Column(
@@ -1514,7 +1515,7 @@ private fun ScanTextbookCard(onClick: () -> Unit) {
                 modifier = Modifier
                     .size(72.dp)
                     .clip(CircleShape)
-                    .background(AccentBlue),
+                    .background(AccentTeal),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1559,7 +1560,7 @@ private fun DocumentStatusCard(
     val isReady = selectedDocumentUri != null
     val containerColor = if (isReady) AccentTint else WarningSurface
     val borderColor = if (isReady) CardBorder else WarningBorder
-    val iconColor = if (isReady) AccentBlue else WarningIcon
+    val iconColor = if (isReady) AccentTeal else WarningIcon
     val sourceText = when (selectedDocumentSource) {
         DocumentSource.Camera -> stringResource(R.string.document_status_source_camera)
         DocumentSource.Gallery -> stringResource(R.string.document_status_source_gallery)
@@ -1699,7 +1700,7 @@ private fun DocumentSourceAction(
                 modifier = Modifier
                     .size(48.dp)
                     .clip(CircleShape)
-                    .background(AccentBlue),
+                    .background(AccentTeal),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
@@ -1768,12 +1769,12 @@ private fun WebLinkAccessibilitySection(
                 imeAction = ImeAction.Done
             ),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = AccentBlue,
+                focusedBorderColor = AccentTeal,
                 unfocusedBorderColor = CardBorder,
                 focusedContainerColor = FieldSurface,
                 unfocusedContainerColor = FieldSurface,
-                cursorColor = AccentBlue,
-                focusedLabelColor = AccentBlue,
+                cursorColor = AccentTeal,
+                focusedLabelColor = AccentTeal,
                 unfocusedLabelColor = TextMuted,
                 focusedTextColor = TextPrimary,
                 unfocusedTextColor = TextPrimary,
@@ -1790,9 +1791,9 @@ private fun WebLinkAccessibilitySection(
                 .height(62.dp),
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
-                containerColor = AccentBlue,
+                containerColor = AccentTeal,
                 contentColor = Color.White,
-                disabledContainerColor = AccentBlue.copy(alpha = 0.62f),
+                disabledContainerColor = AccentTeal.copy(alpha = 0.62f),
                 disabledContentColor = Color.White
             ),
             contentPadding = PaddingValues(horizontal = 22.dp)

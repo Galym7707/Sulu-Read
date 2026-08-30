@@ -20,17 +20,20 @@ import androidx.compose.ui.graphics.Color
  * than assumed. The darkest text is near-black, not black: maximum contrast is harder to settle
  * on than slightly less of it.
  *
- * One accent, used consistently. The blue carries every primary action; green and amber are
+ * One accent, used consistently. The teal carries every primary action; green and amber are
  * reserved for the reading feedback, where they mean something specific.
  */
 
 // Surfaces, from the page up. PageBackground is deliberately the darkest of these.
-val PageBackground = Color(0xFFEDE8DF)
-val CardSurface = Color(0xFFFFFCF6)
-val ReadingSurface = Color(0xFFFFFCF6)
-val FieldSurface = Color(0xFFFFFCF6)
-val AccentTint = Color(0xFFDDEAF1)
-val WelcomeSurface = Color(0xFFF6EEE1)
+// Mazir's own scaffold is #FAFAF8 with white cards, but that pair is one percent apart in
+// luminance — the exact flat-sheet bug described above — so the page here is a step darker
+// in the same warm-neutral family and the cards keep their near-white paper.
+val PageBackground = Color(0xFFF0F0EA)
+val CardSurface = Color(0xFFFFFEFA)
+val ReadingSurface = Color(0xFFFDFCF6)
+val FieldSurface = Color(0xFFFFFEFA)
+val AccentTint = Color(0xFFD9EBE6)
+val WelcomeSurface = Color(0xFFEDF4F0)
 val WarningSurface = Color(0xFFF7E9D2)
 val WarningBorder = Color(0xFFE3CBA3)
 val WarningIcon = Color(0xFF8A5A1E)
@@ -43,12 +46,12 @@ val ReaderTextColor = Color(0xFF1F2328)
 val TextPrimary = Color(0xFF23252A)
 val TextMuted = Color(0xFF585D66)
 
-// The single accent. Calm rather than bright: it sits behind every primary action and is on
-// screen constantly.
-val AccentBlue = Color(0xFF215F7E)
-val AccentBlueSoft = Color(0xFF4A87A6)
-val CardBorder = Color(0xFFD9D3C7)
-val AccentBorder = Color(0xFFBFD6E2)
+// The single accent. Mazir's deep teal seed: calm rather than bright, 5.3:1 against white,
+// and it sits behind every primary action so it is on screen constantly.
+val AccentTeal = Color(0xFF00796B)
+val AccentTealSoft = Color(0xFF439889)
+val CardBorder = Color(0xFFD8DCD3)
+val AccentBorder = Color(0xFFBBD9D1)
 
 // Reading feedback. Amber for the word being read, and it stays amber because dark text on it
 // clears AA by a wide margin (13.3:1), which keeps the emphasised word the easiest thing on the
@@ -69,7 +72,7 @@ val CorrectColor = ListeningColor
 val IncorrectColor = TryAgainColor
 
 // One colour per training skill, so a reader recognises which kind of exercise they are on
-// before reading its label. Retuned for the blue accent: the old decoding blue (#3F5F8F) sat
+// before reading its label. Retuned for the accent: the old decoding blue (#3F5F8F) sat
 // almost on top of it, which made a skill badge look like a button.
 val SkillPhonology = Color(0xFF55701F)
 val SkillDecoding = Color(0xFF7A4E9E)
