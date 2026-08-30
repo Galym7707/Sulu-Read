@@ -387,6 +387,77 @@ async def health(request: Request) -> dict[str, Any]:
     }
 
 
+# ---------------------------------------------------------------------------
+# Speech transcription for the focus reader.
+#
+# iOS blocks the Web Speech recogniser inside an installed home-screen app: WebKit reads
+# NSSpeechRecognitionUsageDescription from the host app bundle, and a home-screen web app has
+# none, so the API is present, feature detection passes, and every session dies silently. The
+# client therefore records audio and posts it here in short chunks instead.
+#
+# Kazakh is deliberately REFUSED rather than transcribed. Whisper large-v3 scores about 56.5
+# WER on Kazakh, so it would report correctly-read words as misread faster than a dyslexic
+# child makes real mistakes — telling a child they misread a word they read correctly is the
+# exact harm this app exists to prevent. Kazakh reading runs unchecked, and says so.
+# ---------------------------------------------------------------------------
+
+TRANSCRIBE_MAX_BYTES = 25 * 1024 * 1024
+TRANSCRIBE_MODEL = "whisper-large-v3"
+TRANSCRIBE_SUPPORTED = {"ru", "en"}
+
+
+class TranscriptionResponse(BaseModel):
+    status: str = "success"
+    text: str = ""
+    language: str = ""
+
+
+@app.post("/v1/transcribe")
+async def transcribe_audio(
+    file: Annotated[UploadFile, File(description="Audio chunk from the focus reader")],
+    language_hint: Annotated[str, Form()] = "ru",
+) -> JSONResponse:
+    language = (language_hint or "").strip().lower()[:2]
+    if language not in TRANSCRIBE_SUPPORTED:
+        # Not an error the reader caused; the client renders "this reading is not checked".
+        return JSONResponse(
+            status_code=200,
+            content={"status": "unsupported_language", "text": "", "language": language},
+        )
+
+    api_key = get_groq_api_key()
+    if not api_key:
+        return JSONResponse(status_code=503, content={"status": "error", "message": "No speech key configured."})
+
+    audio_bytes = await file.read(TRANSCRIBE_MAX_BYTES + 1)
+    if not audio_bytes:
+        return JSONResponse(status_code=200, content={"status": "success", "text": "", "language": language})
+    if len(audio_bytes) > TRANSCRIBE_MAX_BYTES:
+        return JSONResponse(status_code=413, content={"status": "error", "message": "Audio chunk too large."})
+
+    def call_groq() -> str:
+        response = requests.post(
+            "https://api.groq.com/openai/v1/audio/transcriptions",
+            headers={"Authorization": f"Bearer {api_key}"},
+            files={"file": (file.filename or "chunk.m4a", audio_bytes, file.content_type or "audio/mp4")},
+            data={"model": TRANSCRIBE_MODEL, "language": language, "response_format": "json",
+                  "temperature": "0"},
+            timeout=min(GROQ_TIMEOUT_SECONDS, 60.0),
+        )
+        response.raise_for_status()
+        return str(response.json().get("text", "")).strip()
+
+    try:
+        text = await asyncio.wait_for(asyncio.to_thread(call_groq), timeout=75.0)
+    except Exception:
+        logger.exception("Transcription failed")
+        # A failed chunk must never read as "the child said nothing" — the client distinguishes
+        # this from an empty transcript and never shows the review's "nothing was heard" line.
+        return JSONResponse(status_code=502, content={"status": "error", "message": "Transcription failed."})
+
+    return JSONResponse(status_code=200, content={"status": "success", "text": text, "language": language})
+
+
 @app.post("/v1/adapt-url", response_model=AdaptedTextResponse | ErrorResponse)
 async def adapt_url(payload: UrlRequest) -> JSONResponse | AdaptedTextResponse:
     try:
