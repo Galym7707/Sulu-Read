@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="kk">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Sulu-Read</title>
+<meta name="description" content="Sulu-Read — dyslexia-friendly reading support for Kazakh readers. Web version of the app.">
+
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#D4D7DB">
+<meta name="color-scheme" content="light dark">
+
+<!-- Resolve the theme BEFORE first paint. Doing it here rather than in a @media block means
+     app.css needs exactly ONE dark block, the Settings toggle wins over the phone setting in
+     both directions, and a dark-mode phone never sees a light flash. -->
+<script>
+(function () {
+  var t = "light";
+  try {
+    var p = localStorage.getItem("sulu_theme") || "system";
+    t = p === "system"
+      ? (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light")
+      : p;
+  } catch (e) { /* private mode: light */ }
+  document.documentElement.dataset.theme = t;
+  var m = document.querySelector('meta[name="theme-color"]');
+  if (m) m.setAttribute("content", t === "dark" ? "#202124" : "#D4D7DB");
+})();
+</script>
+<!-- First paint is paper, never white. Inline and before app.css, which is a separate request;
+     the white flash is also what iOS snapshots for the launch screen. -->
+<style>
+  html { background: #D4D7DB; }
+  html[data-theme="dark"] { background: #202124; }
+  body { margin: 0; }
+</style>
+
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Sulu-Read">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<link rel="icon" href="/favicon-32.png" sizes="32x32">
+<link rel="icon" href="/icon.svg" type="image/svg+xml">
+
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div id="app">
+  <div id="screen"></div>
+</div>
+<nav class="bottom"><div class="inner"></div></nav>
+<script src="strings.js"></script>
+<script src="icons.js"></script>
+<script src="focus.js"></script>
+<script src="speech.js"></script>
+<script src="api.js"></script>
+<script src="app.js"></script>
+<script>
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    // Persistent storage is the only mode exempt from LRU eviction — it is what protects
+    // sulu_pending_attempts and sulu_user_id. A request, not a guarantee; nothing depends on it.
+    if (navigator.storage && navigator.storage.persist) navigator.storage.persist();
+  });
+}
+</script>
+</body>
+</html>

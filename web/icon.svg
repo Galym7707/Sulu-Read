@@ -1,0 +1,74 @@
+Write this to C:/Users/Alyhan/Claude/Projects/Sulu-Read/web/icon.svg. It is also the manifest's
+Safari-26 entry, and make_icons.py draws the identical five rectangles so the two never drift.
+Colours are the shipped tokens: --accent #174EA6, --reading #F7F2DC, --ink #202124,
+--focus-bg #FFD54F, --ink-muted #42454A. All marks sit inside the central 47–78%, so the iOS
+squircle crop is safe.
+
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512" role="img" aria-label="Sulu-Read">
+  <rect width="512" height="512" fill="#174EA6"/>
+  <rect x="136" y="112" width="240" height="288" rx="18" fill="#F7F2DC"/>
+  <rect x="172" y="168" width="168" height="20" rx="10" fill="#202124"/>
+  <rect x="172" y="226" width="168" height="28" rx="14" fill="#FFD54F"/>
+  <rect x="172" y="292" width="168" height="20" rx="10" fill="#42454A"/>
+  <rect x="172" y="340" width="112" height="20" rx="10" fill="#42454A"/>
+</svg>
+
+RASTERISING IT. There is no SVG rasteriser on this machine — `convert` in system32 is the
+Windows disk tool and cairosvg is not installed — but Pillow 12.2.0 is. Write this as
+web/make_icons.py and run it once from web/. I RAN IT: five PNGs, every one mode RGB, and the
+corner pixel of icon-512.png reads (23,78,166) = #174EA6 exactly.
+
+# make_icons.py - one-shot icon generator for the Sulu-Read PWA. Run once from web/:
+#   python make_icons.py
+# Needs only Pillow. Draws the same shapes as icon.svg so the two never drift by hand.
+# ponytail: no SVG rasteriser on this machine; the mark is 5 rects, so redraw beats a dependency.
+from PIL import Image, ImageDraw
+
+# Straight from the shipped palette: --accent, --reading, --ink, --focus-bg, --ink-muted.
+BLUE, PAPER, INK, AMBER, GREY = "#174EA6", "#F7F2DC", "#202124", "#FFD54F", "#42454A"
+SS = 4  # supersample, then downscale -> clean edges without antialias plumbing
+
+
+def draw(size, inset_ratio=0.0):
+    """inset_ratio>0 shrinks the artwork inside an opaque field (maskable safe zone)."""
+    S = 512 * SS
+    img = Image.new("RGB", (S, S), BLUE)   # RGB, not RGBA: iOS composites alpha onto black
+    d = ImageDraw.Draw(img)
+    k = 1.0 - 2 * inset_ratio
+
+    def box(x, y, w, h, r, fill):
+        cx, cy = 256, 256
+        X = (cx + (x - cx) * k) * SS
+        Y = (cy + (y - cy) * k) * SS
+        d.rounded_rectangle([X, Y, X + w * k * SS, Y + h * k * SS], radius=r * k * SS, fill=fill)
+
+    box(136, 112, 240, 288, 18, PAPER)   # the page
+    box(172, 168, 168, 20, 10, INK)      # a line of text
+    box(172, 226, 168, 28, 14, AMBER)    # the focused word
+    box(172, 292, 168, 20, 10, GREY)
+    box(172, 340, 112, 20, 10, GREY)
+    return img.resize((size, size), Image.LANCZOS)
+
+
+for name, size, inset in [
+    ("apple-touch-icon.png", 180, 0.0),
+    ("icon-192.png", 192, 0.0),
+    ("icon-512.png", 512, 0.0),
+    ("favicon-32.png", 32, 0.0),
+    ("icon-512-maskable.png", 512, 0.10),   # artwork inside the central 80%
+]:
+    draw(size, inset).save(name, "PNG", optimize=True)
+    print("wrote", name, size)
+
+VERIFY (every line must read the expected size and RGB, never RGBA):
+  python -c "from PIL import Image;import glob;[print(f,Image.open(f).size,Image.open(f).mode) for f in sorted(glob.glob('*.png'))]"
+
+apple-touch-icon.png (180x180) IS THE FILE THAT MATTERS ON iPHONE, and it overrides the
+manifest icons entry there. No alpha (iOS composites transparency onto black -> a black tile).
+No pre-rounded corners and no baked shadow (iOS applies its own squircle and shadow; baking
+your own doubles them and leaves grey wedges). If it is missing, iOS before 15.4 renders a
+SCREENSHOT OF THE PAGE as the home-screen icon, and Chrome/Firefox on iOS look for it
+regardless of version. 120/152/167 variants are unnecessary — iOS downsamples the 180 cleanly.
+
+web/.gitignore holds only `.vercel`, so all five PNGs will be committed once generated — and
+they MUST be, before deploy: they are in the service worker's EXTRAS list.
