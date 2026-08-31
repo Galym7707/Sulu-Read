@@ -20,6 +20,8 @@ RUN pip install --no-cache-dir --upgrade pip \
 
 COPY main.py /app/main.py
 COPY backend /app/backend
+# Веб-приложение раздаётся тем же процессом: без этой строки Space отдавал бы только API.
+COPY web /app/web
 
 RUN python -c "import easyocr; easyocr.Reader(['ru', 'rs_cyrillic', 'mn', 'en'], gpu=False, verbose=False)"
 

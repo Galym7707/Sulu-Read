@@ -309,6 +309,14 @@ app.add_middleware(
     allow_credentials=False,
 )
 
+@app.middleware("http")
+async def strip_api_prefix(request: Request, call_next):
+    path = request.scope.get("path", "")
+    if path == "/api" or path.startswith("/api/"):
+        request.scope["path"] = path[len("/api"):] or "/"
+    return await call_next(request)
+
+
 app.include_router(users.router)
 app.include_router(exercises.router)
 app.include_router(screening.router)
@@ -349,7 +357,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception) -> JSONR
     return error_response(GENERIC_ERROR_MESSAGE, status_code=500)
 
 
-@app.get("/")
+@app.get("/api-info")
 async def root() -> dict[str, Any]:
     return {
         "status": "ok",
@@ -1435,3 +1443,22 @@ def normalize_text(text: str) -> str:
     text = re.sub(r" *\n *", "\n", text)
     text = re.sub(r"\n{3,}", "\n\n", text)
     return text.strip()
+
+
+# ---------------------------------------------------------------------------
+# Веб-приложение.
+#
+# Раздаётся тем же процессом, что и API, поэтому Space — это и бэкенд, и сайт: один адрес,
+# один деплой, никакого CORS и никакого второго хостинга. Монтируется последним, иначе
+# StaticFiles на "/" перехватил бы все маршруты API, объявленные выше.
+# ---------------------------------------------------------------------------
+
+WEB_DIRECTORY = Path(__file__).resolve().parent / "web"
+
+if WEB_DIRECTORY.is_dir():
+    from fastapi.staticfiles import StaticFiles
+
+    app.mount("/", StaticFiles(directory=str(WEB_DIRECTORY), html=True), name="web")
+    logger.info("Web app served from %s", WEB_DIRECTORY)
+else:
+    logger.warning("Web directory not found at %s; API only", WEB_DIRECTORY)
