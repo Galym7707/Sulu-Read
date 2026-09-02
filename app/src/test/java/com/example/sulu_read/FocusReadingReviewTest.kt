@@ -9,6 +9,54 @@ import org.junit.Test
 
 class FocusReadingReviewTest {
     @Test
+    fun aNumberOnThePageIsCreditedWhenReadAsWords() {
+        // "25" written in digits; the recogniser transcribes speech as words. Before numerals
+        // were understood, digit targets were dropped from the review and never credited.
+        val reviews = reviewReading(
+            spokenTokens = listOf("страница", "двадцать", "пять", "готова"),
+            targets = listOf("страница", "25", "готова")
+        )
+
+        assertTrue(reviews.all { it.outcome == ReadOutcome.Correct })
+        assertEquals("двадцать пять", reviews[1].heard)
+        assertTrue(mistakesFrom(reviews).isEmpty())
+    }
+
+    @Test
+    fun aNumberInWordsOnThePageIsCreditedWhenTheEngineWritesDigits() {
+        // The other direction: two words on the page, one digit token from the engine.
+        val reviews = reviewReading(
+            spokenTokens = listOf("страница", "25", "готова"),
+            targets = listOf("страница", "двадцать", "пять", "готова")
+        )
+
+        assertTrue(reviews.all { it.outcome == ReadOutcome.Correct })
+        assertEquals(listOf("25", "25"), reviews.subList(1, 3).map { it.heard })
+    }
+
+    @Test
+    fun aKazakhYearSpansSixWords() {
+        val reviews = reviewReading(
+            spokenTokens = listOf("бір", "мың", "тоғыз", "жүз", "тоқсан", "бес", "жыл"),
+            targets = listOf("1995", "жыл")
+        )
+
+        assertTrue(reviews.all { it.outcome == ReadOutcome.Correct })
+    }
+
+    @Test
+    fun aWrongNumberIsAMisreading() {
+        val reviews = reviewReading(
+            spokenTokens = listOf("страница", "шесть"),
+            targets = listOf("страница", "5")
+        )
+
+        val mistakes = mistakesFrom(reviews)
+        assertEquals(listOf("5"), mistakes.map { it.word })
+        assertEquals(ReadOutcome.Misread, mistakes.first().outcome)
+    }
+
+    @Test
     fun cleanReadingHasNoMistakes() {
         val reviews = reviewReading(
             spokenTokens = listOf("мама", "мыла", "раму"),

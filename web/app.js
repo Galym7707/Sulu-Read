@@ -1151,9 +1151,13 @@ class FocusReader {
 
   computeReview() {
     const tokens = [...this.closedTranscript, ...this.liveTranscript];
+    // Numbers stay in. They used to be filtered out here because "5" could never match a
+    // transcript that says "пять" — true of a letter comparison, and the wrong fix: a child who
+    // read every number perfectly was never credited for any of them. The review now understands
+    // numerals in all three languages, in either spelling.
     const targets = this.reviewTargets
       .map((i) => this.words[i] ? this.words[i].spoken : null)
-      .filter((w) => w && [...w].some((ch) => /\p{L}/u.test(ch)));
+      .filter(Boolean);
     this.review = reviewReading(tokens, targets);
     this.render();
   }

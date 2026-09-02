@@ -367,12 +367,11 @@ fun FocusReaderScreen(
             return@LaunchedEffect
         }
         val tokens = closedTranscript + liveTranscript
-        val targets = reviewTargets
-            .mapNotNull { words.getOrNull(it)?.spoken }
-            // A word written in digits can never come back from the recogniser: it transcribes
-            // speech as words, so "5" is heard as "пять" and no amount of tolerance will match
-            // the two. Scoring it guarantees a mistake for a reader who read it perfectly.
-            .filter { word -> word.any { it.isLetter() } }
+        // Numbers stay in. They used to be filtered out here on the grounds that "5" could never
+        // match a transcript that says "пять" — true of a letter comparison, and the wrong fix:
+        // it meant a child who read every number perfectly was never credited for any of them.
+        // The review now understands numerals in all three languages, in either spelling.
+        val targets = reviewTargets.mapNotNull { words.getOrNull(it)?.spoken }
         review = withContext(Dispatchers.Default) { reviewReading(tokens, targets) }
     }
 

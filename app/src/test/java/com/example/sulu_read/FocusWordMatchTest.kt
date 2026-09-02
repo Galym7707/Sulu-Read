@@ -170,6 +170,38 @@ class FocusWordMatchTest {
     }
 
     @Test
+    fun acceptsANumberReadAsWords() {
+        // "5" on the page, "пять" from the microphone: the same reading, in any language.
+        assertTrue(isSpokenWordAccepted("5", listOf("пять")))
+        assertTrue(isSpokenWordAccepted("5", listOf("бес")))
+        assertTrue(isSpokenWordAccepted("5", listOf("five")))
+        assertTrue(isSpokenWordAccepted("25", listOf("двадцать пять")))
+        assertTrue(isSpokenWordAccepted("1995", listOf("бір мың тоғыз жүз тоқсан бес")))
+    }
+
+    @Test
+    fun acceptsANumberTheEngineWroteInDigits() {
+        // Most engines write "25" for spoken "двадцать пять"; the page had the words.
+        assertTrue(isSpokenWordAccepted("пять", listOf("5")))
+        assertTrue(isSpokenWordAccepted("бес", listOf("5")))
+    }
+
+    @Test
+    fun aDifferentNumberIsStillAMisreading() {
+        assertFalse(isSpokenWordAccepted("5", listOf("шесть")))
+        assertFalse(isSpokenWordAccepted("25", listOf("пятьдесят два")))
+        assertFalse(isSpokenWordAccepted("5", listOf("6")))
+    }
+
+    @Test
+    fun numbersWrittenAsWordsOnBothSidesUseTheLetterRules() {
+        // "он" is both Russian "he" and Kazakh "ten". With no digits involved the comparison
+        // stays on the letters, so a Russian text is not judged by the Kazakh number.
+        assertTrue(isSpokenWordAccepted("он", listOf("он")))
+        assertFalse(isSpokenWordAccepted("он", listOf("десять")))
+    }
+
+    @Test
     fun rejectsEmptyInput() {
         assertFalse(isSpokenWordAccepted("книга", emptyList()))
         assertFalse(isSpokenWordAccepted("книга", listOf("", "   ")))

@@ -230,6 +230,14 @@ internal fun isPlausibleMisreading(target: String, heard: String): Boolean {
     if (normalizedTarget.isEmpty() || normalizedHeard.isEmpty()) {
         return false
     }
+    // Two different numbers are a misreading of each other, not two unrelated things. On
+    // letters alone "5" and "шесть" share nothing, so the alignment would rather report the
+    // number as never heard than as read wrong - and only the second tells the reader anything.
+    if (isDigits(normalizedTarget) || isDigits(normalizedHeard)) {
+        if (numeralDigits(listOf(target)) != null && numeralDigits(listOf(heard)) != null) {
+            return true
+        }
+    }
     val budget = maxOf(normalizedTarget.length, normalizedHeard.length) / 2
     return editDistance(normalizedTarget, normalizedHeard) <= budget
 }
@@ -248,6 +256,19 @@ fun isSpokenWordAccepted(target: String, heardAlternatives: List<String>): Boole
         .flatMap { candidatesFrom(it) }
         .any { heard ->
             val normalizedHeard = normalizeForMatch(heard)
+
+            // A number is compared as a number, not as letters: "5" and "пять" are the same
+            // reading. Only when one side is written in digits, though. Two words are left to the
+            // letter rules below — otherwise "он" (he) and "он" (Kazakh ten) would be judged by
+            // their numeric value rather than by whether the child said the word on the page.
+            if (isDigits(normalizedTarget) || isDigits(normalizedHeard)) {
+                val targetNumber = numeralDigits(listOf(target))
+                val heardNumber = numeralDigits(listOf(heard))
+                if (targetNumber != null && heardNumber != null) {
+                    return@any targetNumber == heardNumber
+                }
+            }
+
             // Decided per pair, not once for the word: whether folding the Kazakh vowels away is
             // fair depends on what this particular transcript was able to write.
             val foldVowels = isRussianModeTranscript(normalizedTarget, normalizedHeard)

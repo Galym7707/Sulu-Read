@@ -29,6 +29,13 @@ private const val MOVE_SUBSTITUTE: Byte = 1
 private const val MOVE_SKIP_TARGET: Byte = 2
 private const val MOVE_SKIP_TOKEN: Byte = 3
 
+// A number can span several words on either side: "25" on the page is "двадцать пять" from the
+// microphone, and "двадцать пять" on the page comes back from most engines as "25". Six words is
+// enough for "бір мың тоғыз жүз тоқсан бес" — 1995 in Kazakh — which is as long as a school
+// number gets. A span move is encoded above the plain moves as base + targetSpan * 8 + tokenSpan.
+private const val MAX_NUMERAL_SPAN = 6
+private const val MOVE_NUMERAL_BASE = 16
+
 /**
  * Lines a whole session's transcript up against the words the reader walked through, and says
  * which words came out wrong.
@@ -43,6 +50,12 @@ private const val MOVE_SKIP_TOKEN: Byte = 3
  * Filler the engine invents ("эм", "the") and the reader's own false starts are stepped over as
  * extra tokens rather than counted against a word.
  *
+ * Numbers are aligned as numbers. A run of up to [MAX_NUMERAL_SPAN] words on one side may pair
+ * with a run on the other when both spell the same value and one side is written in digits —
+ * the digit side is what a plain word comparison could never match, so it is the only case that
+ * needs this. Before this, targets written in digits were dropped from the review altogether and
+ * a child who read them correctly was never credited.
+ *
  * ponytail: plain O(targets × tokens) alignment, sized for one page of text. If focus mode ever
  * runs over something book-length, band it (Ukkonen) instead of widening the table.
  */
@@ -53,13 +66,19 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
 
     val targetCount = targets.size
     val tokenCount = spokenTokens.size
-    val moves = ByteArray((targetCount + 1) * (tokenCount + 1))
-    var previousRow = IntArray(tokenCount + 1) { it * SKIP_COST }
+    val width = tokenCount + 1
+    // The whole table is kept rather than one row: a numeral span reaches back several rows.
+    val cost = IntArray((targetCount + 1) * width)
+    val moves = ByteArray((targetCount + 1) * width)
+
+    for (tokenIndex in 1..tokenCount) {
+        cost[tokenIndex] = tokenIndex * SKIP_COST
+        moves[tokenIndex] = MOVE_SKIP_TOKEN
+    }
 
     for (targetIndex in 1..targetCount) {
-        val currentRow = IntArray(tokenCount + 1)
-        currentRow[0] = targetIndex * SKIP_COST
-        moves[targetIndex * (tokenCount + 1)] = MOVE_SKIP_TARGET
+        cost[targetIndex * width] = targetIndex * SKIP_COST
+        moves[targetIndex * width] = MOVE_SKIP_TARGET
 
         for (tokenIndex in 1..tokenCount) {
             val target = targets[targetIndex - 1]
@@ -70,37 +89,81 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
                 isPlausibleMisreading(target, token) -> SUBSTITUTION_COST
                 else -> UNRELATED_COST
             }
-            val diagonal = previousRow[tokenIndex - 1] + pairingCost
-            val skipTarget = previousRow[tokenIndex] + SKIP_COST
-            val skipToken = currentRow[tokenIndex - 1] + SKIP_COST
-            val best = minOf(diagonal, skipTarget, skipToken)
+            val diagonal = cost[(targetIndex - 1) * width + (tokenIndex - 1)] + pairingCost
+            val skipTarget = cost[(targetIndex - 1) * width + tokenIndex] + SKIP_COST
+            val skipToken = cost[targetIndex * width + (tokenIndex - 1)] + SKIP_COST
+            var best = minOf(diagonal, skipTarget, skipToken)
 
-            currentRow[tokenIndex] = best
             // Ties go to the skips whenever the pairing is between a word and a token that have
             // nothing in common: every branch that equals `best` is equally optimal, so the tie
             // is free to be broken in favour of the answer that does not accuse the reader.
-            moves[targetIndex * (tokenCount + 1) + tokenIndex] = when {
+            var move: Byte = when {
                 best == diagonal && accepted -> MOVE_MATCH
                 best == diagonal && pairingCost == SUBSTITUTION_COST -> MOVE_SUBSTITUTE
                 best == skipTarget -> MOVE_SKIP_TARGET
                 best == skipToken -> MOVE_SKIP_TOKEN
                 else -> MOVE_SUBSTITUTE
             }
+
+            // The digit side of a numeral pairing is always a single element and always sits at
+            // the end of its run, which is this cell — so a cell with no digits on either side
+            // cannot end a span and is skipped without building any.
+            if (isDigits(normalizeForMatch(target)) || isDigits(normalizeForMatch(token))) {
+                for (targetSpan in 1..minOf(MAX_NUMERAL_SPAN, targetIndex)) {
+                    for (tokenSpan in 1..minOf(MAX_NUMERAL_SPAN, tokenIndex)) {
+                        if (targetSpan == 1 && tokenSpan == 1) {
+                            continue
+                        }
+                        val targetRun = targets.subList(targetIndex - targetSpan, targetIndex)
+                        val tokenRun = spokenTokens.subList(tokenIndex - tokenSpan, tokenIndex)
+                        val hasDigitSide =
+                            (targetSpan == 1 && isDigits(normalizeForMatch(targetRun[0]))) ||
+                                (tokenSpan == 1 && isDigits(normalizeForMatch(tokenRun[0])))
+                        if (!hasDigitSide) {
+                            continue
+                        }
+                        val targetNumber = numeralDigits(targetRun) ?: continue
+                        val tokenNumber = numeralDigits(tokenRun) ?: continue
+                        if (targetNumber != tokenNumber) {
+                            continue
+                        }
+                        val candidate = cost[(targetIndex - targetSpan) * width + (tokenIndex - tokenSpan)]
+                        if (candidate < best) {
+                            best = candidate
+                            move = (MOVE_NUMERAL_BASE + targetSpan * 8 + tokenSpan).toByte()
+                        }
+                    }
+                }
+            }
+
+            cost[targetIndex * width + tokenIndex] = best
+            moves[targetIndex * width + tokenIndex] = move
         }
-        previousRow = currentRow
     }
 
     val reviews = arrayOfNulls<WordReview>(targetCount)
     var targetIndex = targetCount
     var tokenIndex = tokenCount
     while (targetIndex > 0) {
-        when (moves[targetIndex * (tokenCount + 1) + tokenIndex]) {
+        val move = moves[targetIndex * width + tokenIndex].toInt()
+        if (move >= MOVE_NUMERAL_BASE) {
+            val targetSpan = (move - MOVE_NUMERAL_BASE) / 8
+            val tokenSpan = (move - MOVE_NUMERAL_BASE) % 8
+            val heard = spokenTokens.subList(tokenIndex - tokenSpan, tokenIndex).joinToString(" ")
+            for (index in (targetIndex - targetSpan) until targetIndex) {
+                reviews[index] = WordReview(word = targets[index], heard = heard, outcome = ReadOutcome.Correct)
+            }
+            targetIndex -= targetSpan
+            tokenIndex -= tokenSpan
+            continue
+        }
+
+        when (move.toByte()) {
             MOVE_MATCH, MOVE_SUBSTITUTE -> {
-                val isMatch = moves[targetIndex * (tokenCount + 1) + tokenIndex] == MOVE_MATCH
                 reviews[targetIndex - 1] = WordReview(
                     word = targets[targetIndex - 1],
                     heard = spokenTokens[tokenIndex - 1],
-                    outcome = if (isMatch) ReadOutcome.Correct else ReadOutcome.Misread
+                    outcome = if (move.toByte() == MOVE_MATCH) ReadOutcome.Correct else ReadOutcome.Misread
                 )
                 targetIndex -= 1
                 tokenIndex -= 1
