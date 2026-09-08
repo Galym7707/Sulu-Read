@@ -262,11 +262,31 @@ function isPlausibleMisreading(target, heard) {
   // Two different numbers are a misreading of each other, not two unrelated things. On letters
   // alone "5" and "шесть" share nothing, so the alignment would rather report the number as
   // never heard than as read wrong — and only the second tells the reader anything.
-  if (isDigits(normalizedTarget) || isDigits(normalizedHeard)) {
+  //
+  // This used to need digits on one side, so two numbers both spelled out fell through to the
+  // letters below and were called unrelated. Measured on the device: the page said "три", the
+  // reading came back "два", and the child was told the word was never heard rather than read
+  // wrong. Both spellings count now.
+  if (isDigits(normalizedTarget) || isDigits(normalizedHeard) ||
+      isNumeralWord(normalizedTarget) && isNumeralWord(normalizedHeard)) {
     if (numeralDigits([target]) !== null && numeralDigits([heard]) !== null) return true;
   }
   const budget = Math.floor(Math.max(normalizedTarget.length, normalizedHeard.length) / 2);
   return editDistance(normalizedTarget, normalizedHeard) <= budget;
+}
+
+// A spelled-out number long enough to be safely read as one.
+//
+// The numeral table is shared across all three languages, so Kazakh "он" (ten) makes the Russian
+// "он" (he) parse as a number. Without the length floor, any number word standing next to that
+// pronoun in the transcript would be reported as a misreading of it. Missing a misreading is the
+// safer error of the two; inventing one is the failure this app exists to avoid. Three characters
+// clears every real numeral in the three languages ("бес", "два", "one") and excludes the only
+// two-letter entry that is also an ordinary word.
+const MIN_NUMERAL_WORD_LENGTH = 3;
+
+function isNumeralWord(normalized) {
+  return normalized.length >= MIN_NUMERAL_WORD_LENGTH && numeralDigits([normalized]) !== null;
 }
 
 function tokenizeTranscript(transcript) {

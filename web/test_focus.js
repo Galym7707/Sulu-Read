@@ -105,6 +105,25 @@ assert.deepStrictEqual(Object.keys(FocusStep), ["Focus", "Sweep", "Meaning"]);
 assert.ok(!("Letters" in FocusStep), "the spelling rung is gone");
 assert.strictEqual(typeof globalThis.ladderTtsRate, "undefined", "nothing paces speech any more");
 
+// Two numbers both spelled out are a misreading of each other, not two unrelated things.
+// Measured on the device: the page said "три", the reading came back "два", and the child was
+// told the word was never heard instead of read wrong.
+assert.ok(isPlausibleMisreading("три", "два"));
+assert.ok(isPlausibleMisreading("пять", "шесть"));
+assert.ok(isPlausibleMisreading("бес", "алты"));      // Kazakh five / six
+assert.ok(!isSpokenWordAccepted("три", ["два"]), "different numbers are still not a correct reading");
+const numberSwap = reviewReading(heard("был", "два", "месяца"), ["был", "три", "месяца"]);
+assert.strictEqual(numberSwap[1].outcome, ReadOutcome.Misread);
+assert.strictEqual(numberSwap[1].heard, "два");
+
+// ...but the shared numeral table makes Kazakh "он" (ten) out of the Russian "он" (he), so a
+// number word next to that pronoun must not be reported as a misreading of it.
+assert.ok(!isPlausibleMisreading("он", "два"), "a two-letter pronoun is not a number here");
+assert.ok(!isPlausibleMisreading("два", "он"));
+assert.deepStrictEqual(
+  reviewReading(heard("два"), ["он"]).map((r) => r.outcome), [ReadOutcome.Silent],
+  "unheard, not a misreading of a pronoun");
+
 // recordVisit: which words the review is allowed to score.
 // Forward records, backward does not, and the last word of the text is never recorded.
 assert.deepStrictEqual(recordVisit([0], 0, 1, 10), [0, 1]);
