@@ -59,7 +59,7 @@ private const val MOVE_NUMERAL_BASE = 16
  * ponytail: plain O(targets × tokens) alignment, sized for one page of text. If focus mode ever
  * runs over something book-length, band it (Ukkonen) instead of widening the table.
  */
-fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordReview> {
+fun reviewReading(spokenTokens: List<HeardToken>, targets: List<String>): List<WordReview> {
     if (targets.isEmpty() || spokenTokens.isEmpty()) {
         return emptyList()
     }
@@ -83,10 +83,16 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
         for (tokenIndex in 1..tokenCount) {
             val target = targets[targetIndex - 1]
             val token = spokenTokens[tokenIndex - 1]
-            val accepted = isSpokenWordAccepted(target, listOf(token))
+            // Every hypothesis the engine offered for this position counts towards accepting the
+            // reading...
+            val accepted = isSpokenWordAccepted(target, token.candidates())
             val pairingCost = when {
                 accepted -> 0
-                isPlausibleMisreading(target, token) -> SUBSTITUTION_COST
+                // ...but only its best guess decides whether a mismatch is a misreading of THIS
+                // word or something unrelated. Letting the alternatives widen this budget too
+                // would pull filler onto words the reader never reached, which is the failure the
+                // UNRELATED_COST above exists to prevent.
+                isPlausibleMisreading(target, token.text) -> SUBSTITUTION_COST
                 else -> UNRELATED_COST
             }
             val diagonal = cost[(targetIndex - 1) * width + (tokenIndex - 1)] + pairingCost
@@ -108,14 +114,19 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
             // The digit side of a numeral pairing is always a single element and always sits at
             // the end of its run, which is this cell — so a cell with no digits on either side
             // cannot end a span and is skipped without building any.
-            if (isDigits(normalizeForMatch(target)) || isDigits(normalizeForMatch(token))) {
+            // Numerals are compared by value, off the engine's best guess only. An alternative
+            // cannot help here the way it helps a word: the value comparison already crosses the
+            // digits/words divide that a spelling comparison could not.
+            if (isDigits(normalizeForMatch(target)) || isDigits(normalizeForMatch(token.text))) {
                 for (targetSpan in 1..minOf(MAX_NUMERAL_SPAN, targetIndex)) {
                     for (tokenSpan in 1..minOf(MAX_NUMERAL_SPAN, tokenIndex)) {
                         if (targetSpan == 1 && tokenSpan == 1) {
                             continue
                         }
                         val targetRun = targets.subList(targetIndex - targetSpan, targetIndex)
-                        val tokenRun = spokenTokens.subList(tokenIndex - tokenSpan, tokenIndex)
+                        val tokenRun = spokenTokens
+                            .subList(tokenIndex - tokenSpan, tokenIndex)
+                            .map { it.text }
                         val hasDigitSide =
                             (targetSpan == 1 && isDigits(normalizeForMatch(targetRun[0]))) ||
                                 (tokenSpan == 1 && isDigits(normalizeForMatch(tokenRun[0])))
@@ -149,7 +160,9 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
         if (move >= MOVE_NUMERAL_BASE) {
             val targetSpan = (move - MOVE_NUMERAL_BASE) / 8
             val tokenSpan = (move - MOVE_NUMERAL_BASE) % 8
-            val heard = spokenTokens.subList(tokenIndex - tokenSpan, tokenIndex).joinToString(" ")
+            val heard = spokenTokens
+                .subList(tokenIndex - tokenSpan, tokenIndex)
+                .joinToString(" ") { it.text }
             for (index in (targetIndex - targetSpan) until targetIndex) {
                 reviews[index] = WordReview(word = targets[index], heard = heard, outcome = ReadOutcome.Correct)
             }
@@ -162,7 +175,9 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
             MOVE_MATCH, MOVE_SUBSTITUTE -> {
                 reviews[targetIndex - 1] = WordReview(
                     word = targets[targetIndex - 1],
-                    heard = spokenTokens[tokenIndex - 1],
+                    // The engine's own best guess, not whichever alternative rescued the match:
+                    // the panel is telling the reader what they were heard to say.
+                    heard = spokenTokens[tokenIndex - 1].text,
                     outcome = if (move.toByte() == MOVE_MATCH) ReadOutcome.Correct else ReadOutcome.Misread
                 )
                 targetIndex -= 1

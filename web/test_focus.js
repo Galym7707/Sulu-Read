@@ -25,11 +25,43 @@ assert.ok(!isSpokenWordAccepted("күн", ["құн"]));  // phonemic Kazakh vowe
 assert.ok(isSpokenWordAccepted("күн", ["кун"]));   // Russian-mode transcript folds
 
 // Review alignment: filler stepped over, misread reported with what was heard, skip reported.
-const review = reviewReading(["эм", "кинга", "стол"], ["книга", "стол", "дом"]);
+const heard = (...words) => words.map((w) => heardToken(w));
+const review = reviewReading(heard("эм", "кинга", "стол"), ["книга", "стол", "дом"]);
 assert.strictEqual(review[0].outcome, ReadOutcome.Misread);
 assert.strictEqual(review[0].heard, "кинга");
 assert.strictEqual(review[1].outcome, ReadOutcome.Correct);
 assert.strictEqual(review[2].outcome, ReadOutcome.Silent);
+
+// Hypotheses -> per-word alternatives. The best hypothesis is the spine; the others contribute
+// only where they disagree, and at the position where they disagree.
+const tokens = tokensWithAlternatives(["кинга на столе", "книга на столе"]);
+assert.deepStrictEqual(tokens.map((t) => t.text), ["кинга", "на", "столе"]);
+assert.deepStrictEqual(tokens[0].alternatives, ["книга"]);
+assert.deepStrictEqual(tokens[1].alternatives, []);
+
+// A hypothesis with a word missing still lines up after the gap. Pairing by position would put
+// "столе" against "на" — an alternative on the wrong word is how one turns into a false accept.
+const gapped = tokensWithAlternatives(["книга на столе", "книга столе"]);
+assert.deepStrictEqual(gapped[1].alternatives, []);
+assert.deepStrictEqual(gapped[2].alternatives, []);
+
+// An alternative equal to the best guess is not kept; the list is capped at four.
+assert.deepStrictEqual(tokensWithAlternatives(["Книга", "книга,", "кинга"])[0].alternatives, ["кинга"]);
+assert.strictEqual(tokensWithAlternatives(["а", "б", "в", "г", "д", "е", "ж"])[0].alternatives.length, 4);
+assert.deepStrictEqual(tokensWithAlternatives([]), []);
+assert.deepStrictEqual(tokensWithAlternatives(["   "]), []);
+
+// The whole point: a later hypothesis rescues a reading the first guess got wrong — but the
+// panel still reports what the engine actually settled on.
+const rescued = reviewReading([heardToken("кинга", ["книга"])], ["книга"]);
+assert.strictEqual(rescued[0].outcome, ReadOutcome.Correct);
+assert.strictEqual(rescued[0].heard, "кинга");
+
+// Alternatives widen what counts as a correct reading and nothing else. A stray token carrying a
+// lucky alternative must still be stepped over, not charged to a word further down the page.
+const stray = reviewReading([heardToken("мама"), heardToken("эм", ["это"])], ["мама", "мыла", "раму"]);
+assert.deepStrictEqual(stray.map((r) => r.outcome),
+  [ReadOutcome.Correct, ReadOutcome.Silent, ReadOutcome.Silent]);
 
 // mistakesFrom: a word corrected on the last attempt drops off the list.
 const m = mistakesFrom([
@@ -75,15 +107,26 @@ assert.ok(isSpokenWordAccepted("он", ["он"]));      // no digits involved: l
 assert.ok(!isSpokenWordAccepted("он", ["десять"]));
 
 // Review alignment across numeral spans, in both directions, and a wrong number as a misreading.
-const numReview = reviewReading(["страница", "двадцать", "пять", "готова"], ["страница", "25", "готова"]);
+const numReview = reviewReading(heard("страница", "двадцать", "пять", "готова"), ["страница", "25", "готова"]);
 assert.ok(numReview.every((r) => r.outcome === ReadOutcome.Correct));
 assert.strictEqual(numReview[1].heard, "двадцать пять");
-const numReview2 = reviewReading(["страница", "25", "готова"], ["страница", "двадцать", "пять", "готова"]);
+const numReview2 = reviewReading(heard("страница", "25", "готова"), ["страница", "двадцать", "пять", "готова"]);
 assert.ok(numReview2.every((r) => r.outcome === ReadOutcome.Correct));
 assert.deepStrictEqual(numReview2.slice(1, 3).map((r) => r.heard), ["25", "25"]);
-const yearReview = reviewReading(["бір", "мың", "тоғыз", "жүз", "тоқсан", "бес", "жыл"], ["1995", "жыл"]);
+const yearReview = reviewReading(heard("бір", "мың", "тоғыз", "жүз", "тоқсан", "бес", "жыл"), ["1995", "жыл"]);
 assert.ok(yearReview.every((r) => r.outcome === ReadOutcome.Correct));
-const wrongNumber = reviewReading(["страница", "шесть"], ["страница", "5"]);
+// Numeral spans and per-token alternatives are two separate widenings of the same aligner, and
+// the merge that brought them together is exactly where one would silently break the other.
+const both = reviewReading(
+  [heardToken("кинга", ["книга"]), heardToken("двадцать"), heardToken("пять")],
+  ["книга", "25"]);
+assert.ok(both.every((r) => r.outcome === ReadOutcome.Correct));
+assert.strictEqual(both[0].heard, "кинга");        // rescued by an alternative
+assert.strictEqual(both[1].heard, "двадцать пять"); // matched as a numeral span
+// An alternative must not rescue a genuinely wrong number.
+assert.strictEqual(reviewReading([heardToken("шесть", ["шесть"])], ["5"])[0].outcome, ReadOutcome.Misread);
+
+const wrongNumber = reviewReading(heard("страница", "шесть"), ["страница", "5"]);
 assert.strictEqual(wrongNumber[1].outcome, ReadOutcome.Misread);
 assert.strictEqual(wrongNumber[1].heard, "шесть");
 

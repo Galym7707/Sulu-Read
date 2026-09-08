@@ -73,10 +73,12 @@ function ttsStop() {
 
 class WebSpeechGate {
   constructor() {
+    // The live session, and the only thing that identifies it. A gate-wide "already ended" flag
+    // cannot do that job: startContinuous cleared it synchronously, before a queued onend from
+    // the session it had just aborted could be delivered, so the dead session's onend was
+    // attributed to the new one — ending it, and losing whatever was read across the restart.
     this.recognition = null;
     this.active = false;
-    this.request = null;
-    this.endedFired = false;
   }
 
   static available() {
@@ -89,7 +91,7 @@ class WebSpeechGate {
   // transcript — the browser's continuous mode is the segmented session the app asks for.
   startContinuous(languageCode, { onPartial, onSegment, onEnded, onUnavailable }) {
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
-    if (!Ctor) { onUnavailable(); return; }
+    if (!Ctor) { onUnavailable("unavailable"); return; }
     this.stopInternal();
 
     const recognition = new Ctor();
@@ -98,8 +100,11 @@ class WebSpeechGate {
     recognition.interimResults = true;
     recognition.maxAlternatives = 10;
 
-    this.endedFired = false;
-    let unavailable = false;
+    // Why the microphone is gone, or null while it is fine. Carried rather than a boolean: the
+    // caller shows "allow the microphone" for a denial and "not available here" for everything
+    // else, and reporting a service refusal as a permission problem asks a parent to grant
+    // something they already granted.
+    let unavailableReason = null;
 
     recognition.onresult = (event) => {
       let interim = "";
@@ -117,42 +122,47 @@ class WebSpeechGate {
     };
 
     recognition.onerror = (event) => {
-      // Permission refusals retire the microphone; everything else ends this one session and
+      // Only a real refusal retires the microphone; everything else ends this one session and
       // the caller opens another — a dropped network call must not end the analysis for good.
-      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
-        unavailable = true;
-      }
+      // service-not-allowed is separated out because it is transient far more often than it is
+      // final (an insecure context, a throttled service, the engine restarting), and the caller
+      // retries it a bounded number of times instead of giving up on the reading.
+      if (event.error === "not-allowed") unavailableReason = "denied";
+      else if (event.error === "service-not-allowed") unavailableReason = "service";
     };
 
     recognition.onend = () => {
+      // Identity, not a flag: an aborted session's onend arrives after the next one has already
+      // started, and answering it would end the live session.
+      if (this.recognition !== recognition) return;
+      this.recognition = null;
       this.active = false;
-      if (this.endedFired) return;
-      this.endedFired = true;
-      if (unavailable) onUnavailable();
+      if (unavailableReason) onUnavailable(unavailableReason);
       else onEnded([]);
     };
 
     this.recognition = recognition;
     this.active = true;
     try { recognition.start(); }
-    catch { this.active = false; onUnavailable(); }
+    // A throw here is the session failing to open, not the microphone being unusable — the
+    // caller reopens one after SESSION_RESTART_DELAY_MILLIS rather than retiring it.
+    catch { this.recognition = null; this.active = false; onEnded([]); }
   }
 
   // Stop, not abort: stopping lets pending finals arrive, which is the difference between the
-  // last words of a reading being reviewed and being thrown away.
+  // last words of a reading being reviewed and being thrown away. Not gated on `active`, so a
+  // session whose onend went missing can still be closed before the app speaks.
   stop() {
-    if (this.recognition && this.active) {
-      try { this.recognition.stop(); } catch { /* already stopped */ }
-    }
+    if (!this.recognition) return;
+    try { this.recognition.stop(); } catch { /* already stopped */ }
   }
 
   stopInternal() {
-    if (this.recognition) {
-      this.endedFired = true; // silence the old session's onend
-      try { this.recognition.abort(); } catch { /* fine */ }
-      this.recognition = null;
-      this.active = false;
-    }
+    if (!this.recognition) return;
+    const old = this.recognition;
+    this.recognition = null;   // the identity check in onend now silences `old`
+    this.active = false;
+    try { old.abort(); } catch { /* fine */ }
   }
 
   release() { this.stopInternal(); }
@@ -258,17 +268,33 @@ if (typeof addEventListener === "function") {
    which one it is driving: it records the reading, posts it in short chunks, and emits each
    returned transcript through onSegment exactly as a native final result would arrive.
 
-   Two things it must get right, both learned the hard way:
+   Three things it must get right, all learned the hard way:
+   - Every segment is its OWN complete recording, cut on silence. It used to run one recording
+     with a 3000ms timeslice, which is wrong twice over. Only the first blob of a timesliced
+     recording carries the container's initialisation segment — ftyp+moov for mp4, the EBML
+     header and Tracks for webm — so every later blob was a bare fragment that no decoder can
+     open, the backend returned 502 for all of them, and a reading was scored on its first three
+     seconds with every word after that reported to the child as never heard. And a cut on the
+     wall clock lands mid-word about as often as not, which turns a word the child read
+     correctly into a prefix fragment that scores as a misreading. Cutting on silence is what
+     SpeechGate.kt buys with SEGMENT_SILENCE_MILLIS; here it also makes each blob self-contained.
    - It does NOT pause while the app speaks. MediaRecorder.pause() keeps encoding audio on iOS
      (WebKit bug 279432, open), so pausing would put the app's own voice in the file and credit
      the child with the word the app just read to them. Instead every utterance's window is
-     recorded and any chunk overlapping one is dropped.
+     recorded and any segment overlapping one is dropped.
    - The AudioContext is created inside the user's tap, BEFORE the getUserMedia await. Created
      after, it stays suspended, the level meter reads a flat zero, and the 5s/9s help ladder
      then fires on every word no matter how well the child is reading. */
 
-const CHUNK_MILLIS = 3000;          // near-live: the check runs about one chunk behind
 const SILENCE_RMS = 0.012;          // tune against a real room; log sampleLevel() to pick it
+
+// How the reading is cut into segments. The poll is what watches the level; a segment ends once
+// the room has been quiet for SEGMENT_SILENCE_MILLIS, which is SpeechGate.kt's value — long
+// enough that the pause inside a hesitant word does not end the segment.
+const LEVEL_POLL_MILLIS = 150;
+const SEGMENT_SILENCE_MILLIS = 1500;
+const MIN_SEGMENT_MILLIS = 900;     // below this there is nothing worth a round trip
+const MAX_SEGMENT_MILLIS = 9000;    // a child who reads without pausing still gets checked
 
 class ServerSpeechGate {
   constructor() {
@@ -277,9 +303,20 @@ class ServerSpeechGate {
     this.audioContext = null;
     this.analyser = null;
     this.speakWindows = [];   // {start, end} ms since capture began, while the APP was talking
+    this.openSpeakStart = null;  // the app is talking NOW, and started here
     this.startedAt = 0;
     this.active = false;
-    this.chunkIndex = 0;
+    this.cutTimer = null;
+    this.segmentStart = 0;
+    this.quietSince = 0;
+    this.segmentIndex = 0;
+    this.mimeType = "";
+    this.languageCode = "ru";
+    // Transcripts are independent HTTP requests and finish out of order, but reviewReading is a
+    // strictly monotonic alignment that cannot recover from a transposed block. Held here and
+    // drained in capture order.
+    this.settled = new Map();
+    this.nextToEmit = 0;
   }
 
   static available() {
@@ -307,6 +344,20 @@ class ServerSpeechGate {
   }
 
   async startContinuous(languageCode, { onPartial, onSegment, onEnded, onUnavailable }) {
+    // One recorder for the whole reading. The caller reopens a session after every utterance it
+    // speaks — the native gate needs that, this one does not, because it masks the app's voice
+    // with speakWindows instead of stopping. Without this guard each prompt stacked another live
+    // MediaRecorder and another microphone stream on the first, all of them transcribing the
+    // same audio into the same transcript.
+    if (this.active && this.recorder) return;
+    // A gate that failed rather than one that is running: tear the dead one down first, with its
+    // callbacks detached, or its onstop reopens the very session this call is replacing.
+    if (this.recorder) {
+      this.recorder.ondataavailable = null;
+      this.recorder.onstop = null;
+      this.recorder.onerror = null;
+      this.stop();
+    }
     this.prepare();
     try {
       this.stream = await navigator.mediaDevices.getUserMedia({
@@ -328,41 +379,142 @@ class ServerSpeechGate {
       source.connect(this.analyser);
     }
 
-    const mimeType = ServerSpeechGate.pickMimeType();
-    try {
-      this.recorder = new MediaRecorder(this.stream, mimeType ? { mimeType } : undefined);
-    } catch {
+    this.mimeType = ServerSpeechGate.pickMimeType();
+    this.languageCode = languageCode;
+    this.startedAt = Date.now();
+    this.speakWindows = [];
+    this.openSpeakStart = null;
+    this.segmentIndex = 0;
+    this.settled = new Map();
+    this.nextToEmit = 0;
+    this.active = true;
+
+    if (!this.openRecorder({ onPartial, onSegment, onEnded })) {
       this.releaseStream();
+      this.active = false;
       onUnavailable("unavailable");
       return;
     }
 
-    this.startedAt = Date.now();
-    this.speakWindows = [];
-    this.chunkIndex = 0;
-    this.active = true;
+    // The level meter decides where a segment ends. Without an AudioContext there is no level to
+    // read, so fall back to cutting on the clock — still one complete file per segment, just
+    // blind to where the words are.
+    this.cutTimer = setInterval(() => {
+      if (!this.active || !this.recorder || this.recorder.state !== "recording") return;
+      const elapsed = Date.now() - this.segmentStart;
+      if (elapsed >= MAX_SEGMENT_MILLIS) { this.cutSegment({ onPartial, onSegment, onEnded }); return; }
+      if (elapsed < MIN_SEGMENT_MILLIS) return;
+      if (!this.analyser) {
+        if (elapsed >= MAX_SEGMENT_MILLIS / 2) this.cutSegment({ onPartial, onSegment, onEnded });
+        return;
+      }
+      if (this.sampleLevel() > SILENCE_RMS) { this.quietSince = 0; return; }
+      if (this.quietSince === 0) { this.quietSince = Date.now(); return; }
+      if (Date.now() - this.quietSince >= SEGMENT_SILENCE_MILLIS) {
+        this.cutSegment({ onPartial, onSegment, onEnded });
+      }
+    }, LEVEL_POLL_MILLIS);
+  }
 
-    this.recorder.ondataavailable = (event) => {
-      if (!event.data || event.data.size === 0) return;
-      const index = this.chunkIndex++;
-      const chunkStart = index * CHUNK_MILLIS;
-      const chunkEnd = chunkStart + CHUNK_MILLIS;
-      // Drop any chunk the app was talking through for more than half its length.
-      const spoken = this.speakWindows.reduce((total, w) =>
-        total + Math.max(0, Math.min(w.end, chunkEnd) - Math.max(w.start, chunkStart)), 0);
-      if (spoken > CHUNK_MILLIS / 2) return;
+  /**
+   * Starts one recording. No timeslice: the single blob that arrives on stop is a complete,
+   * self-contained file, which is the whole reason segments are cut rather than sliced.
+   */
+  openRecorder(callbacks) {
+    let recorder;
+    try {
+      recorder = new MediaRecorder(this.stream, this.mimeType ? { mimeType: this.mimeType } : undefined);
+    } catch {
+      this.recorder = null;
+      return false;
+    }
 
-      transcribeChunk(event.data, languageCode, mimeType).then((result) => {
-        if (!this.active && result === null) return;
-        if (result === null) { onPartial(""); return; }   // a failed chunk is not silence
-        if (result.trim()) onSegment([result]);
+    const index = this.segmentIndex++;
+    const segmentStart = Date.now();
+    this.segmentStart = segmentStart;
+    this.quietSince = 0;
+
+    recorder.ondataavailable = (event) => {
+      const segmentEnd = Date.now();
+      if (!event.data || event.data.size === 0) { this.settle(index, "", callbacks.onSegment); return; }
+
+      // Measured, not counted. The old form derived a chunk's window from its ordinal, so one
+      // empty blob shifted every later window by a whole chunk and the app's own voice stopped
+      // being masked at all.
+      const from = segmentStart - this.startedAt;
+      const to = segmentEnd - this.startedAt;
+      // Drop a segment the app was talking through for more than half its length.
+      if (this.wasAppSpeaking(from, to)) { this.settle(index, "", callbacks.onSegment); return; }
+
+      transcribeChunk(event.data, this.languageCode, this.mimeType).then((result) => {
+        // A failed chunk is not silence. Said out loud so the help ladder is not triggered by a
+        // gap the child did not cause; the words themselves are lost either way.
+        if (result === null && this.active) callbacks.onPartial("");
+        this.settle(index, result || "", callbacks.onSegment);
       });
     };
-    this.recorder.onstop = () => { this.active = false; onEnded([]); };
-    this.recorder.onerror = () => { this.active = false; onEnded([]); };
+    recorder.onstop = () => {
+      // Identity, as in WebSpeechGate: a recorder that has already been replaced was stopped at
+      // a segment boundary, not because the reading ended, and answering for it would report the
+      // microphone as closed while the next segment is recording.
+      if (this.recorder !== recorder) return;
+      this.recorder = null;
+      this.active = false;
+      callbacks.onEnded([]);
+    };
+    recorder.onerror = () => {
+      if (this.recorder !== recorder) return;
+      this.active = false;
+      callbacks.onEnded([]);
+    };
 
-    try { this.recorder.start(CHUNK_MILLIS); }
-    catch { this.releaseStream(); this.active = false; onUnavailable("unavailable"); }
+    try { recorder.start(); }
+    catch { this.recorder = null; return false; }
+    this.recorder = recorder;
+    return true;
+  }
+
+  /** Ends the current recording and immediately opens the next one. */
+  cutSegment(callbacks) {
+    const finished = this.recorder;
+    if (!finished || finished.state !== "recording") return;
+    // Opened first, so `this.recorder` no longer points at `finished` by the time its onstop is
+    // dispatched and the identity check above sees a superseded recorder.
+    if (!this.openRecorder(callbacks)) { this.active = false; callbacks.onEnded([]); return; }
+    try { finished.stop(); } catch { /* it will not deliver a blob; the next segment carries on */ }
+  }
+
+  /**
+   * Whether the app did more of the talking than the child during [from, to), both in ms since
+   * capture began — i.e. whether this segment is the app's own voice and must not be
+   * transcribed and credited to the reader.
+   */
+  wasAppSpeaking(from, to) {
+    const length = Math.max(1, to - from);
+    // An utterance still in flight counts only up to the end of this segment, so an onend that
+    // never arrives costs one segment rather than silencing the microphone for good.
+    const windows = this.openSpeakStart === null
+      ? this.speakWindows
+      : [...this.speakWindows, { start: this.openSpeakStart, end: to }];
+    const spoken = windows.reduce((total, w) =>
+      total + Math.max(0, Math.min(w.end, to) - Math.max(w.start, from)), 0);
+    return spoken > length / 2;
+  }
+
+  /**
+   * Holds a finished segment until every earlier one has been emitted.
+   *
+   * Every exit path settles its slot — a dropped segment and a failed request included — or the
+   * drain stalls on it and nothing the child says afterwards is ever heard.
+   */
+  settle(index, text, onSegment) {
+    this.settled.set(index, text);
+    while (this.settled.has(this.nextToEmit)) {
+      const text = this.settled.get(this.nextToEmit);
+      this.settled.delete(this.nextToEmit);
+      this.nextToEmit += 1;
+      if (text.trim()) onSegment([text]);
+    }
   }
 
   /** Root-mean-square input level, 0..1. Drives the silence ladder in place of interim results. */
@@ -377,15 +529,43 @@ class ServerSpeechGate {
 
   isSpeaking() { return this.sampleLevel() > SILENCE_RMS; }
 
-  /** Record that the APP was talking, so the chunks covering it are discarded. */
-  markAppSpeech(start, end) {
+  /**
+   * The app has STARTED talking.
+   *
+   * Opened here rather than only closed at the end, because a segment that finishes while the
+   * utterance is still running was tested against a window that did not exist yet and was never
+   * dropped — so the app's own reading of the word went to the transcriber and came back
+   * credited to the child. Queued utterances collapse into one window: the Letters rung speaks
+   * the letter names and then the word, and both are the app.
+   */
+  markAppSpeechStart(start) {
     if (!this.startedAt) return;
-    this.speakWindows.push({ start: start - this.startedAt, end: end - this.startedAt });
+    if (this.openSpeakStart === null) this.openSpeakStart = Math.max(0, start - this.startedAt);
   }
 
+  /** ...and has stopped. Closes the window opened above, so the segments covering it are dropped. */
+  markAppSpeech(start, end) {
+    if (!this.startedAt) return;
+    const from = this.openSpeakStart !== null ? this.openSpeakStart : Math.max(0, start - this.startedAt);
+    this.openSpeakStart = null;
+    this.speakWindows.push({ start: from, end: end - this.startedAt });
+  }
+
+  /**
+   * The reader is done. The last recording is stopped rather than discarded, so its blob still
+   * arrives through ondataavailable and the final words reach the review — that is the whole
+   * difference between "stop" and "cancel" here.
+   *
+   * No onEnded follows: the caller asked for this, and it has already closed the session and
+   * asked for the review itself. The identity check in onstop is what keeps it quiet.
+   */
   stop() {
-    if (this.recorder && this.recorder.state !== "inactive") {
-      try { this.recorder.stop(); } catch { /* already stopped */ }
+    if (this.cutTimer) { clearInterval(this.cutTimer); this.cutTimer = null; }
+    const finished = this.recorder;
+    this.recorder = null;
+    this.active = false;
+    if (finished && finished.state !== "inactive") {
+      try { finished.stop(); } catch { /* already stopped */ }
     }
     this.releaseStream();
   }
@@ -404,8 +584,21 @@ class ServerSpeechGate {
   }
 }
 
-/** Returns the transcript, "" for genuine silence, or null when the request itself failed. */
+/**
+ * Returns the transcript, "" for genuine silence, or null when the request itself failed.
+ *
+ * Tried twice. A failed chunk is words the child really said, and by the time it reaches the
+ * review there is nothing left to distinguish it from silence — the panel tells them they did
+ * not read a word they read out loud. Recovering the words beats labelling the gap, and the
+ * in-order drain means the extra round trip cannot reorder the transcript.
+ */
 async function transcribeChunk(blob, languageCode, mimeType) {
+  const first = await postChunk(blob, languageCode, mimeType);
+  if (first !== null) return first;
+  return postChunk(blob, languageCode, mimeType);
+}
+
+async function postChunk(blob, languageCode, mimeType) {
   const form = new FormData();
   const extension = (mimeType || "").includes("webm") ? "webm" : "m4a";
   form.append("file", blob, "chunk." + extension);

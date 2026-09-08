@@ -1,7 +1,9 @@
 package com.example.sulu_read
 
+import com.example.sulu_read.focus.HeardToken
 import com.example.sulu_read.focus.isSpokenWordAccepted
 import com.example.sulu_read.focus.tokenizeTranscript
+import com.example.sulu_read.focus.tokensWithAlternatives
 import com.example.sulu_read.focus.normalizeForMatch
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -129,6 +131,63 @@ class FocusWordMatchTest {
     fun tokenizerSplitsOnAnyWhitespace() {
         assertEquals(listOf("кот", "спит"), tokenizeTranscript("  кот   спит \n"))
         assertEquals(emptyList<String>(), tokenizeTranscript("   "))
+    }
+
+    @Test
+    fun hypothesesBecomePerWordAlternatives() {
+        // The best hypothesis is the spine; the others contribute only where they disagree, and
+        // at the position where they disagree.
+        val tokens = tokensWithAlternatives(listOf("кинга на столе", "книга на столе"))
+
+        assertEquals(listOf("кинга", "на", "столе"), tokens.map { it.text })
+        assertEquals(listOf("книга"), tokens[0].alternatives)
+        assertEquals(emptyList<String>(), tokens[1].alternatives)
+        assertEquals(emptyList<String>(), tokens[2].alternatives)
+    }
+
+    @Test
+    fun aHypothesisWithAWordMissingStillLinesUpAfterTheGap() {
+        // The naive pairing — by position — would put "столе" against "на" and report it as an
+        // alternative for the wrong word, which is how an alternative turns into a false accept.
+        val tokens = tokensWithAlternatives(listOf("книга на столе", "книга столе"))
+
+        assertEquals(emptyList<String>(), tokens[1].alternatives)
+        assertEquals(emptyList<String>(), tokens[2].alternatives)
+    }
+
+    @Test
+    fun anAlternativeIdenticalToTheBestGuessIsNotKept() {
+        val tokens = tokensWithAlternatives(listOf("Книга", "книга,", "кинга"))
+
+        assertEquals(listOf("кинга"), tokens[0].alternatives)
+    }
+
+    @Test
+    fun alternativesAreCappedAndTheBestHypothesesComeFirst() {
+        val tokens = tokensWithAlternatives(
+            listOf("нулевой", "первый", "второй", "третий", "четвёртый", "пятый", "шестой")
+        )
+
+        assertEquals(
+            listOf("первый", "второй", "третий", "четвёртый"),
+            tokens[0].alternatives
+        )
+    }
+
+    @Test
+    fun noHypothesesMeansNoTokens() {
+        assertEquals(emptyList<HeardToken>(), tokensWithAlternatives(emptyList()))
+        assertEquals(emptyList<HeardToken>(), tokensWithAlternatives(listOf("   ")))
+    }
+
+    @Test
+    fun anAlternativeIsEnoughToAcceptAReading() {
+        // The whole point: isSpokenWordAccepted already took a list, and until now was only ever
+        // handed one string.
+        val tokens = tokensWithAlternatives(listOf("кинга", "книга"))
+
+        assertFalse(isSpokenWordAccepted("книга", listOf(tokens[0].text)))
+        assertTrue(isSpokenWordAccepted("книга", tokens[0].candidates()))
     }
 
     @Test

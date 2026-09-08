@@ -246,6 +246,107 @@ fun tokenizeTranscript(transcript: String): List<String> {
     return transcript.trim().split(WHITESPACE).filter { it.isNotBlank() }
 }
 
+// Enough to rescue a reading the engine's first guess got wrong, few enough that a word on the
+// page is not matched against most of the language. Ten hypotheses rarely disagree in more than
+// a handful of ways at any one position anyway.
+private const val MAX_ALTERNATIVES_PER_TOKEN = 4
+
+/**
+ * One word of the transcript, and the other words the recogniser thought it might have been.
+ *
+ * The engine is asked for ten hypotheses and, until this existed, nine of them were dropped one
+ * line after they arrived. That is the difference that matters for an accented reader: the model
+ * leans towards the pronunciation it was trained on, so the reading a child actually gave is
+ * routinely the engine's second or third guess rather than its first — and scoring only the
+ * first tells a child they misread a word they read correctly.
+ */
+data class HeardToken(
+    val text: String,
+    /** The other guesses at this position, best first. Never contains [text] itself. */
+    val alternatives: List<String> = emptyList()
+) {
+    /** Everything worth testing against a word on the page. */
+    fun candidates(): List<String> = listOf(text) + alternatives
+}
+
+/** Tokens with no second opinion — a partial result, which carries only one hypothesis. */
+fun heardTokens(transcript: String): List<HeardToken> =
+    tokenizeTranscript(transcript).map { HeardToken(it) }
+
+/**
+ * Turns one segment's hypotheses into tokens that carry the engine's other guesses.
+ *
+ * Hypotheses are whole utterances, but the review aligns a flat sequence of words, so they have
+ * to become per-position alternatives before they are any use. The best hypothesis is the spine
+ * — it decides how many tokens there are and what the reader is told they said — and each of the
+ * others is lined up against it word by word, so a hypothesis that differs in one word
+ * contributes that word at the right position instead of shifting everything after it.
+ */
+fun tokensWithAlternatives(hypotheses: List<String>): List<HeardToken> {
+    val spine = tokenizeTranscript(hypotheses.firstOrNull().orEmpty())
+    if (spine.isEmpty()) {
+        return emptyList()
+    }
+    // Insertion-ordered, so the better hypotheses' words stay at the front of the list.
+    val alternatives = List(spine.size) { LinkedHashSet<String>() }
+    hypotheses.drop(1).forEach { hypothesis ->
+        alignWords(spine, tokenizeTranscript(hypothesis)).forEachIndexed { index, word ->
+            if (word != null && normalizeForMatch(word) != normalizeForMatch(spine[index])) {
+                alternatives[index].add(word)
+            }
+        }
+    }
+    return spine.mapIndexed { index, text ->
+        HeardToken(text, alternatives[index].take(MAX_ALTERNATIVES_PER_TOKEN))
+    }
+}
+
+/**
+ * For each word of [spine], the word of [other] that lines up with it, or null.
+ *
+ * Word-level edit distance with a flat cost: pairing two words is free when they are the same
+ * word and costs one when they are not, so the cheapest path through a hypothesis that swapped a
+ * single word pairs that word up rather than treating it as a deletion and an insertion.
+ */
+private fun alignWords(spine: List<String>, other: List<String>): List<String?> {
+    val paired = arrayOfNulls<String>(spine.size)
+    if (other.isEmpty()) {
+        return paired.toList()
+    }
+    val costs = Array(spine.size + 1) { IntArray(other.size + 1) }
+    for (spineIndex in 0..spine.size) costs[spineIndex][0] = spineIndex
+    for (otherIndex in 0..other.size) costs[0][otherIndex] = otherIndex
+    for (spineIndex in 1..spine.size) {
+        for (otherIndex in 1..other.size) {
+            val substitution = if (isSameWord(spine[spineIndex - 1], other[otherIndex - 1])) 0 else 1
+            costs[spineIndex][otherIndex] = minOf(
+                costs[spineIndex - 1][otherIndex - 1] + substitution,
+                costs[spineIndex - 1][otherIndex] + 1,
+                costs[spineIndex][otherIndex - 1] + 1
+            )
+        }
+    }
+
+    var spineIndex = spine.size
+    var otherIndex = other.size
+    while (spineIndex > 0 && otherIndex > 0) {
+        val substitution = if (isSameWord(spine[spineIndex - 1], other[otherIndex - 1])) 0 else 1
+        when {
+            costs[spineIndex][otherIndex] == costs[spineIndex - 1][otherIndex - 1] + substitution -> {
+                paired[spineIndex - 1] = other[otherIndex - 1]
+                spineIndex -= 1
+                otherIndex -= 1
+            }
+            costs[spineIndex][otherIndex] == costs[spineIndex - 1][otherIndex] + 1 -> spineIndex -= 1
+            else -> otherIndex -= 1
+        }
+    }
+    return paired.toList()
+}
+
+private fun isSameWord(first: String, second: String): Boolean =
+    normalizeForMatch(first) == normalizeForMatch(second)
+
 fun isSpokenWordAccepted(target: String, heardAlternatives: List<String>): Boolean {
     val normalizedTarget = normalizeForMatch(target)
     if (fold(normalizedTarget, foldKazakhVowels = false).isEmpty()) {
