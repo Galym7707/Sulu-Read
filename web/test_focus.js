@@ -63,6 +63,22 @@ const stray = reviewReading([heardToken("мама"), heardToken("эм", ["это
 assert.deepStrictEqual(stray.map((r) => r.outcome),
   [ReadOutcome.Correct, ReadOutcome.Silent, ReadOutcome.Silent]);
 
+// Interims are the second opinion Chrome will not put in a final result. An interim that guessed
+// the word the child actually said rescues the reading; one that agrees with the final adds
+// nothing; and with no interims at all the tokens come through untouched.
+const rescuedByInterim = withInterimAlternatives([heardToken("кинга")], [heardToken("книга")]);
+assert.deepStrictEqual(rescuedByInterim[0].alternatives, ["книга"]);
+assert.strictEqual(reviewReading(rescuedByInterim, ["книга"])[0].outcome, ReadOutcome.Correct);
+assert.strictEqual(reviewReading(rescuedByInterim, ["книга"])[0].heard, "кинга");
+assert.deepStrictEqual(withInterimAlternatives([heardToken("книга")], [heardToken("Книга,")])[0].alternatives, [],
+  "an interim that agrees is not stored as an alternative");
+assert.deepStrictEqual(withInterimAlternatives([heardToken("книга")], [])[0].alternatives, [],
+  "no interims: unchanged, so a browser that suppresses them is no worse off");
+// Aligned, not zipped: an interim that dropped a word must not shift onto the wrong position.
+const shifted = withInterimAlternatives(
+  heard("книга", "на", "столе"), heard("книга", "столе"));
+assert.deepStrictEqual(shifted[1].alternatives, [], "\"столе\" must not become an alternative for \"на\"");
+
 // mistakesFrom: a word corrected on the last attempt drops off the list.
 const m = mistakesFrom([
   { word: "дом", heard: "том", outcome: ReadOutcome.Misread },

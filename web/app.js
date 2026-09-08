@@ -1068,7 +1068,15 @@ class FocusReader {
             // All of the hypotheses, not just the best one. The recogniser is asked for ten and
             // every one of them is a reading the child might have given — for an accented reader
             // the right one is often not the first.
-            const settledTokens = tokensWithAlternatives(hypotheses);
+            //
+            // ...and the interims too, because Chrome hands a final back with a single
+            // alternative however many were asked for. Android's engine really does return an
+            // n-best list, so it scores a word against five candidates where the web scored it
+            // against one, and an accented but correct reading came back a misreading. The
+            // interims are the same engine's earlier guesses at the same audio, and until now
+            // they were discarded on the next line without ever being scored.
+            const settledTokens = withInterimAlternatives(
+              tokensWithAlternatives(hypotheses), this.liveTranscript);
             const settled = settledTokens.length > 0 ? settledTokens : this.liveTranscript;
             this.closedTranscript = [...this.closedTranscript, ...settled];
             this.liveTranscript = [];

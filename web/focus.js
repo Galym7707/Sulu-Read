@@ -433,6 +433,33 @@ function tokensWithAlternatives(hypotheses) {
     heardToken(text, [...alternatives[index]].slice(0, MAX_ALTERNATIVES_PER_TOKEN)));
 }
 
+
+/**
+ * Folds the engine's interim guesses in as extra alternatives for the same words.
+ *
+ * Android's recogniser really does return an n-best list, and WordMatch scores a word against up
+ * to five of them, so a reading the engine's first guess got wrong is routinely rescued by its
+ * second. Chrome's networked recogniser hands a final result back with a single alternative
+ * however many were asked for, so on the web that rescue never happens and an accented but
+ * correct reading lands as a misreading — the same phone, the same engine, and the web scoring
+ * against one candidate where the app scores against five.
+ *
+ * The interims are the same engine's earlier guesses at the same audio, which is the one second
+ * opinion the browser does give us, and it was being thrown away the moment the final arrived.
+ * Aligned the same way as the hypotheses, so a word only ever becomes an alternative at the
+ * position it was actually guessed at. If no interims arrived this returns the tokens unchanged,
+ * so a browser that suppresses them is no worse off than before.
+ */
+function withInterimAlternatives(tokens, interimTokens) {
+  if (tokens.length === 0 || !interimTokens || interimTokens.length === 0) return tokens;
+  const paired = alignWords(tokens.map((t) => t.text), interimTokens.map((t) => t.text));
+  return tokens.map((token, index) => {
+    const word = paired[index];
+    if (!word || isSameWord(word, token.text) || token.alternatives.includes(word)) return token;
+    return heardToken(token.text, [...token.alternatives, word].slice(0, MAX_ALTERNATIVES_PER_TOKEN));
+  });
+}
+
 /**
  * For each word of `spine`, the word of `other` that lines up with it, or null.
  *

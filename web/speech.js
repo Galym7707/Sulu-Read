@@ -65,6 +65,11 @@ function ttsStop() {
 
 /* ---------------- Speech recognition (SpeechGate) ---------------- */
 
+// Diagnostics for the one thing about a speech engine that cannot be read off the spec: how many
+// alternatives it really returns, and whether interim results really arrive. Both decide whether
+// a correct-but-accented reading is rescued or reported as a mistake. Opt-in per page load.
+const SPEECH_DEBUG = typeof location !== "undefined" && /[?&]speechdebug=1/.test(location.search);
+
 class WebSpeechGate {
   constructor() {
     // The live session, and the only thing that identifies it. A gate-wide "already ended" flag
@@ -107,12 +112,23 @@ class WebSpeechGate {
         if (result.isFinal) {
           const hypotheses = [];
           for (let j = 0; j < result.length; j++) hypotheses.push(result[j].transcript);
+          // How many alternatives an engine ACTUALLY returns decides whether a near-miss can be
+          // rescued or is reported as a misreading, and it cannot be read from the spec: Chrome
+          // honours maxAlternatives on some builds and returns one on others. Off unless asked
+          // for, so it costs the reader nothing: open the page with ?speechdebug=1.
+          if (SPEECH_DEBUG) {
+            console.log("[sulu] final alts=" + result.length +
+              " | " + hypotheses.join(" ~ "));
+          }
           onSegment(hypotheses);
         } else {
           interim += result[0].transcript + " ";
         }
       }
-      if (interim.trim()) onPartial(interim);
+      if (interim.trim()) {
+        if (SPEECH_DEBUG) console.log("[sulu] interim: " + interim.trim());
+        onPartial(interim);
+      }
     };
 
     recognition.onerror = (event) => {
