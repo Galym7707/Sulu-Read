@@ -7,7 +7,7 @@
 // attempts) and cross-origin word pictures, which come back opaque and eat the origin quota.
 "use strict";
 
-const VERSION = "sulu-20260908-125621";
+const VERSION = "sulu-20260908-132248";
 // Split on purpose: cache.addAll is all-or-nothing, so one missing icon would reject install
 // and the worker would never activate, silently, on a phone with no console to check.
 // Code must be there; the icons are best-effort.
