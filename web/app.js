@@ -993,9 +993,7 @@ class FocusReader {
     const leaving = this.currentWord() ? this.currentWord().spoken : "";
     const next = ladderOnFocusMoved(this.ladder, target, leaving, this.words.length);
     if (next.wordIndex === this.ladder.wordIndex) return;
-    if (next.wordIndex > this.ladder.wordIndex && next.wordIndex < this.words.length) {
-      this.visited = [...this.visited, next.wordIndex];
-    }
+    this.visited = recordVisit(this.visited, this.ladder.wordIndex, next.wordIndex, this.words.length);
     this.ladder = next;
     this.armSilenceTimers();
     this.render();

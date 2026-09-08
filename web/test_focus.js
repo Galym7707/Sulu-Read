@@ -105,6 +105,27 @@ assert.deepStrictEqual(Object.keys(FocusStep), ["Focus", "Sweep", "Meaning"]);
 assert.ok(!("Letters" in FocusStep), "the spelling rung is gone");
 assert.strictEqual(typeof globalThis.ladderTtsRate, "undefined", "nothing paces speech any more");
 
+// recordVisit: which words the review is allowed to score.
+// Forward records, backward does not, and the last word of the text is never recorded.
+assert.deepStrictEqual(recordVisit([0], 0, 1, 10), [0, 1]);
+assert.deepStrictEqual(recordVisit([0, 1], 1, 0, 10), [0, 1], "going back records nothing");
+assert.deepStrictEqual(recordVisit([0, 1], 1, 9, 10), [0, 1, 9], "the last word is a word");
+assert.deepStrictEqual(recordVisit([0, 1], 1, 10, 10), [0, 1],
+  "index === wordCount is the finished sentinel, not a word to score");
+// The measured case: back one word, then forward again. The child found their place, they did
+// not read it twice — and the spare target was reported to them as a word never heard.
+let visited = [0];
+visited = recordVisit(visited, 0, 1, 10);   // forward onto "мальчик"
+visited = recordVisit(visited, 1, 0, 10);   // back
+visited = recordVisit(visited, 0, 1, 10);   // forward again
+assert.deepStrictEqual(visited, [0, 1], "an immediate repeat is not a second reading");
+// But going back over a line and reading it again still records every word of it.
+let reread = [0, 1, 2, 3];
+reread = recordVisit(reread, 3, 1, 10);     // back to the start of the line
+reread = recordVisit(reread, 1, 2, 10);
+reread = recordVisit(reread, 2, 3, 10);
+assert.deepStrictEqual(reread, [0, 1, 2, 3, 2, 3], "a real re-reading is still scored");
+
 // extractTrainingWords: >=4 letters, distinct, capped at 40.
 assert.deepStrictEqual(extractTrainingWords("кот кітап кітап балалар"), ["кітап", "балалар"]);
 

@@ -86,6 +86,29 @@ function ladderOnFocusMoved(state, target, currentWord, wordCount) {
   return { ...ladderAdvance(state, currentWord, wordCount), wordIndex: clamped };
 }
 
+/**
+ * The words the reader has moved through, in the order the review should score them.
+ *
+ * Only forward movement records a word: going back over a line is the self-correction this mode
+ * exists to invite, and recording it would put the word in the list a second time.
+ *
+ * The extra rule here — and the one place the web deliberately differs from FocusReaderScreen —
+ * is that moving back one word and straight forward again records nothing. That is a reader
+ * finding their place, not reading twice, and it was measured costing a real verdict: on the
+ * device "мальчик" was visited twice, the child said it once, and the spare target came back as
+ * a word never heard. Under-recording is the safer error of the two, because the review judges
+ * each word by the last attempt at it and an extra spoken copy is stepped over as filler, while
+ * an extra target has nothing to pair with and is reported against the child.
+ *
+ * Only the immediate repeat is dropped. Going back over a whole line and reading it again still
+ * records every word of it.
+ */
+function recordVisit(visited, fromIndex, toIndex, wordCount) {
+  if (toIndex <= fromIndex || toIndex >= wordCount) return visited;
+  if (visited.length > 0 && visited[visited.length - 1] === toIndex) return visited;
+  return [...visited, toIndex];
+}
+
 function ladderOnHelpRequested(state, minimumStep) {
   if (minimumStep <= state.step) return state;
   return { ...state, step: minimumStep };
