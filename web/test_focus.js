@@ -150,4 +150,51 @@ const wrongNumber = reviewReading(heard("страница", "шесть"), ["с�
 assert.strictEqual(wrongNumber[1].outcome, ReadOutcome.Misread);
 assert.strictEqual(wrongNumber[1].heard, "шесть");
 
+
+// Chrome on Android marks a GROWING phrase final over and over. This is the real sequence
+// captured from the device for one line of Pushkin — every entry arrived with isFinal true.
+// Appending each one whole is what turned 19 words into 121 tokens, 88% of them repeats.
+const growingFinals = [
+  "", "сказка", "", "рыбаке", "", "липкий", "липкий", "липкий жил", "липкий жил", "",
+  "со", "со своею", "со своею", "со своею старухой", "со своею старухой у",
+  "со своею старухой у самого", "со своею старухой У самого синего",
+  "со своею старухой У самого синего моря", "со своею старухой У самого синего моря они",
+  "со своею старухой У самого синего моря они жили", "",
+  "ветхой", "ветхой", "ветхой землянке"
+];
+// The same overlap-stripping append FocusReader uses, exercised on the pure token level.
+function appendHeardInto(closed, tokens) {
+  if (tokens.length === 0) return closed;
+  let overlap = 0;
+  for (let n = Math.min(closed.length, tokens.length); n > 0; n--) {
+    let same = true;
+    for (let k = 0; k < n; k++) {
+      if (normalizeForMatch(closed[closed.length - n + k].text) !== normalizeForMatch(tokens[k].text)) { same = false; break; }
+    }
+    if (same) { overlap = n; break; }
+  }
+  return overlap === tokens.length ? closed : [...closed, ...tokens.slice(overlap)];
+}
+let naive = [], deduped = [];
+for (const phrase of growingFinals) {
+  const toks = tokensWithAlternatives([phrase]);
+  naive = [...naive, ...toks];
+  deduped = appendHeardInto(deduped, toks);
+}
+assert.ok(naive.length > 40, "the naive append really does explode: " + naive.length + " tokens");
+assert.deepStrictEqual(deduped.map((t) => t.text),
+  ["сказка", "рыбаке", "липкий", "жил", "со", "своею", "старухой", "у", "самого", "синего",
+   "моря", "они", "жили", "ветхой", "землянке"],
+  "each word is recorded once, in the order it was spoken");
+
+// And the point of it: the duplicate copies were what let a correctly-read word be spent on a
+// neighbour. "старик" was misheard entirely as "липкий"; with spare copies of "старухой" around
+// it was reported as a misreading of that. With each word recorded once it is simply unheard.
+const targets = ["Сказка", "о", "рыбаке", "и", "рыбке", "Жил", "старик", "со", "своею", "старухой"];
+const outcomeFor = (tokens, word) =>
+  (reviewReading(tokens, targets).find((r) => r.word === word) || {}).outcome;
+assert.strictEqual(outcomeFor(naive, "старик"), ReadOutcome.Misread, "the bug, as measured on the device");
+assert.strictEqual(outcomeFor(deduped, "старик"), ReadOutcome.Silent, "unheard, not blamed on the child");
+assert.strictEqual(outcomeFor(deduped, "старухой"), ReadOutcome.Correct, "and the word she did read still counts");
+
 console.log("all focus logic checks passed");

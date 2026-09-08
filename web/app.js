@@ -953,6 +953,41 @@ class FocusReader {
 
   currentWord() { return this.words[this.ladder.wordIndex] || null; }
 
+  /**
+   * Adds what was just heard, minus whatever of it has already been recorded.
+   *
+   * Chrome on Android marks a GROWING phrase final over and over: measured on the device, one
+   * 19-word sentence arrived as "со", then "со своею", then "со своею старухой", each flagged
+   * isFinal, and appending every one of them turned 19 words into 121 tokens, 88% of them
+   * repeats. Android has no equivalent — its segmented session emits each piece once — so this
+   * is the asymmetry behind the web calling correct readings mistakes.
+   *
+   * The duplicates are not harmless padding. They hand the aligner spare copies of a word, and
+   * it spends one on a neighbouring target: "старик", which the engine had misheard entirely,
+   * was reported as a misreading of "старухой" — a word the child had read correctly, and whose
+   * duplicate was sitting there to be taken. Without the copies that word is simply unheard.
+   *
+   * ponytail: a child who really does repeat a word loses the repeat. That costs nothing here —
+   * the review judges each word by its last attempt, and repeats were never scored separately.
+   */
+  appendHeard(tokens) {
+    if (tokens.length === 0) return;
+    const tail = this.closedTranscript;
+    let overlap = 0;
+    for (let n = Math.min(tail.length, tokens.length); n > 0; n--) {
+      let same = true;
+      for (let k = 0; k < n; k++) {
+        if (normalizeForMatch(tail[tail.length - n + k].text) !== normalizeForMatch(tokens[k].text)) {
+          same = false;
+          break;
+        }
+      }
+      if (same) { overlap = n; break; }
+    }
+    if (overlap === tokens.length) return;
+    this.closedTranscript = [...tail, ...tokens.slice(overlap)];
+  }
+
   // The reader owns the focus. Nothing else moves it.
   moveFocusTo(target) {
     const leaving = this.currentWord() ? this.currentWord().spoken : "";
@@ -1078,7 +1113,7 @@ class FocusReader {
             const settledTokens = withInterimAlternatives(
               tokensWithAlternatives(hypotheses), this.liveTranscript);
             const settled = settledTokens.length > 0 ? settledTokens : this.liveTranscript;
-            this.closedTranscript = [...this.closedTranscript, ...settled];
+            this.appendHeard(settled);
             this.liveTranscript = [];
             if (settled.length > 0) {
               heardThisSession = true;
@@ -1089,7 +1124,7 @@ class FocusReader {
           },
           onEnded: () => {
             if (this.liveTranscript.length > 0) {
-              this.closedTranscript = [...this.closedTranscript, ...this.liveTranscript];
+              this.appendHeard(this.liveTranscript);
               this.liveTranscript = [];
             }
             this.wasInstantFailure = !heardThisSession;

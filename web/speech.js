@@ -117,7 +117,7 @@ class WebSpeechGate {
           // honours maxAlternatives on some builds and returns one on others. Off unless asked
           // for, so it costs the reader nothing: open the page with ?speechdebug=1.
           if (SPEECH_DEBUG) {
-            console.log("[sulu] final alts=" + result.length +
+            console.log("[sulu] final i=" + i + " alts=" + result.length +
               " | " + hypotheses.join(" ~ "));
           }
           onSegment(hypotheses);
