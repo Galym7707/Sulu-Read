@@ -18,12 +18,15 @@ COPY requirements.txt /app/requirements.txt
 RUN pip install --no-cache-dir --upgrade pip \
     && pip install --no-cache-dir -r /app/requirements.txt
 
+# Модели скачиваются здесь, до копирования исходников, и это единственное, что тут важно:
+# слой зависит только от requirements.txt. Стоял ниже COPY web — и любая правка в вебе
+# сбрасывала кэш, так что каждый деплой фронтенда заново тянул модели EasyOCR.
+RUN python -c "import easyocr; easyocr.Reader(['ru', 'rs_cyrillic', 'mn', 'en'], gpu=False, verbose=False)"
+
 COPY main.py /app/main.py
 COPY backend /app/backend
 # Веб-приложение раздаётся тем же процессом: без этой строки Space отдавал бы только API.
 COPY web /app/web
-
-RUN python -c "import easyocr; easyocr.Reader(['ru', 'rs_cyrillic', 'mn', 'en'], gpu=False, verbose=False)"
 
 EXPOSE 7860
 
