@@ -1458,7 +1458,26 @@ WEB_DIRECTORY = Path(__file__).resolve().parent / "web"
 if WEB_DIRECTORY.is_dir():
     from fastapi.staticfiles import StaticFiles
 
-    app.mount("/", StaticFiles(directory=str(WEB_DIRECTORY), html=True), name="web")
+    class RevalidatingStaticFiles(StaticFiles):
+        """StaticFiles that tells the browser to check before reusing a file.
+
+        Starlette sends only ETag and Last-Modified, with no Cache-Control at all, and a response
+        with no Cache-Control may be reused without asking — browsers fall back to heuristic
+        freshness. For an installed PWA that is the difference between a deploy arriving and a
+        deploy being invisible: the shell keeps being served from a cache nobody revalidates.
+
+        web/vercel.json already says exactly this for the Vercel host, and that file is Vercel's
+        alone — the Space serves the same site through here and inherited none of it. max-age=0
+        does not mean "do not cache": the file stays in the cache and is revalidated with its
+        ETag, so an unchanged asset costs a 304 and no body.
+        """
+
+        async def get_response(self, path: str, scope):
+            response = await super().get_response(path, scope)
+            response.headers.setdefault("Cache-Control", "public, max-age=0, must-revalidate")
+            return response
+
+    app.mount("/", RevalidatingStaticFiles(directory=str(WEB_DIRECTORY), html=True), name="web")
     logger.info("Web app served from %s", WEB_DIRECTORY)
 else:
     logger.warning("Web directory not found at %s; API only", WEB_DIRECTORY)

@@ -474,7 +474,11 @@ const readerScreen = {
       this.render();
     };
 
-    if (state.isFocusMode) {
+    // Absent means on. Focus mode being "the default" was previously two call sites remembering
+    // to pass isFocusMode: true, so any reading state built anywhere else silently opened in the
+    // plain reader instead — the default was a habit rather than a default. Only an explicit
+    // exit turns it off.
+    if (state.isFocusMode !== false) {
       // Above the reader, matching where the enter button sits in the other mode. Focus mode is
       // now the default, so the toggle would otherwise jump the length of the reading block
       // every time it is used.
