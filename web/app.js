@@ -907,6 +907,10 @@ class FocusReader {
     this.micUnavailable = false;
     this.wasInstantFailure = false;
     this.closedTranscript = [];
+    // One slot per utterance, in the order they were first heard. Chrome revises an utterance
+    // repeatedly, so a slot is overwritten rather than appended to.
+    this.utterances = new Map();
+    this.utteranceOrder = [];
     this.liveTranscript = [];
     this.visited = [0];
     this.reviewRequested = false;
@@ -954,38 +958,37 @@ class FocusReader {
   currentWord() { return this.words[this.ladder.wordIndex] || null; }
 
   /**
-   * Adds what was just heard, minus whatever of it has already been recorded.
+   * Records what was heard for one utterance, replacing anything already recorded for it.
    *
-   * Chrome on Android marks a GROWING phrase final over and over: measured on the device, one
-   * 19-word sentence arrived as "со", then "со своею", then "со своею старухой", each flagged
-   * isFinal, and appending every one of them turned 19 words into 121 tokens, 88% of them
-   * repeats. Android has no equivalent — its segmented session emits each piece once — so this
-   * is the asymmetry behind the web calling correct readings mistakes.
+   * Chrome on Android does not deliver an utterance once. It revises the same one over and over,
+   * every revision flagged isFinal and carrying the whole phrase from its beginning — measured on
+   * the device, one sentence arrived four times, the last three of them complete restatements
+   * that also changed a word in the middle ("в учение" became "в учении"). Appending each turned
+   * 21 words into 56 tokens.
    *
-   * The duplicates are not harmless padding. They hand the aligner spare copies of a word, and
-   * it spends one on a neighbouring target: "старик", which the engine had misheard entirely,
-   * was reported as a misreading of "старухой" — a word the child had read correctly, and whose
-   * duplicate was sitting there to be taken. Without the copies that word is simply unheard.
+   * Stripping a shared prefix is not enough for that, and this replaced code that tried: the
+   * revisions differ in the middle, so one changed word breaks the match and the whole emission
+   * is appended again. What identifies an utterance is event.results[i], which the gate now
+   * passes through, so a revision simply overwrites the slot it belongs to.
    *
-   * ponytail: a child who really does repeat a word loses the repeat. That costs nothing here —
-   * the review judges each word by its last attempt, and repeats were never scored separately.
+   * The duplicates were never harmless padding. They hand the aligner spare copies of a word and
+   * it spends one on a neighbouring target, reporting a word the child read correctly as a
+   * misreading of it.
    */
-  appendHeard(tokens) {
+  recordUtterance(key, tokens) {
     if (tokens.length === 0) return;
-    const tail = this.closedTranscript;
-    let overlap = 0;
-    for (let n = Math.min(tail.length, tokens.length); n > 0; n--) {
-      let same = true;
-      for (let k = 0; k < n; k++) {
-        if (normalizeForMatch(tail[tail.length - n + k].text) !== normalizeForMatch(tokens[k].text)) {
-          same = false;
-          break;
-        }
-      }
-      if (same) { overlap = n; break; }
-    }
-    if (overlap === tokens.length) return;
-    this.closedTranscript = [...tail, ...tokens.slice(overlap)];
+    const slot = key === undefined || key === null ? "auto" + (this.autoUtterance = (this.autoUtterance || 0) + 1) : key;
+    if (!this.utterances.has(slot)) this.utteranceOrder.push(slot);
+    // The revision this replaces is not discarded, it is demoted. Chrome changes its mind about
+    // a word mid-utterance — "в учение" became "в учении" and back — and those competing guesses
+    // are the closest thing to the n-best list it refuses to put in a final result. Keeping only
+    // the last revision measured WORSE than the duplication it replaced: a spare copy of the
+    // better guess had been rescuing the word by accident. Now it rescues it on purpose.
+    const previous = this.utterances.get(slot);
+    this.utterances.set(slot, previous ? withAlternativesFrom(tokens, previous) : tokens);
+    // Rebuilt rather than patched: the order is the order utterances were first heard in, and a
+    // revision must not move one.
+    this.closedTranscript = this.utteranceOrder.flatMap((k) => this.utterances.get(k));
   }
 
   // The reader owns the focus. Nothing else moves it.
@@ -1097,7 +1100,7 @@ class FocusReader {
               this.onHeardSpeech();
             }
           },
-          onSegment: (hypotheses) => {
+          onSegment: (hypotheses, utteranceKey) => {
             // All of the hypotheses, not just the best one. The recogniser is asked for ten and
             // every one of them is a reading the child might have given — for an accented reader
             // the right one is often not the first.
@@ -1108,10 +1111,10 @@ class FocusReader {
             // against one, and an accented but correct reading came back a misreading. The
             // interims are the same engine's earlier guesses at the same audio, and until now
             // they were discarded on the next line without ever being scored.
-            const settledTokens = withInterimAlternatives(
+            const settledTokens = withAlternativesFrom(
               tokensWithAlternatives(hypotheses), this.liveTranscript);
             const settled = settledTokens.length > 0 ? settledTokens : this.liveTranscript;
-            this.appendHeard(settled);
+            this.recordUtterance(utteranceKey, settled);
             this.liveTranscript = [];
             if (settled.length > 0) {
               heardThisSession = true;
@@ -1122,7 +1125,9 @@ class FocusReader {
           },
           onEnded: () => {
             if (this.liveTranscript.length > 0) {
-              this.appendHeard(this.liveTranscript);
+              // A session that ended mid-utterance: what it had heard is its own slot, because no
+              // later revision will ever arrive to replace it.
+              this.recordUtterance(null, this.liveTranscript);
               this.liveTranscript = [];
             }
             this.wasInstantFailure = !heardThisSession;

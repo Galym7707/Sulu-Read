@@ -78,6 +78,9 @@ class WebSpeechGate {
     // attributed to the new one — ending it, and losing whatever was read across the restart.
     this.recognition = null;
     this.active = false;
+    // Sessions restart constantly, and each one numbers its results from zero, so the result
+    // index alone does not identify an utterance across a reading.
+    this.sessionCount = 0;
   }
 
   static available() {
@@ -92,6 +95,8 @@ class WebSpeechGate {
     const Ctor = window.SpeechRecognition || window.webkitSpeechRecognition;
     if (!Ctor) { onUnavailable("unavailable"); return; }
     this.stopInternal();
+
+    const sessionKey = "s" + (++this.sessionCount);
 
     const recognition = new Ctor();
     recognition.lang = localeFor(languageCode);
@@ -120,7 +125,11 @@ class WebSpeechGate {
             console.log("[sulu] final i=" + i + " alts=" + result.length +
               " | " + hypotheses.join(" ~ "));
           }
-          onSegment(hypotheses);
+          // Which utterance this is, not just what it says. Chrome revises one utterance again
+          // and again — each revision flagged final and carrying the whole phrase from its start
+          // — so the caller has to be able to replace what it recorded for this utterance rather
+          // than append it a second time. event.results[i] is that identity, per the spec.
+          onSegment(hypotheses, sessionKey + ":" + i);
         } else {
           interim += result[0].transcript + " ";
         }
@@ -475,7 +484,8 @@ class ServerSpeechGate {
       const text = this.settled.get(this.nextToEmit);
       this.settled.delete(this.nextToEmit);
       this.nextToEmit += 1;
-      if (text.trim()) onSegment([text]);
+      // Segments here are cut on silence and never revised, so each is its own utterance.
+      if (text.trim()) onSegment([text], "seg" + this.nextToEmit);
     }
   }
 

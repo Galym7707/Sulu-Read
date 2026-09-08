@@ -66,16 +66,16 @@ assert.deepStrictEqual(stray.map((r) => r.outcome),
 // Interims are the second opinion Chrome will not put in a final result. An interim that guessed
 // the word the child actually said rescues the reading; one that agrees with the final adds
 // nothing; and with no interims at all the tokens come through untouched.
-const rescuedByInterim = withInterimAlternatives([heardToken("кинга")], [heardToken("книга")]);
+const rescuedByInterim = withAlternativesFrom([heardToken("кинга")], [heardToken("книга")]);
 assert.deepStrictEqual(rescuedByInterim[0].alternatives, ["книга"]);
 assert.strictEqual(reviewReading(rescuedByInterim, ["книга"])[0].outcome, ReadOutcome.Correct);
 assert.strictEqual(reviewReading(rescuedByInterim, ["книга"])[0].heard, "кинга");
-assert.deepStrictEqual(withInterimAlternatives([heardToken("книга")], [heardToken("Книга,")])[0].alternatives, [],
+assert.deepStrictEqual(withAlternativesFrom([heardToken("книга")], [heardToken("Книга,")])[0].alternatives, [],
   "an interim that agrees is not stored as an alternative");
-assert.deepStrictEqual(withInterimAlternatives([heardToken("книга")], [])[0].alternatives, [],
+assert.deepStrictEqual(withAlternativesFrom([heardToken("книга")], [])[0].alternatives, [],
   "no interims: unchanged, so a browser that suppresses them is no worse off");
 // Aligned, not zipped: an interim that dropped a word must not shift onto the wrong position.
-const shifted = withInterimAlternatives(
+const shifted = withAlternativesFrom(
   heard("книга", "на", "столе"), heard("книга", "столе"));
 assert.deepStrictEqual(shifted[1].alternatives, [], "\"столе\" must not become an alternative for \"на\"");
 
@@ -191,50 +191,87 @@ assert.strictEqual(wrongNumber[1].outcome, ReadOutcome.Misread);
 assert.strictEqual(wrongNumber[1].heard, "шесть");
 
 
-// Chrome on Android marks a GROWING phrase final over and over. This is the real sequence
-// captured from the device for one line of Pushkin — every entry arrived with isFinal true.
-// Appending each one whole is what turned 19 words into 121 tokens, 88% of them repeats.
-const growingFinals = [
-  "", "сказка", "", "рыбаке", "", "липкий", "липкий", "липкий жил", "липкий жил", "",
-  "со", "со своею", "со своею", "со своею старухой", "со своею старухой у",
-  "со своею старухой у самого", "со своею старухой У самого синего",
-  "со своею старухой У самого синего моря", "со своею старухой У самого синего моря они",
-  "со своею старухой У самого синего моря они жили", "",
-  "ветхой", "ветхой", "ветхой землянке"
+// Chrome on Android revises ONE utterance over and over, every revision flagged isFinal and
+// carrying the whole phrase from its start. This is the real sequence captured from the device
+// for the opening of Chekhov's "Ванька" — note the middle of the phrase changes between
+// revisions ("в учение" / "в учении"), which is what defeated stripping a shared prefix.
+const revisions = [
+  "Ванька Жуков девятилетний мальчик отданный 2 месяца тому назад в учение",
+  "Ванька Жуков девятилетний мальчик отданный 2 месяца тому назад в учении к",
+  "Ванька Жуков девятилетний мальчик отданный 2 месяца тому назад в учение к сапожнику",
+  "Ванька Жуков девятилетний мальчик отданный 2 месяца тому назад в учении к сапожнику в ночь под Рождество не ложился спать"
 ];
-// The same overlap-stripping append FocusReader uses, exercised on the pure token level.
-function appendHeardInto(closed, tokens) {
-  if (tokens.length === 0) return closed;
-  let overlap = 0;
-  for (let n = Math.min(closed.length, tokens.length); n > 0; n--) {
-    let same = true;
-    for (let k = 0; k < n; k++) {
-      if (normalizeForMatch(closed[closed.length - n + k].text) !== normalizeForMatch(tokens[k].text)) { same = false; break; }
-    }
-    if (same) { overlap = n; break; }
-  }
-  return overlap === tokens.length ? closed : [...closed, ...tokens.slice(overlap)];
+// The slot model FocusReader uses, at the token level: same key means the same utterance.
+function recordInto(state, key, tokens) {
+  if (tokens.length === 0) return state;
+  if (!state.map.has(key)) state.order.push(key);
+  const previous = state.map.get(key);
+  state.map.set(key, previous ? withAlternativesFrom(tokens, previous) : tokens);
+  return { ...state, closed: state.order.flatMap((k) => state.map.get(k)) };
 }
-let naive = [], deduped = [];
-for (const phrase of growingFinals) {
+let slots = { map: new Map(), order: [], closed: [] };
+let appended = [];
+for (const phrase of revisions) {
   const toks = tokensWithAlternatives([phrase]);
-  naive = [...naive, ...toks];
-  deduped = appendHeardInto(deduped, toks);
+  appended = [...appended, ...toks];           // what the naive append did
+  slots = recordInto(slots, "s1:0", toks);     // one utterance, revised four times
 }
-assert.ok(naive.length > 40, "the naive append really does explode: " + naive.length + " tokens");
-assert.deepStrictEqual(deduped.map((t) => t.text),
-  ["сказка", "рыбаке", "липкий", "жил", "со", "своею", "старухой", "у", "самого", "синего",
-   "моря", "они", "жили", "ветхой", "землянке"],
-  "each word is recorded once, in the order it was spoken");
+assert.strictEqual(appended.length, 56, "the naive append reproduces the 56 tokens seen on the device");
+assert.strictEqual(slots.closed.length, 20,
+  "one utterance, recorded once, at its final revision (20 words; the device visited 21 targets)");
+assert.strictEqual(slots.closed[slots.closed.length - 1].text, "спать");
 
-// And the point of it: the duplicate copies were what let a correctly-read word be spent on a
-// neighbour. "старик" was misheard entirely as "липкий"; with spare copies of "старухой" around
-// it was reported as a misreading of that. With each word recorded once it is simply unheard.
-const targets = ["Сказка", "о", "рыбаке", "и", "рыбке", "Жил", "старик", "со", "своею", "старухой"];
-const outcomeFor = (tokens, word) =>
-  (reviewReading(tokens, targets).find((r) => r.word === word) || {}).outcome;
-assert.strictEqual(outcomeFor(naive, "старик"), ReadOutcome.Misread, "the bug, as measured on the device");
-assert.strictEqual(outcomeFor(deduped, "старик"), ReadOutcome.Silent, "unheard, not blamed on the child");
-assert.strictEqual(outcomeFor(deduped, "старухой"), ReadOutcome.Correct, "and the word she did read still counts");
+// A superseded revision is demoted to an alternative, not thrown away. Chrome changed its mind
+// about this word between revisions, and that competing guess is the second opinion its final
+// results never carry — the word the child actually read is the earlier guess here.
+const revised = slots.closed.find((t) => t.text === "учении");
+assert.ok(revised, "the last revision's word is what the transcript shows");
+assert.deepStrictEqual(revised.alternatives, ["учение"], "the earlier guess survives as an alternative");
+assert.strictEqual(reviewReading([revised], ["ученье"])[0].outcome, ReadOutcome.Correct,
+  "so a word the child read correctly is not reported as a mistake");
+assert.strictEqual(reviewReading([heardToken("учении")], ["ученье"])[0].outcome, ReadOutcome.Misread,
+  "and without the alternative it would be");
+
+// Separate utterances still accumulate rather than overwrite each other.
+let two = { map: new Map(), order: [], closed: [] };
+two = recordInto(two, "s1:0", heard("мама", "мыла"));
+two = recordInto(two, "s1:1", heard("раму"));
+assert.deepStrictEqual(two.closed.map((t) => t.text), ["мама", "мыла", "раму"]);
+// ...and a revision of an earlier utterance does not move it to the end.
+two = recordInto(two, "s1:0", heard("мама", "мыло"));
+assert.deepStrictEqual(two.closed.map((t) => t.text), ["мама", "мыло", "раму"]);
+
+
+// The same model against the earlier capture, from Pushkin, where the engine ran several
+// utterances together: short ones on their own, and one long run revised as it grew.
+const pushkin = [
+  ["u1", "сказка"], ["u2", "рыбаке"],
+  ["u3", "липкий"], ["u3", "липкий жил"],
+  ["u4", "со"], ["u4", "со своею"], ["u4", "со своею старухой"],
+  ["u4", "со своею старухой у самого"], ["u4", "со своею старухой У самого синего моря"],
+  ["u4", "со своею старухой У самого синего моря они жили"],
+  ["u5", "ветхой"], ["u5", "ветхой землянке"]
+];
+let pSlots = { map: new Map(), order: [], closed: [] };
+let pNaive = [];
+for (const [key, phrase] of pushkin) {
+  const toks = tokensWithAlternatives([phrase]);
+  pNaive = [...pNaive, ...toks];
+  pSlots = recordInto(pSlots, key, toks);
+}
+assert.deepStrictEqual(pSlots.closed.map((t) => t.text),
+  ["сказка", "рыбаке", "липкий", "жил", "со", "своею", "старухой", "У", "самого", "синего",
+   "моря", "они", "жили", "ветхой", "землянке"],
+  "each word once, in the order it was spoken, exactly as the last revision wrote it");
+
+// And why it matters. The engine misheard "старик" entirely, as "липкий". With spare copies of
+// "старухой" left by the duplication, "старик" was reported as a misreading of it — a word the
+// child had read correctly. Recorded once, it is simply unheard, which is the truth.
+const pTargets = ["Сказка", "о", "рыбаке", "и", "рыбке", "Жил", "старик", "со", "своею", "старухой"];
+const verdictFor = (toks, word) =>
+  (reviewReading(toks, pTargets).find((r) => r.word === word) || {}).outcome;
+assert.strictEqual(verdictFor(pNaive, "старик"), ReadOutcome.Misread, "the bug, as measured on the device");
+assert.strictEqual(verdictFor(pSlots.closed, "старик"), ReadOutcome.Silent, "unheard, not blamed on the child");
+assert.strictEqual(verdictFor(pSlots.closed, "старухой"), ReadOutcome.Correct, "and the word she did read still counts");
 
 console.log("all focus logic checks passed");

@@ -478,7 +478,7 @@ function tokensWithAlternatives(hypotheses) {
 
 
 /**
- * Folds the engine's interim guesses in as extra alternatives for the same words.
+ * Folds another reading of the same audio in as extra alternatives for the same words.
  *
  * Android's recogniser really does return an n-best list, and WordMatch scores a word against up
  * to five of them, so a reading the engine's first guess got wrong is routinely rescued by its
@@ -487,15 +487,19 @@ function tokensWithAlternatives(hypotheses) {
  * correct reading lands as a misreading — the same phone, the same engine, and the web scoring
  * against one candidate where the app scores against five.
  *
- * The interims are the same engine's earlier guesses at the same audio, which is the one second
- * opinion the browser does give us, and it was being thrown away the moment the final arrived.
+ * Two sources feed this. The interims are the engine's earlier guesses at the same audio. So are
+ * the superseded REVISIONS of an utterance: Chrome restates one utterance repeatedly and quietly
+ * changes its mind mid-phrase — measured on the device, "в учение" became "в учении" and back —
+ * and each of those is another candidate for the same word. Keeping only the last revision was
+ * measurably worse than the duplication it replaced, because a spare copy of the better guess had
+ * been rescuing the word by accident.
+ *
  * Aligned the same way as the hypotheses, so a word only ever becomes an alternative at the
- * position it was actually guessed at. If no interims arrived this returns the tokens unchanged,
- * so a browser that suppresses them is no worse off than before.
+ * position it was actually guessed at. With nothing to merge this returns the tokens unchanged.
  */
-function withInterimAlternatives(tokens, interimTokens) {
-  if (tokens.length === 0 || !interimTokens || interimTokens.length === 0) return tokens;
-  const paired = alignWords(tokens.map((t) => t.text), interimTokens.map((t) => t.text));
+function withAlternativesFrom(tokens, others) {
+  if (tokens.length === 0 || !others || others.length === 0) return tokens;
+  const paired = alignWords(tokens.map((t) => t.text), others.map((t) => t.text));
   return tokens.map((token, index) => {
     const word = paired[index];
     if (!word || isSameWord(word, token.text) || token.alternatives.includes(word)) return token;
