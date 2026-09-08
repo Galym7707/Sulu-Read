@@ -8,6 +8,10 @@
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [key, value] of Object.entries(attrs || {})) {
+    // A null/undefined value means "no attribute". Without this, setAttribute writes the
+    // string "undefined", and for boolean attributes ANY value is true — which silently left
+    // every `disabled: cond ? "" : undefined` button permanently disabled.
+    if (value === null || value === undefined) continue;
     if (key === "class") node.className = value;
     else if (key === "style") node.style.cssText = value;
     else if (key.startsWith("on")) node.addEventListener(key.slice(2), value);
@@ -143,7 +147,11 @@ const readerScreen = {
       this.abortController = null;
       if (result.kind === "text") {
         this.pendingRequest = null;
-        this.setState({ kind: "reading", data: result, isFocusMode: false });
+        // Focus mode is the default: it is the mode the app exists for, and a reader who has to
+        // find a button to reach it mostly does not. Constructing a FocusReader opens no
+        // microphone — listening starts only from its own button — so this costs no permission
+        // prompt on load.
+        this.setState({ kind: "reading", data: result, isFocusMode: true });
       } else if (result.kind === "book") {
         this.pendingRequest = null;
         this.setState({ kind: "readingBook", data: result, pageIndex: 0 });
@@ -422,7 +430,9 @@ const readerScreen = {
         adaptedText: page.text, originalText: page.text, source: "file",
         wordCount: page.wordCount, title: null, words: []
       },
-      isFocusMode: state.bookFocusMode || false,
+      // undefined (a freshly opened book) means on; only an explicit exit turns it off, and that
+      // choice then sticks across page turns.
+      isFocusMode: state.bookFocusMode !== false,
       _bookHost: state
     };
 
@@ -465,6 +475,10 @@ const readerScreen = {
     };
 
     if (state.isFocusMode) {
+      // Above the reader, matching where the enter button sits in the other mode. Focus mode is
+      // now the default, so the toggle would otherwise jump the length of the reading block
+      // every time it is used.
+      container.append(el("button", { class: "text-btn self-start", onclick: () => setFocusMode(false) }, t("focus_mode_exit")));
       // Focus mode is fed the original text: scene splitting needs real punctuation.
       const focusHost = el("div");
       container.append(focusHost);
@@ -476,7 +490,6 @@ const readerScreen = {
         onDismissHint: () => this.dismissAiHelp(),
         onCollectTriggerWords: (words) => createTrainingFromWords(words)
       });
-      container.append(el("button", { class: "text-btn self-start", onclick: () => setFocusMode(false) }, t("focus_mode_exit")));
     } else {
       container.append(el("button", { class: "text-btn self-start", onclick: () => setFocusMode(true) }, t("focus_mode_enter")));
       const premiumHost = el("div");
@@ -867,6 +880,10 @@ class PremiumReading {
 
 const SESSION_RESTART_DELAY_MILLIS = 120;
 
+// Long enough to swallow the burst of trailing finals a stopped session emits, short enough that
+// the panel does not feel like it is thinking. The direct stop/finish paths do not wait on it.
+const REVIEW_DEBOUNCE_MILLIS = 250;
+
 // Why the reading is not being checked, mapped to the string that says so plainly.
 const CHECK_OFF_REASON = {
   no_api: "focus_mic_unavailable",
@@ -900,6 +917,10 @@ class FocusReader {
     // Only the server gate meters input level; the native one reports speech via partials.
     this.levelTimer = null;
     this.pendingAppSpeech = null;
+    // Monotonic; the utterance holding the current value is the one allowed to reopen the mic.
+    this.speechToken = 0;
+    this.reviewTimer = null;
+    this.serviceRetries = 0;
     this.voiceMissing = !canSpeakLanguage(options.languageCode);
     this.ttsSilent = false;
     // Decided once, up front, not after a failed tap: on an installed iPhone app the recogniser
@@ -920,6 +941,9 @@ class FocusReader {
   destroy() {
     this.destroyed = true;
     this.clearTimers();
+    // Not in clearTimers: armSilenceTimers calls that on every focus move, and dropping a
+    // pending alignment there would lose the last segments of the reading.
+    if (this.reviewTimer) { clearTimeout(this.reviewTimer); this.reviewTimer = null; }
     this.speechGate.release();
     ttsStop();
   }
@@ -939,8 +963,17 @@ class FocusReader {
     // The server gate cannot pause (iOS keeps encoding through pause()), so instead of
     // stopping it we record when the app was talking and drop the chunks that overlap.
     const speechStart = Date.now();
-    if (typeof this.speechGate.markAppSpeech === "function") {
+    // Claimed BEFORE the call, exactly as FocusReaderScreen claims its utteranceId: only the
+    // utterance queued last may reopen the microphone. The previous guard tested
+    // speechSynthesis.pending, which does not answer that question — measured in Chromium, at
+    // the first utterance's `end` the queue is already empty (pending === false) and the second
+    // has not started, so the Letters rung reopened the mic while the engine was still about to
+    // say the very word the reader was stuck on, and the app was then credited with reading it.
+    const token = ++this.speechToken;
+    if (typeof this.speechGate.markAppSpeechStart === "function") {
+      // Opens one window covering every queued utterance; markAppSpeech below closes it.
       this.pendingAppSpeech = speechStart;
+      this.speechGate.markAppSpeechStart(speechStart);
     } else {
       this.speechGate.stop();
     }
@@ -952,8 +985,7 @@ class FocusReader {
       flush: !queue,
       onend: () => {
         if (this.destroyed) return;
-        // Only the utterance queued last reopens the microphone.
-        if (window.speechSynthesis && speechSynthesis.pending) return;
+        if (token !== this.speechToken) return;   // an earlier utterance of a queued pair
         if (this.pendingAppSpeech && typeof this.speechGate.markAppSpeech === "function") {
           this.speechGate.markAppSpeech(this.pendingAppSpeech, Date.now());
           this.pendingAppSpeech = null;
@@ -1082,19 +1114,25 @@ class FocusReader {
         detectSpeechLanguageCode(this.currentWord() ? this.currentWord().spoken : "", this.options.languageCode),
         {
           onPartial: (transcript) => {
-            const heard = tokenizeTranscript(transcript);
+            // A partial carries one hypothesis, so these tokens have no second opinion. The
+            // finals that replace them below do.
+            const heard = heardTokens(transcript);
             if (heard.length > 0) {
               this.liveTranscript = heard;
               this.onHeardSpeech();
             }
           },
           onSegment: (hypotheses) => {
-            const settledTokens = hypotheses.length > 0 ? tokenizeTranscript(hypotheses[0]) : [];
+            // All of the hypotheses, not just the best one. The recogniser is asked for ten and
+            // every one of them is a reading the child might have given — for an accented reader
+            // the right one is often not the first.
+            const settledTokens = tokensWithAlternatives(hypotheses);
             const settled = settledTokens.length > 0 ? settledTokens : this.liveTranscript;
             this.closedTranscript = [...this.closedTranscript, ...settled];
             this.liveTranscript = [];
             if (settled.length > 0) {
               heardThisSession = true;
+              this.serviceRetries = 0;   // the engine is working; a later hiccup starts fresh
               this.onHeardSpeech();
             }
             this.maybeUpdateReview();
@@ -1109,10 +1147,18 @@ class FocusReader {
             // Session closed (silence timeout, tab switch, error): reopen it.
             if (this.isSessionActive && !this.isSpeaking) this.maybeListen();
           },
-          onUnavailable: () => {
+          onUnavailable: (reason) => {
+            // A service refusal is usually the engine, not the reader: back off and try again a
+            // few times before giving up on the rest of the reading. Only a real denial is
+            // final, and only a real denial is reported as one — telling a parent to grant a
+            // permission they already granted is how a working microphone gets abandoned.
+            if (reason === "service" && (this.serviceRetries = (this.serviceRetries || 0) + 1) <= 3) {
+              setTimeout(() => this.maybeListen(), SESSION_RESTART_DELAY_MILLIS * this.serviceRetries);
+              return;
+            }
             this.isSessionActive = false;
             this.micUnavailable = true;
-            this.micDenied = true;
+            this.micDenied = reason === "denied";
             this.renderStatus();
           }
         }
@@ -1145,8 +1191,16 @@ class FocusReader {
     this.computeReview();
   }
 
+  // Coalesced. The alignment is a whole-page dynamic program on the same thread the recogniser
+  // delivers results on — measured in the hundreds of milliseconds on a desktop for one
+  // photographed page, and worse on a phone — and the finals that arrive after the reader stops
+  // arrive in a burst, so recomputing per segment blocked the very callbacks it was reading.
   maybeUpdateReview() {
-    if (this.reviewRequested) this.computeReview();
+    if (!this.reviewRequested || this.reviewTimer) return;
+    this.reviewTimer = setTimeout(() => {
+      this.reviewTimer = null;
+      if (!this.destroyed && this.reviewRequested) this.computeReview();
+    }, REVIEW_DEBOUNCE_MILLIS);
   }
 
   computeReview() {
@@ -1183,6 +1237,13 @@ class FocusReader {
       }, el("div", { class: "progress-fill", style: `width:${share}%` }))
     );
 
+    // Attached BEFORE anything measures itself. renderTextBlock scrolls the reading block to
+    // the focus word, and an element outside the document has no layout box: clientHeight and
+    // offsetTop read 0 and the scrollTop setter is a documented no-op. Building the subtree
+    // detached and appending it last therefore threw the scroll away on every render, so every
+    // move of the focus put the reader back at the first word.
+    this.host.append(this.root);
+
     this.textBlockHost = el("div");
     this.root.append(this.textBlockHost);
     this.renderTextBlock();
@@ -1194,12 +1255,15 @@ class FocusReader {
     this.stepHelpHost = el("div");
     this.root.append(this.stepHelpHost);
     this.renderStepHelp();
-
-    this.host.append(this.root);
   }
 
   renderTextBlock() {
     if (!this.textBlockHost) return;
+    // Carried across the rebuild. The Sweep flash renders a block with no focused word at all
+    // (emphasis is dropped for 200ms), and without this that pass would drop the reader back to
+    // the top of the text mid-word and the flash would snap it back.
+    const previous = this.textBlockHost.firstElementChild;
+    const previousScrollTop = previous ? previous.scrollTop : 0;
     this.textBlockHost.replaceChildren();
     const block = el("div", { class: "focus-block" });
     const emphasised = this.ladder.step !== FocusStep.Sweep || this.isFlashing;
@@ -1215,7 +1279,12 @@ class FocusReader {
     const focusNode = block.querySelector(".fw.focused");
     if (focusNode) {
       // Jump, don't glide: motion inside the reading area is a disorientation trigger.
+      // offsetTop is measured from the offsetParent, so .focus-block carries `position:
+      // relative` in app.css purely to BE that parent — without it this is the word's distance
+      // from the top of the page, several hundred px too far, and the block slams to its end.
       block.scrollTop = Math.max(0, focusNode.offsetTop - block.clientHeight / 3);
+    } else {
+      block.scrollTop = previousScrollTop;
     }
   }
 

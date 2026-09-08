@@ -148,8 +148,21 @@ const MEDIUM_WORD_MAX_LENGTH = 7;
 const MEDIUM_WORD_TOLERANCE = 1;
 const LONG_WORD_TOLERANCE = 2;
 
+// Both of these are pure and both are called from inside reviewReading's O(targets × tokens)
+// alignment, so every target's key was rebuilt once per token on the page — a per-character
+// Unicode regex test, three allocations, then the whole digraph rewrite again. Android absorbs
+// that under a JIT on a background thread; the web pays it on the thread that also has to
+// answer the recogniser. Caching took a 200-word page from 622ms to 320ms. One page of text
+// bounds the key set, so neither map is ever cleared.
+const normalizedCache = new Map();
+const phoneticCache = new Map();
+
 function normalizeForMatch(raw) {
-  return [...raw.toLowerCase()].filter(isLetterOrDigit).join("");
+  const cached = normalizedCache.get(raw);
+  if (cached !== undefined) return cached;
+  const value = [...raw.toLowerCase()].filter(isLetterOrDigit).join("");
+  normalizedCache.set(raw, value);
+  return value;
 }
 
 function fold(normalized, foldKazakhVowels) {
@@ -178,6 +191,15 @@ function collapseRuns(value) {
 function isLatinWord(value) { return /[a-z]/.test(value); }
 
 function phoneticKey(raw, foldKazakhVowels = false) {
+  const cacheKey = (foldKazakhVowels ? "1" : "0") + raw;
+  const cached = phoneticCache.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const value = computePhoneticKey(raw, foldKazakhVowels);
+  phoneticCache.set(cacheKey, value);
+  return value;
+}
+
+function computePhoneticKey(raw, foldKazakhVowels) {
   const folded = fold(normalizeForMatch(raw), foldKazakhVowels);
   if (!folded) return "";
   let rewritten;
@@ -226,6 +248,91 @@ function tokenizeTranscript(transcript) {
   return transcript.trim().split(/\s+/).filter(Boolean);
 }
 
+// Enough to rescue a reading the engine's first guess got wrong, few enough that a word on the
+// page is not matched against most of the language.
+const MAX_ALTERNATIVES_PER_TOKEN = 4;
+
+/**
+ * One word of the transcript, and the other words the recogniser thought it might have been.
+ * {text, alternatives}. `candidates` is everything worth testing against a word on the page.
+ *
+ * The engine is asked for ten hypotheses and, until this existed, nine of them were dropped one
+ * line after they arrived. That is the difference that matters for an accented reader: the model
+ * leans towards the pronunciation it was trained on, so the reading a child actually gave is
+ * routinely the engine's second or third guess rather than its first — and scoring only the
+ * first tells a child they misread a word they read correctly.
+ */
+function heardToken(text, alternatives = []) {
+  return { text, alternatives, candidates: () => [text, ...alternatives] };
+}
+
+/** Tokens with no second opinion — a partial result, which carries only one hypothesis. */
+function heardTokens(transcript) {
+  return tokenizeTranscript(transcript).map((word) => heardToken(word));
+}
+
+/**
+ * Turns one segment's hypotheses into tokens that carry the engine's other guesses.
+ *
+ * Hypotheses are whole utterances, but the review aligns a flat sequence of words, so they have
+ * to become per-position alternatives before they are any use. The best hypothesis is the spine
+ * — it decides how many tokens there are and what the reader is told they said — and each of the
+ * others is lined up against it word by word, so a hypothesis that differs in one word
+ * contributes that word at the right position instead of shifting everything after it.
+ */
+function tokensWithAlternatives(hypotheses) {
+  const spine = tokenizeTranscript(hypotheses.length > 0 ? hypotheses[0] : "");
+  if (spine.length === 0) return [];
+  // Sets keep insertion order, so the better hypotheses' words stay at the front of the list.
+  const alternatives = spine.map(() => new Set());
+  for (const hypothesis of hypotheses.slice(1)) {
+    alignWords(spine, tokenizeTranscript(hypothesis)).forEach((word, index) => {
+      if (word !== null && !isSameWord(word, spine[index])) alternatives[index].add(word);
+    });
+  }
+  return spine.map((text, index) =>
+    heardToken(text, [...alternatives[index]].slice(0, MAX_ALTERNATIVES_PER_TOKEN)));
+}
+
+/**
+ * For each word of `spine`, the word of `other` that lines up with it, or null.
+ *
+ * Word-level edit distance with a flat cost: pairing two words is free when they are the same
+ * word and costs one when they are not, so the cheapest path through a hypothesis that swapped a
+ * single word pairs that word up rather than treating it as a deletion and an insertion.
+ */
+function alignWords(spine, other) {
+  const paired = new Array(spine.length).fill(null);
+  if (other.length === 0) return paired;
+
+  const costs = Array.from({ length: spine.length + 1 }, () => new Array(other.length + 1).fill(0));
+  for (let i = 0; i <= spine.length; i++) costs[i][0] = i;
+  for (let j = 0; j <= other.length; j++) costs[0][j] = j;
+  for (let i = 1; i <= spine.length; i++) {
+    for (let j = 1; j <= other.length; j++) {
+      const substitution = isSameWord(spine[i - 1], other[j - 1]) ? 0 : 1;
+      costs[i][j] = Math.min(
+        costs[i - 1][j - 1] + substitution,
+        costs[i - 1][j] + 1,
+        costs[i][j - 1] + 1
+      );
+    }
+  }
+
+  let i = spine.length, j = other.length;
+  while (i > 0 && j > 0) {
+    const substitution = isSameWord(spine[i - 1], other[j - 1]) ? 0 : 1;
+    if (costs[i][j] === costs[i - 1][j - 1] + substitution) { paired[i - 1] = other[j - 1]; i--; j--; }
+    else if (costs[i][j] === costs[i - 1][j] + 1) i--;
+    else j--;
+  }
+  return paired;
+}
+
+function isSameWord(first, second) {
+  return normalizeForMatch(first) === normalizeForMatch(second);
+}
+
 function isSpokenWordAccepted(target, heardAlternatives) {
   const normalizedTarget = normalizeForMatch(target);
   if (!fold(normalizedTarget, false)) return false;
@@ -268,8 +375,12 @@ function reviewReading(spokenTokens, targets) {
     for (let ki = 1; ki <= tokenCount; ki++) {
       const target = targets[ti - 1];
       const token = spokenTokens[ki - 1];
-      const accepted = isSpokenWordAccepted(target, [token]);
-      const pairingCost = accepted ? 0 : (isPlausibleMisreading(target, token) ? SUBSTITUTION_COST : UNRELATED_COST);
+      // Every hypothesis the engine offered for this position counts towards accepting the
+      // reading, but only its best guess decides whether a mismatch is a misreading of THIS word
+      // or something unrelated. Letting the alternatives widen that budget too would pull filler
+      // onto words the reader never reached, which is what UNRELATED_COST exists to prevent.
+      const accepted = isSpokenWordAccepted(target, token.candidates());
+      const pairingCost = accepted ? 0 : (isPlausibleMisreading(target, token.text) ? SUBSTITUTION_COST : UNRELATED_COST);
       const diagonal = previousRow[ki - 1] + pairingCost;
       const skipTarget = previousRow[ki] + SKIP_COST;
       const skipToken = currentRow[ki - 1] + SKIP_COST;
@@ -291,7 +402,9 @@ function reviewReading(spokenTokens, targets) {
     if (move === MOVE_MATCH || move === MOVE_SUBSTITUTE) {
       reviews[ti - 1] = {
         word: targets[ti - 1],
-        heard: spokenTokens[ki - 1],
+        // The engine's own best guess, not whichever alternative rescued the match: the panel is
+        // telling the reader what they were heard to say.
+        heard: spokenTokens[ki - 1].text,
         outcome: move === MOVE_MATCH ? ReadOutcome.Correct : ReadOutcome.Misread
       };
       ti -= 1; ki -= 1;

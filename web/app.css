@@ -445,19 +445,42 @@ nav.bottom button.active::before {
 .focus-block {
   background: var(--reading);
   border-radius: var(--r-3); padding: 22px var(--s4);
-  max-height: 280px; overflow-y: auto;
+  /* Positioned ONLY so it is the offsetParent of the words inside it: renderTextBlock scrolls
+     the focus word into view with focusNode.offsetTop, which is measured from the offsetParent.
+     Static, that was <body> and the block scrolled to its end instead of to the word. */
+  position: relative;
+  /* 336px = 5.6 lines of the 52px leading once the 22px padding is taken off, one line more
+     than the 280px this was ported from. Clamped rather than fixed because the controls below
+     — Next word, listen, help — have to stay above the fold: 38dvh is ~309px on a 812px iPhone
+     and ~253px on a 667px SE. dvh, not vh: mobile Safari's vh is the URL-bar-hidden viewport,
+     so a vh cap is too tall exactly while the bar is showing. */
+  max-height: clamp(208px, 38dvh, 336px); overflow-y: auto;
   font-family: var(--font);
   font-size: 22px; line-height: 52px;
+  /* Half the original word gap. It was the space glyph (~5.5px at 22px) plus 3px of .fw padding
+     on each side = ~11.5px; this cancels the glyph and leaves the 6px of padding. That is also
+     what Android measures — FocusTextBlock draws one AnnotatedString with no per-word padding,
+     so the highlight box never enters the layout. */
+  word-spacing: -0.26em;
   color: var(--resting-ink);
   cursor: pointer; user-select: none;
 }
-.focus-block .fw { border-radius: var(--r-1); padding: 0 3px; }
+/* Vertical padding on an inline box does not touch the fixed 52px line box, so nothing reflows
+   — but it grows the tap target from the ~30px content height to ~52px, over the 44px minimum.
+   11px, not more: at 13px the box overran the line and the seam between two lines belonged to
+   whichever word painted last, so a tap near it could land on the word above. */
+.focus-block .fw { border-radius: var(--r-1); padding: 11px 3px; }
 /* Enlarged in place, as on Android: the reader keeps the word in its sentence. The 52px leading
    is fixed for every line so the enlarged word never re-spaces the paragraph vertically. */
 .focus-block .fw.focused {
   background: var(--focus-bg); color: var(--focus-ink);
   font-size: 34px; font-weight: 700;
   padding: 2px 6px;
+  /* The highlight's own breathing room, so halving the gap between resting words does not put
+     the amber box hard against the next one — measured at 0.3px without this, which is a box
+     the eye reads as joined to the word after it rather than around the word being read.
+     Horizontal margin only: the 52px leading has to stay untouched. */
+  margin: 0 4px;
   /* A full ring, not an underline: amber on warm paper leaves only a luminance step on three
      sides under deuteranopia. 2px at 13.34:1 makes the boundary unconditional. */
   box-shadow: inset 0 0 0 2px var(--focus-ink);
@@ -574,7 +597,7 @@ nav.bottom {
   overscroll-behavior: contain;   /* stop momentum scroll chaining to the body behind the scrim */
 }
 .dialog      { overscroll-behavior: contain; }
-.focus-block { overscroll-behavior: contain; }  /* the 280px word list must not scroll the page */
+.focus-block { overscroll-behavior: contain; }  /* the capped word list must not scroll the page */
 
 /* Every reading word is a tap target. Kill the grey tap flash, the long-press magnifier and the
    "Copy | Look Up" bubble; touch-action:manipulation drops the 300ms double-tap-zoom delay

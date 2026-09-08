@@ -105,8 +105,8 @@ fun FocusReaderScreen(
     // silence and are opened again, so the closed ones are kept apart from the one still
     // running: the engine keeps rewriting the live transcript until its session ends, and
     // appending revisions of the same speech would double every word in the review.
-    var closedTranscript by remember(text) { mutableStateOf(emptyList<String>()) }
-    var liveTranscript by remember(text) { mutableStateOf(emptyList<String>()) }
+    var closedTranscript by remember(text) { mutableStateOf(emptyList<HeardToken>()) }
+    var liveTranscript by remember(text) { mutableStateOf(emptyList<HeardToken>()) }
     // The words the reader actually moved through, in the order they visited them. Once they
     // drive the focus themselves this is no longer "the first N words": they go back over a
     // line, or skip one, and the review has to line the transcript up against what was read.
@@ -294,7 +294,9 @@ fun FocusReaderScreen(
                 // hypothesis when their endpointer resets, and taking that at face value wiped
                 // the running record of the session — on the legacy path the only record there
                 // is — so a reading that then ended on an error was reported as never heard.
-                val heard = tokenizeTranscript(transcript)
+                // A partial carries one hypothesis, so these tokens have no second opinion. The
+                // finals that replace them below do.
+                val heard = heardTokens(transcript)
                 if (heard.isNotEmpty()) {
                     liveTranscript = heard
                     // The one signal that says the reader is reading. The silence timer below
@@ -307,9 +309,12 @@ fun FocusReaderScreen(
                 // A piece of the reading the engine has settled on. Its own final answer beats
                 // the last partial: partials are guesses it was still revising. If it settled on
                 // nothing, the partials are all there is.
-                val settled = hypotheses.firstOrNull()
-                    ?.let { tokenizeTranscript(it) }
-                    ?.takeIf { it.isNotEmpty() }
+                //
+                // All of the hypotheses, not just the best one. The recogniser is asked for ten
+                // and every one of them is a reading the child might have given — for an accented
+                // reader the right one is often not the first.
+                val settled = tokensWithAlternatives(hypotheses)
+                    .takeIf { it.isNotEmpty() }
                     ?: liveTranscript
                 closedTranscript = closedTranscript + settled
                 // Cleared because the next partials describe the next segment, not this one.

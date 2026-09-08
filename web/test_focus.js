@@ -25,11 +25,43 @@ assert.ok(!isSpokenWordAccepted("күн", ["құн"]));  // phonemic Kazakh vowe
 assert.ok(isSpokenWordAccepted("күн", ["кун"]));   // Russian-mode transcript folds
 
 // Review alignment: filler stepped over, misread reported with what was heard, skip reported.
-const review = reviewReading(["эм", "кинга", "стол"], ["книга", "стол", "дом"]);
+const heard = (...words) => words.map((w) => heardToken(w));
+const review = reviewReading(heard("эм", "кинга", "стол"), ["книга", "стол", "дом"]);
 assert.strictEqual(review[0].outcome, ReadOutcome.Misread);
 assert.strictEqual(review[0].heard, "кинга");
 assert.strictEqual(review[1].outcome, ReadOutcome.Correct);
 assert.strictEqual(review[2].outcome, ReadOutcome.Silent);
+
+// Hypotheses -> per-word alternatives. The best hypothesis is the spine; the others contribute
+// only where they disagree, and at the position where they disagree.
+const tokens = tokensWithAlternatives(["кинга на столе", "книга на столе"]);
+assert.deepStrictEqual(tokens.map((t) => t.text), ["кинга", "на", "столе"]);
+assert.deepStrictEqual(tokens[0].alternatives, ["книга"]);
+assert.deepStrictEqual(tokens[1].alternatives, []);
+
+// A hypothesis with a word missing still lines up after the gap. Pairing by position would put
+// "столе" against "на" — an alternative on the wrong word is how one turns into a false accept.
+const gapped = tokensWithAlternatives(["книга на столе", "книга столе"]);
+assert.deepStrictEqual(gapped[1].alternatives, []);
+assert.deepStrictEqual(gapped[2].alternatives, []);
+
+// An alternative equal to the best guess is not kept; the list is capped at four.
+assert.deepStrictEqual(tokensWithAlternatives(["Книга", "книга,", "кинга"])[0].alternatives, ["кинга"]);
+assert.strictEqual(tokensWithAlternatives(["а", "б", "в", "г", "д", "е", "ж"])[0].alternatives.length, 4);
+assert.deepStrictEqual(tokensWithAlternatives([]), []);
+assert.deepStrictEqual(tokensWithAlternatives(["   "]), []);
+
+// The whole point: a later hypothesis rescues a reading the first guess got wrong — but the
+// panel still reports what the engine actually settled on.
+const rescued = reviewReading([heardToken("кинга", ["книга"])], ["книга"]);
+assert.strictEqual(rescued[0].outcome, ReadOutcome.Correct);
+assert.strictEqual(rescued[0].heard, "кинга");
+
+// Alternatives widen what counts as a correct reading and nothing else. A stray token carrying a
+// lucky alternative must still be stepped over, not charged to a word further down the page.
+const stray = reviewReading([heardToken("мама"), heardToken("эм", ["это"])], ["мама", "мыла", "раму"]);
+assert.deepStrictEqual(stray.map((r) => r.outcome),
+  [ReadOutcome.Correct, ReadOutcome.Silent, ReadOutcome.Silent]);
 
 // mistakesFrom: a word corrected on the last attempt drops off the list.
 const m = mistakesFrom([

@@ -46,7 +46,7 @@ private const val MOVE_SKIP_TOKEN: Byte = 3
  * ponytail: plain O(targets × tokens) alignment, sized for one page of text. If focus mode ever
  * runs over something book-length, band it (Ukkonen) instead of widening the table.
  */
-fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordReview> {
+fun reviewReading(spokenTokens: List<HeardToken>, targets: List<String>): List<WordReview> {
     if (targets.isEmpty() || spokenTokens.isEmpty()) {
         return emptyList()
     }
@@ -64,10 +64,16 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
         for (tokenIndex in 1..tokenCount) {
             val target = targets[targetIndex - 1]
             val token = spokenTokens[tokenIndex - 1]
-            val accepted = isSpokenWordAccepted(target, listOf(token))
+            // Every hypothesis the engine offered for this position counts towards accepting the
+            // reading...
+            val accepted = isSpokenWordAccepted(target, token.candidates())
             val pairingCost = when {
                 accepted -> 0
-                isPlausibleMisreading(target, token) -> SUBSTITUTION_COST
+                // ...but only its best guess decides whether a mismatch is a misreading of THIS
+                // word or something unrelated. Letting the alternatives widen this budget too
+                // would pull filler onto words the reader never reached, which is the failure the
+                // UNRELATED_COST above exists to prevent.
+                isPlausibleMisreading(target, token.text) -> SUBSTITUTION_COST
                 else -> UNRELATED_COST
             }
             val diagonal = previousRow[tokenIndex - 1] + pairingCost
@@ -99,7 +105,9 @@ fun reviewReading(spokenTokens: List<String>, targets: List<String>): List<WordR
                 val isMatch = moves[targetIndex * (tokenCount + 1) + tokenIndex] == MOVE_MATCH
                 reviews[targetIndex - 1] = WordReview(
                     word = targets[targetIndex - 1],
-                    heard = spokenTokens[tokenIndex - 1],
+                    // The engine's own best guess, not whichever alternative rescued the match:
+                    // the panel is telling the reader what they were heard to say.
+                    heard = spokenTokens[tokenIndex - 1].text,
                     outcome = if (isMatch) ReadOutcome.Correct else ReadOutcome.Misread
                 )
                 targetIndex -= 1
