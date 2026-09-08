@@ -101,9 +101,8 @@ const STRINGS = {
     focus_check_off: "Read at your own pace — this reading is not checked.",
     focus_check_off_installed: "The installed app cannot hear the reading. Open the site in Safari if you want the reading checked.",
     focus_check_off_language: "iPhone cannot listen to reading in Kazakh, so this reading is not checked.",
-    tts_silent: "This device is not playing the sound, so read the word yourself.",
     settings_theme_title: "Appearance", settings_theme_system: "Match the phone", settings_theme_light: "Light", settings_theme_dark: "Dark",
-    focus_step_letters: "Letter by letter", focus_step_meaning: "What the word means",
+    focus_step_meaning: "What the word means",
     focus_pause_title: "Let's take a short break", focus_pause_continue: "I am ready",
     focus_progress: "Read without help: {0}%", focus_finished: "The text is finished.",
     focus_practise_words: "Practise the difficult words", focus_hint_dismiss: "Hide the hint",
@@ -128,7 +127,6 @@ const STRINGS = {
     catalog_empty: "No books for this language yet", catalog_loading: "Opening the library…",
     catalog_book_meta: "Grade {0} · {1} pages",
     catalog_failed: "Could not reach the library. Check the connection.", catalog_retry: "Try again",
-    tts_voice_missing: "This browser has no voice for this language, so reading aloud will sound wrong.",
     reader_listen: "Listen", reader_settings: "Reading settings"
   },
   ru: {
@@ -230,9 +228,8 @@ const STRINGS = {
     focus_check_off: "Читай в своем темпе — это чтение не проверяется.",
     focus_check_off_installed: "Установленное приложение не слышит чтение. Открой сайт в Safari, если нужна проверка.",
     focus_check_off_language: "iPhone не умеет слушать чтение на казахском, поэтому это чтение не проверяется.",
-    tts_silent: "Это устройство не воспроизводит звук, поэтому прочитай слово сам.",
     settings_theme_title: "Оформление", settings_theme_system: "Как на телефоне", settings_theme_light: "Светлое", settings_theme_dark: "Темное",
-    focus_step_letters: "По буквам", focus_step_meaning: "Что значит слово",
+    focus_step_meaning: "Что значит слово",
     focus_pause_title: "Сделаем небольшую паузу", focus_pause_continue: "Я готов",
     focus_progress: "Прочитано без подсказки: {0}%", focus_finished: "Текст закончился.",
     focus_practise_words: "Потренировать трудные слова", focus_hint_dismiss: "Скрыть подсказку",
@@ -257,7 +254,6 @@ const STRINGS = {
     catalog_empty: "Для этого языка книг пока нет", catalog_loading: "Открываем библиотеку…",
     catalog_book_meta: "{0} класс · {1} стр.",
     catalog_failed: "Не удалось открыть библиотеку. Проверьте подключение.", catalog_retry: "Повторить",
-    tts_voice_missing: "В этом браузере нет голоса для этого языка, поэтому чтение вслух будет звучать неправильно.",
     reader_listen: "Слушать", reader_settings: "Настройки чтения"
   },
   kk: {
@@ -358,9 +354,8 @@ const STRINGS = {
     focus_check_off: "Өз қарқыныңмен оқы — бұл оқу тексерілмейді.",
     focus_check_off_installed: "Орнатылған қолданба оқуды естімейді. Тексеру қажет болса, сайтты Safari-де аш.",
     focus_check_off_language: "iPhone қазақша оқуды тыңдай алмайды, сондықтан бұл оқу тексерілмейді.",
-    tts_silent: "Бұл құрылғы дыбысты ойнатпайды, сондықтан сөзді өзің оқы.",
     settings_theme_title: "Сыртқы түрі", settings_theme_system: "Телефондағыдай", settings_theme_light: "Ашық", settings_theme_dark: "Күңгірт",
-    focus_step_letters: "Әріппен", focus_step_meaning: "Сөздің мағынасы",
+    focus_step_meaning: "Сөздің мағынасы",
     focus_pause_title: "Кішкене үзіліс жасайық", focus_pause_continue: "Дайынмын",
     focus_progress: "Көмексіз оқылды: {0}%", focus_finished: "Мәтін бітті.",
     focus_practise_words: "Қиын сөздерді жаттығу", focus_hint_dismiss: "Кеңесті жасыру",
@@ -385,7 +380,6 @@ const STRINGS = {
     catalog_empty: "Бұл тілде кітаптар әзірге жоқ", catalog_loading: "Кітапхана ашылуда…",
     catalog_book_meta: "{0} сынып · {1} бет",
     catalog_failed: "Кітапхананы ашу мүмкін болмады. Қосылымды тексеріңіз.", catalog_retry: "Қайталау",
-    tts_voice_missing: "Бұл браузерде осы тілге арналған дауыс жоқ, сондықтан дауыстап оқу дұрыс естілмейді.",
     reader_listen: "Тыңдау", reader_settings: "Оқу параметрлері"
   }
 };

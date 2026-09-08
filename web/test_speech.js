@@ -50,33 +50,12 @@ assert.deepStrictEqual(emitted, []);
 gate = new ServerSpeechGate();
 gate.startedAt = 1000;
 
-// Nothing recorded yet: every segment is the child.
-assert.ok(!gate.wasAppSpeaking(0, 3000));
-
-// A closed window covering most of a segment drops it; one covering less than half does not.
-gate.markAppSpeechStart(1000);          // t=0
-gate.markAppSpeech(1000, 3500);         // t=0..2500
-assert.ok(gate.wasAppSpeaking(0, 3000), "2500ms of app speech in a 3000ms segment");
-assert.ok(!gate.wasAppSpeaking(2000, 6000), "500ms of app speech in a 4000ms segment");
-
-// The Letters rung queues two utterances. They collapse into ONE window, so the letter names are
-// inside the discarded span rather than left outside it.
-gate = new ServerSpeechGate();
-gate.startedAt = 1000;
-gate.markAppSpeechStart(1000);          // letter names begin
-gate.markAppSpeechStart(1200);          // the word, queued behind them — must not re-open
-gate.markAppSpeech(1200, 4000);         // the last utterance ends
-assert.deepStrictEqual(gate.speakWindows, [{ start: 0, end: 3000 }],
-  "queued utterances are one window, starting at the first");
-
-// An utterance still in flight masks only up to the END of the segment being judged — so an
-// onend that never arrives costs one segment, not the whole reading.
-gate = new ServerSpeechGate();
-gate.startedAt = 1000;
-gate.markAppSpeechStart(1000);          // opened at t=0, never closed
-assert.ok(gate.wasAppSpeaking(0, 2000), "the segment the app is talking through is dropped");
-assert.ok(gate.wasAppSpeaking(1000, 3000), "and so is the next one while it is still open");
-gate.markAppSpeech(0, 3500);            // t=..2500
-assert.ok(!gate.wasAppSpeaking(4000, 8000), "once closed, later segments are the child again");
+// Focus mode makes no sound, so there is nothing to mask: the gate no longer carries app-speech
+// windows at all. Asserted rather than assumed — a mask that quietly comes back would mean the
+// app is speaking again over an open microphone.
+assert.strictEqual(typeof gate.markAppSpeech, "undefined", "no app-speech window is recorded");
+assert.strictEqual(typeof gate.markAppSpeechStart, "undefined");
+assert.strictEqual(typeof gate.wasAppSpeaking, "undefined", "no segment is dropped as the app's voice");
+assert.ok(!("speakWindows" in gate));
 
 console.log("all speech gate checks passed");

@@ -36,16 +36,17 @@ function buildFocusWords(text) {
 
 /* ---------------- FocusLadder.kt ---------------- */
 
-const FocusStep = { Focus: 0, Sweep: 1, Letters: 2, Meaning: 3 };
+// No Letters rung any more: focus mode never spells a word out, and never speaks at all. The
+// microphone is open for most of a reading, so anything the app said was audio the recogniser
+// had to be masked from — and every mask that leaked put the app's own voice in the child's
+// transcript. The remaining help is silent: Sweep flashes the word, Meaning shows a written hint.
+const FocusStep = { Focus: 0, Sweep: 1, Meaning: 2 };
 const SWEEP_FLASH_MILLIS = 200;
 const NUDGE_AFTER_MILLIS = 5000;
 const OFFER_HELP_AFTER_MILLIS = 9000;
-const MASTERY_TARGET = 0.8;
-const MIN_TTS_RATE = 0.6;
-const MAX_TTS_RATE = 1.0;
 const ACCURACY_WINDOW = 20;
 const PAUSE_AFTER_DEEP_WORDS = 3;
-const DEEP_STEPS = new Set([FocusStep.Letters, FocusStep.Meaning]);
+const DEEP_STEPS = new Set([FocusStep.Meaning]);
 
 function newLadderState() {
   return {
@@ -102,11 +103,6 @@ function ladderOnPauseAcknowledged(state) {
 function ladderMasteryShare(state) {
   if (state.recentCleanReads.length === 0) return 0;
   return state.recentCleanReads.filter(Boolean).length / state.recentCleanReads.length;
-}
-
-function ladderTtsRate(state) {
-  const progress = Math.min(1, ladderMasteryShare(state) / MASTERY_TARGET);
-  return MIN_TTS_RATE + (MAX_TTS_RATE - MIN_TTS_RATE) * progress;
 }
 
 /* ---------------- NaturalTts.kt: language detection ---------------- */
@@ -637,38 +633,6 @@ function misreadWordsFrom(review) {
     if (r.outcome === ReadOutcome.Misread && !out.includes(r.word)) out.push(r.word);
   }
   return out;
-}
-
-/* ---------------- LetterNames.kt ---------------- */
-
-const RussianLetterNames = {
-  "а": "а", "б": "бэ", "в": "вэ", "г": "гэ", "д": "дэ", "е": "е", "ё": "ё",
-  "ж": "жэ", "з": "зэ", "и": "и", "й": "и краткое", "к": "ка", "л": "эль",
-  "м": "эм", "н": "эн", "о": "о", "п": "пэ", "р": "эр", "с": "эс", "т": "тэ",
-  "у": "у", "ф": "эф", "х": "ха", "ц": "цэ", "ч": "че", "ш": "ша", "щ": "ща",
-  "ъ": "твёрдый знак", "ы": "ы", "ь": "мягкий знак", "э": "э", "ю": "ю", "я": "я"
-};
-const KazakhLetterNames = {
-  "а": "а", "ә": "ә", "е": "е", "ё": "ё", "и": "и", "о": "о", "ө": "ө",
-  "у": "у", "ұ": "ұ", "ү": "ү", "ы": "ы", "і": "і", "э": "э", "ю": "ю", "я": "я",
-  "б": "бе", "в": "ве", "г": "ге", "д": "де", "ж": "же", "з": "зе",
-  "к": "ке", "п": "пе", "т": "те", "ц": "це", "ч": "че",
-  "қ": "қа", "ғ": "ға",
-  "х": "ха", "һ": "һа", "ш": "ша", "щ": "ща",
-  "л": "эл", "м": "эм", "н": "эн", "р": "эр", "с": "эс", "ф": "эф", "ң": "ең",
-  "й": "қысқа и", "ъ": "айыру белгісі", "ь": "жіңішкелік белгісі"
-};
-const EnglishLetterNames = {
-  a: "ay", b: "bee", c: "see", d: "dee", e: "ee", f: "ef", g: "gee", h: "aitch",
-  i: "eye", j: "jay", k: "kay", l: "el", m: "em", n: "en", o: "oh", p: "pee",
-  q: "cue", r: "ar", s: "ess", t: "tee", u: "you", v: "vee", w: "double-u",
-  x: "ex", y: "why", z: "zee"
-};
-
-function letterNamesFor(word, languageCode) {
-  const cyrillicNames = normalizeLangCode(languageCode) === "kk" ? KazakhLetterNames : RussianLetterNames;
-  return [...word.toLowerCase()].filter(isLetterOrDigit)
-    .map((ch) => EnglishLetterNames[ch] || cyrillicNames[ch] || ch);
 }
 
 /* ---------------- MainActivity.kt: extractTrainingWords ---------------- */

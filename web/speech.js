@@ -31,12 +31,6 @@ function findBestVoice(languageCode) {
   return best;
 }
 
-function canSpeakLanguage(languageCode) {
-  if (!window.speechSynthesis) return false;
-  if (cachedVoices.length === 0) return true; // voices not loaded yet: stay optimistic, as the app does
-  return findBestVoice(languageCode) !== null;
-}
-
 // Speak one utterance. Returns the utterance, or null when the engine refused — the caller's
 // "is the app speaking?" flag must be flipped back on refusal (see speakCompat's contract).
 function ttsSpeak(text, { languageCode, rate = 1.0, flush = true, onstart = null, onend = null, onboundary = null } = {}) {
@@ -47,7 +41,7 @@ function ttsSpeak(text, { languageCode, rate = 1.0, flush = true, onstart = null
   const voice = findBestVoice(languageCode);
   // Refuse rather than mispronounce. With no matching voice the engine falls back to the device
   // language, so a Kazakh word is read with Russian or English phonetics — for a child building
-  // letter-sound correspondence that is worse than silence. The caller shows tts_voice_missing.
+  // letter-sound correspondence that is worse than silence. The caller simply hears nothing.
   if (!voice && cachedVoices.length > 0) {
     if (onend) onend();
     return null;
@@ -170,18 +164,13 @@ class WebSpeechGate {
 
 /* ---------------- iOS: gesture unlock + voice warm-up ---------------- */
 
-// MITIGATION, not a guaranteed fix. iOS requires a user gesture for speechSynthesis.speak();
-// the sources disagree on whether one unlock covers the page or every playback. Focus mode's
-// first utterance comes from the 5s/9s silence ladder — a timer — so without this a child who
-// waits hears nothing. Capture phase, so it runs before app handlers. The real backstop is
-// ttsWatchdog below: if onstart never fires, nothing is playing, whatever the engine claimed.
+// MITIGATION, not a guaranteed fix. iOS requires a user gesture for speechSynthesis.speak(), and
+// the plain reader speaks a word when the child taps it — a gesture, but not always one iOS
+// accepts. Capture phase, so it runs before app handlers. It doubles as the voice-list warm-up:
+// getVoices() is empty on iOS until the list loads and onvoiceschanged sometimes never fires.
 //
-// It doubles as the voice-list warm-up. getVoices() is empty on iOS until the list loads and
-// onvoiceschanged sometimes never fires, so canSpeakLanguage()'s optimistic branch reports
-// Kazakh TTS as available on a device that has no Kazakh voice. Warming it on the very first
-// tap means voices are loaded long before any FocusReader is constructed.
-let ttsBlocked = false;
-
+// Focus mode no longer speaks at all, so nothing here runs off a timer any more and the silent
+// -utterance watchdog that guarded that case is gone with it.
 function unlockSpeech() {
   if (!window.speechSynthesis) return;
   // A real word, not " ": ttsSpeak refuses whitespace-only text and several engines fire
@@ -192,20 +181,6 @@ function unlockSpeech() {
   refreshVoices();
   if (cachedVoices.length === 0) setTimeout(refreshVoices, 500);
 }
-
-// The watchdog the unlock cannot replace. Returns a cancel function.
-const TTS_START_WATCHDOG_MILLIS = 1500;
-function ttsWatchdog(utterance, onSilent) {
-  if (!utterance) { onSilent(); return () => {}; }
-  let started = false;
-  const previous = utterance.onstart;
-  const timer = setTimeout(() => {
-    if (!started) { ttsBlocked = true; onSilent(); }
-  }, TTS_START_WATCHDOG_MILLIS);
-  utterance.onstart = (event) => { started = true; clearTimeout(timer); if (previous) previous(event); };
-  return () => clearTimeout(timer);
-}
-function ttsIsBlocked() { return ttsBlocked; }
 
 /* ---------------- Can this device check the reading at all? ---------------- */
 
@@ -302,8 +277,6 @@ class ServerSpeechGate {
     this.recorder = null;
     this.audioContext = null;
     this.analyser = null;
-    this.speakWindows = [];   // {start, end} ms since capture began, while the APP was talking
-    this.openSpeakStart = null;  // the app is talking NOW, and started here
     this.startedAt = 0;
     this.active = false;
     this.cutTimer = null;
@@ -344,11 +317,9 @@ class ServerSpeechGate {
   }
 
   async startContinuous(languageCode, { onPartial, onSegment, onEnded, onUnavailable }) {
-    // One recorder for the whole reading. The caller reopens a session after every utterance it
-    // speaks — the native gate needs that, this one does not, because it masks the app's voice
-    // with speakWindows instead of stopping. Without this guard each prompt stacked another live
-    // MediaRecorder and another microphone stream on the first, all of them transcribing the
-    // same audio into the same transcript.
+    // One recorder for the whole reading, and never more than one. Without this guard a second
+    // call stacked another live MediaRecorder and another microphone stream on the first, all of
+    // them transcribing the same audio into the same transcript.
     if (this.active && this.recorder) return;
     // A gate that failed rather than one that is running: tear the dead one down first, with its
     // callbacks detached, or its onstop reopens the very session this call is replacing.
@@ -382,8 +353,6 @@ class ServerSpeechGate {
     this.mimeType = ServerSpeechGate.pickMimeType();
     this.languageCode = languageCode;
     this.startedAt = Date.now();
-    this.speakWindows = [];
-    this.openSpeakStart = null;
     this.segmentIndex = 0;
     this.settled = new Map();
     this.nextToEmit = 0;
@@ -434,17 +403,11 @@ class ServerSpeechGate {
     this.segmentStart = segmentStart;
     this.quietSince = 0;
 
+    // Nothing here masks the app's own voice any more, because focus mode never speaks: every
+    // segment is the child. The mask it replaces was a standing hazard — each leak put the app's
+    // reading of a word into the transcript and credited the child with having read it.
     recorder.ondataavailable = (event) => {
-      const segmentEnd = Date.now();
       if (!event.data || event.data.size === 0) { this.settle(index, "", callbacks.onSegment); return; }
-
-      // Measured, not counted. The old form derived a chunk's window from its ordinal, so one
-      // empty blob shifted every later window by a whole chunk and the app's own voice stopped
-      // being masked at all.
-      const from = segmentStart - this.startedAt;
-      const to = segmentEnd - this.startedAt;
-      // Drop a segment the app was talking through for more than half its length.
-      if (this.wasAppSpeaking(from, to)) { this.settle(index, "", callbacks.onSegment); return; }
 
       transcribeChunk(event.data, this.languageCode, this.mimeType).then((result) => {
         // A failed chunk is not silence. Said out loud so the help ladder is not triggered by a
@@ -485,23 +448,6 @@ class ServerSpeechGate {
   }
 
   /**
-   * Whether the app did more of the talking than the child during [from, to), both in ms since
-   * capture began — i.e. whether this segment is the app's own voice and must not be
-   * transcribed and credited to the reader.
-   */
-  wasAppSpeaking(from, to) {
-    const length = Math.max(1, to - from);
-    // An utterance still in flight counts only up to the end of this segment, so an onend that
-    // never arrives costs one segment rather than silencing the microphone for good.
-    const windows = this.openSpeakStart === null
-      ? this.speakWindows
-      : [...this.speakWindows, { start: this.openSpeakStart, end: to }];
-    const spoken = windows.reduce((total, w) =>
-      total + Math.max(0, Math.min(w.end, to) - Math.max(w.start, from)), 0);
-    return spoken > length / 2;
-  }
-
-  /**
    * Holds a finished segment until every earlier one has been emitted.
    *
    * Every exit path settles its slot — a dropped segment and a failed request included — or the
@@ -528,28 +474,6 @@ class ServerSpeechGate {
   }
 
   isSpeaking() { return this.sampleLevel() > SILENCE_RMS; }
-
-  /**
-   * The app has STARTED talking.
-   *
-   * Opened here rather than only closed at the end, because a segment that finishes while the
-   * utterance is still running was tested against a window that did not exist yet and was never
-   * dropped — so the app's own reading of the word went to the transcriber and came back
-   * credited to the child. Queued utterances collapse into one window: the Letters rung speaks
-   * the letter names and then the word, and both are the app.
-   */
-  markAppSpeechStart(start) {
-    if (!this.startedAt) return;
-    if (this.openSpeakStart === null) this.openSpeakStart = Math.max(0, start - this.startedAt);
-  }
-
-  /** ...and has stopped. Closes the window opened above, so the segments covering it are dropped. */
-  markAppSpeech(start, end) {
-    if (!this.startedAt) return;
-    const from = this.openSpeakStart !== null ? this.openSpeakStart : Math.max(0, start - this.startedAt);
-    this.openSpeakStart = null;
-    this.speakWindows.push({ start: from, end: end - this.startedAt });
-  }
 
   /**
    * The reader is done. The last recording is stopped rather than discarded, so its blob still

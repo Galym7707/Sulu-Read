@@ -72,18 +72,22 @@ assert.strictEqual(m.length, 0);
 
 // Ladder: deep step collects the word, three deep words in a row suggest a pause.
 let ladder = newLadderState();
-ladder = ladderOnHelpRequested(ladder, FocusStep.Letters);
+ladder = ladderOnHelpRequested(ladder, FocusStep.Meaning);
 ladder = ladderOnFocusMoved(ladder, 1, "слово1", 10);
 assert.deepStrictEqual(ladder.triggerWords, ["слово1"]);
-ladder = ladderOnHelpRequested(ladder, FocusStep.Letters);
+ladder = ladderOnHelpRequested(ladder, FocusStep.Meaning);
 ladder = ladderOnFocusMoved(ladder, 2, "слово2", 10);
 ladder = ladderOnHelpRequested(ladder, FocusStep.Meaning);
 ladder = ladderOnFocusMoved(ladder, 3, "слово3", 10);
 assert.strictEqual(ladder.suggestPause, true);
 
-// Letter names: Kazakh names, not Russian, for a Kazakh reader.
-assert.deepStrictEqual(letterNamesFor("бата", "kk"), ["бе", "а", "те", "а"]);
-assert.deepStrictEqual(letterNamesFor("бат", "ru"), ["бэ", "а", "тэ"]);
+// The ladder is silent end to end. There is no rung that spells a word out, and the one rung
+// above Sweep shows a written hint — so nothing in focus mode can put the app's own voice into
+// the microphone that is judging the child.
+assert.strictEqual(typeof globalThis.letterNamesFor, "undefined", "no letter-name table survives");
+assert.deepStrictEqual(Object.keys(FocusStep), ["Focus", "Sweep", "Meaning"]);
+assert.ok(!("Letters" in FocusStep), "the spelling rung is gone");
+assert.strictEqual(typeof globalThis.ladderTtsRate, "undefined", "nothing paces speech any more");
 
 // extractTrainingWords: >=4 letters, distinct, capped at 40.
 assert.deepStrictEqual(extractTrainingWords("кот кітап кітап балалар"), ["кітап", "балалар"]);

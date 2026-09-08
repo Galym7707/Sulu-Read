@@ -449,12 +449,13 @@ nav.bottom button.active::before {
      the focus word into view with focusNode.offsetTop, which is measured from the offsetParent.
      Static, that was <body> and the block scrolled to its end instead of to the word. */
   position: relative;
-  /* 336px = 5.6 lines of the 52px leading once the 22px padding is taken off, one line more
-     than the 280px this was ported from. Clamped rather than fixed because the controls below
-     — Next word, listen, help — have to stay above the fold: 38dvh is ~309px on a 812px iPhone
-     and ~253px on a 667px SE. dvh, not vh: mobile Safari's vh is the URL-bar-hidden viewport,
-     so a vh cap is too tall exactly while the bar is showing. */
-  max-height: clamp(208px, 38dvh, 336px); overflow-y: auto;
+  /* The reading surface is the screen. 460px is 8 lines of the 52px leading once the 22px
+     padding is taken off — against 280px on Android, which capped itself there to keep its
+     controls on screen in a layout that cannot scroll. The web page scrolls, so the reading area
+     wins the space and the controls follow it down.
+     dvh, not vh: mobile Safari's vh is the URL-bar-hidden viewport, so a vh cap is too tall
+     exactly while the bar is showing. The 240px floor protects landscape. */
+  max-height: clamp(240px, 52dvh, 460px); overflow-y: auto;
   font-family: var(--font);
   font-size: 22px; line-height: 52px;
   /* Half the original word gap. It was the space glyph (~5.5px at 22px) plus 3px of .fw padding

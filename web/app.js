@@ -902,7 +902,6 @@ class FocusReader {
     this.words = buildFocusWords(options.text);
     this.ladder = newLadderState();
     this.isSessionActive = false;
-    this.isSpeaking = false;
     this.isFlashing = false;
     this.micDenied = false;
     this.micUnavailable = false;
@@ -920,13 +919,8 @@ class FocusReader {
     this.speechGate = createSpeechGate(options.languageCode);
     // Only the server gate meters input level; the native one reports speech via partials.
     this.levelTimer = null;
-    this.pendingAppSpeech = null;
-    // Monotonic; the utterance holding the current value is the one allowed to reopen the mic.
-    this.speechToken = 0;
     this.reviewTimer = null;
     this.serviceRetries = 0;
-    this.voiceMissing = !canSpeakLanguage(options.languageCode);
-    this.ttsSilent = false;
     // Decided once, up front, not after a failed tap: on an installed iPhone app the recogniser
     // never starts, and Apple has no Kazakh recogniser at all. Focus mode then runs unchecked
     // rather than dangling a microphone button with nothing behind it.
@@ -949,7 +943,6 @@ class FocusReader {
     // pending alignment there would lose the last segments of the reading.
     if (this.reviewTimer) { clearTimeout(this.reviewTimer); this.reviewTimer = null; }
     this.speechGate.release();
-    ttsStop();
   }
 
   clearTimers() {
@@ -959,56 +952,6 @@ class FocusReader {
   }
 
   currentWord() { return this.words[this.ladder.wordIndex] || null; }
-
-  speak(value, queue = false) {
-    const speechLanguage = detectSpeechLanguageCode(value, this.options.languageCode);
-    // Close the open session before the first syllable so the app never hears its own voice
-    // and credits the reader with the very word they were stuck on.
-    // The server gate cannot pause (iOS keeps encoding through pause()), so instead of
-    // stopping it we record when the app was talking and drop the chunks that overlap.
-    const speechStart = Date.now();
-    // Claimed BEFORE the call, exactly as FocusReaderScreen claims its utteranceId: only the
-    // utterance queued last may reopen the microphone. The previous guard tested
-    // speechSynthesis.pending, which does not answer that question — measured in Chromium, at
-    // the first utterance's `end` the queue is already empty (pending === false) and the second
-    // has not started, so the Letters rung reopened the mic while the engine was still about to
-    // say the very word the reader was stuck on, and the app was then credited with reading it.
-    const token = ++this.speechToken;
-    if (typeof this.speechGate.markAppSpeechStart === "function") {
-      // Opens one window covering every queued utterance; markAppSpeech below closes it.
-      this.pendingAppSpeech = speechStart;
-      this.speechGate.markAppSpeechStart(speechStart);
-    } else {
-      this.speechGate.stop();
-    }
-    this.isSpeaking = true;
-    this.renderStatus();
-    const utterance = ttsSpeak(value, {
-      languageCode: speechLanguage,
-      rate: ladderTtsRate(this.ladder),
-      flush: !queue,
-      onend: () => {
-        if (this.destroyed) return;
-        if (token !== this.speechToken) return;   // an earlier utterance of a queued pair
-        if (this.pendingAppSpeech && typeof this.speechGate.markAppSpeech === "function") {
-          this.speechGate.markAppSpeech(this.pendingAppSpeech, Date.now());
-          this.pendingAppSpeech = null;
-        }
-        this.isSpeaking = false;
-        this.renderStatus();
-        this.maybeListen();
-      }
-    });
-    if (utterance === null) { this.isSpeaking = false; this.renderStatus(); return; }
-    // onend fires even when iOS silently drops the utterance, so "it finished" is not "it
-    // played". If onstart never arrives, nothing is playing — say so rather than leaving a
-    // child waiting for a word that will never come.
-    ttsWatchdog(utterance, () => {
-      if (this.destroyed) return;
-      this.ttsSilent = true;
-      this.renderStatus();
-    });
-  }
 
   // The reader owns the focus. Nothing else moves it.
   moveFocusTo(target) {
@@ -1025,9 +968,7 @@ class FocusReader {
   }
 
   onHelp() {
-    const minimum = (this.ladder.step === FocusStep.Focus || this.ladder.step === FocusStep.Sweep)
-      ? FocusStep.Letters : FocusStep.Meaning;
-    this.setStep(ladderOnHelpRequested(this.ladder, minimum));
+    this.setStep(ladderOnHelpRequested(this.ladder, FocusStep.Meaning));
   }
 
   setStep(next) {
@@ -1054,18 +995,15 @@ class FocusReader {
           this.renderTextBlock();
         }, SWEEP_FLASH_MILLIS);
       }, SWEEP_FLASH_MILLIS);
-    } else if (this.ladder.step === FocusStep.Letters) {
-      const names = letterNamesFor(word.spoken, detectSpeechLanguageCode(word.spoken, this.options.languageCode));
-      // Letters first, the whole word queued behind them — never cutting the letters off.
-      this.speak(names.join(" , "));
-      this.speak(word.spoken, true);
     } else if (this.ladder.step === FocusStep.Meaning) {
+      // A written hint, and nothing spoken. The microphone is open; the app staying silent is
+      // what keeps its own voice out of the child's transcript.
       this.options.onRequestMeaningHint(word.spoken);
-      this.speak(word.spoken);
     }
   }
 
-  // Silence help ladder: 5s → Sweep, 9s → Letters. Speaking restarts the wait.
+  // Silence help ladder: 5s → Sweep (a silent flash), 9s → Meaning (a written hint).
+  // Hearing the child read restarts the wait.
   armSilenceTimers() {
     this.clearTimers();
     if (!this.currentWord()) return;
@@ -1074,7 +1012,7 @@ class FocusReader {
       this.setStep(ladderOnHelpRequested(this.ladder, FocusStep.Sweep));
       this.nudgeTimer = setTimeout(() => {
         if (this.destroyed || this.ladder.step !== FocusStep.Focus) return;
-        this.setStep(ladderOnHelpRequested(this.ladder, FocusStep.Letters));
+        this.setStep(ladderOnHelpRequested(this.ladder, FocusStep.Meaning));
       }, OFFER_HELP_AFTER_MILLIS - NUDGE_AFTER_MILLIS);
     }, NUDGE_AFTER_MILLIS);
   }
@@ -1110,9 +1048,9 @@ class FocusReader {
   }
 
   maybeListen() {
-    if (this.destroyed || !this.isSessionActive || this.isSpeaking || !this.currentWord()) return;
+    if (this.destroyed || !this.isSessionActive || !this.currentWord()) return;
     const begin = () => {
-      if (this.destroyed || !this.isSessionActive || this.isSpeaking) return;
+      if (this.destroyed || !this.isSessionActive) return;
       let heardThisSession = false;
       this.speechGate.startContinuous(
         detectSpeechLanguageCode(this.currentWord() ? this.currentWord().spoken : "", this.options.languageCode),
@@ -1149,7 +1087,7 @@ class FocusReader {
             this.wasInstantFailure = !heardThisSession;
             this.maybeUpdateReview();
             // Session closed (silence timeout, tab switch, error): reopen it.
-            if (this.isSessionActive && !this.isSpeaking) this.maybeListen();
+            if (this.isSessionActive) this.maybeListen();
           },
           onUnavailable: (reason) => {
             // A service refusal is usually the engine, not the reader: back off and try again a
@@ -1312,7 +1250,8 @@ class FocusReader {
       return;
     }
 
-    const listening = this.isSessionActive && !this.isSpeaking;
+    // Nothing ever pauses the microphone now: the app makes no sound of its own.
+    const listening = this.isSessionActive;
     // Unchecked reading is a mode, not a failure. The headline says what the app WILL do, the
     // microphone button is absent rather than dead, and the reason sits quietly underneath.
     this.statusHost.append(
@@ -1357,12 +1296,6 @@ class FocusReader {
         el("span", { class: "body-sm muted" },
           this.micDenied ? t("focus_mic_permission") : t("focus_mic_unavailable"))));
     }
-    if (this.ttsSilent || this.voiceMissing) {
-      this.statusHost.append(el("div", { class: "row row--top s-2 text-error" }, icon("alert", 18),
-        el("span", { class: "body-sm" }, this.ttsSilent ? t("tts_silent") : t("tts_voice_missing"))));
-    }
-
-
     if (this.reviewRequested) this.statusHost.append(this.renderReviewPanel());
     if (this.ladder.suggestPause) {
       this.statusHost.append(el("div", { class: "card card--quiet stack" },
@@ -1379,13 +1312,7 @@ class FocusReader {
     this.stepHelpHost.replaceChildren();
     const word = this.currentWord();
     if (!word) return;
-    if (this.ladder.step === FocusStep.Letters) {
-      this.stepHelpHost.append(el("div", { class: "stack s-2" },
-        el("div", { class: "body-sm muted" }, t("focus_step_letters")),
-        el("div", { class: "title-md" },
-          letterNamesFor(word.spoken, detectSpeechLanguageCode(word.spoken, this.options.languageCode)).join(" · "))
-      ));
-    } else if (this.ladder.step === FocusStep.Meaning) {
+    if (this.ladder.step === FocusStep.Meaning) {
       const aiState = this.options.getAiState();
       const inner = el("div", { class: "card card--quiet stack s-2" },
         el("div", { class: "body-sm muted" }, t("focus_step_meaning")));
