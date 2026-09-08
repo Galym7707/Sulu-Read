@@ -10,4 +10,6 @@ echo "service-worker cache version -> $STAMP"
 node --check sw.js
 for f in app.js speech.js api.js focus.js icons.js strings.js; do node --check "$f"; done
 node test_focus.js
+node test_ui.js
+node test_speech.js
 vercel deploy --prod --yes 2>&1 | grep -oE "Aliased.*" | head -1
